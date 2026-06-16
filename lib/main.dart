@@ -5,8 +5,10 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
 import 'models/attendance_record.dart';
 import 'models/customer.dart';
+import 'models/weekly_schedule.dart';
 import 'services/attendance_service.dart';
 import 'services/customer_service.dart';
+import 'services/weekly_schedule_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/auth_gate.dart';
 
@@ -20,6 +22,11 @@ Future<void> main() async {
   Hive.registerAdapter(CustomerAdapter());          // typeId=0
   Hive.registerAdapter(AttendanceRecordAdapter());  // typeId=1
   Hive.registerAdapter(AttendanceStatusAdapter());  // typeId=2
+  // Day 5: 週間利用計画
+  Hive.registerAdapter(WeeklyScheduleAdapter());    // typeId=3
+  Hive.registerAdapter(DailySlotAdapter());         // typeId=4
+  Hive.registerAdapter(ScheduleStatusAdapter());    // typeId=5
+  Hive.registerAdapter(ScheduleEntryAdapter());     // typeId=6
 
   // ── 3. Firebase 初期化
   await Firebase.initializeApp(
@@ -29,7 +36,10 @@ Future<void> main() async {
   // ── 4. CustomerService の Hive ボックスを開く
   await CustomerService.instance.init();
 
-  // ── 5. AttendanceService の Hive ボックスを開く
+  // ── 5. WeeklyScheduleService の Hive ボックスを開く（AttendanceService より先に）
+  await WeeklyScheduleService.instance.init();
+
+  // ── 6. AttendanceService の Hive ボックスを開く
   await AttendanceService.instance.init();
 
   runApp(const LinkDayApp());

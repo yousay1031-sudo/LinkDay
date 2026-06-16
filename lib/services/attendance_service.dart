@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/attendance_record.dart';
 import '../models/customer.dart';
+import 'weekly_schedule_service.dart';
 
 /// 欠席ダイアログ選択肢
 const List<String> kAbsenceReasons = [
@@ -69,37 +70,93 @@ class AttendanceService {
   /// 当日対象の顧客を scheduled レコードとして自動生成する。
   /// 既に当日のレコードが存在する場合は上書きしない。
   ///
-  /// 対象条件:
-  ///   - customer.isActive == true
-  ///   - customer.regularDays に DateTime.weekday が含まれる
-  ///     （1=月...7=日 → regularDays は 1=月,2=火,3=水,4=木,5=金,6=土）
+  /// 優先順位:
+  ///   1. WeeklyScheduleService に当日の週間利用計画がある場合:
+  ///      planned + additional の顧客を対象にする（cancelled は除外）
+  ///   2. 週間利用計画がない場合:
+  ///      従来どおり customer.regularDays から生成
+  ///
+  ///   ScheduleEntry.plannedStartTime / plannedEndTime がある場合は
+  ///   AttendanceRecord にコピーする。
   Future<int> ensureTodayScheduledRecords(
     DateTime date,
     List<Customer> customers,
   ) async {
     final dateKey = AttendanceRecord.makeDateKey(date);
-    final weekday = date.weekday; // 1=月,2=火,3=水,4=木,5=金,6=土,7=日
+
+    // ── 週間利用計画から当日エントリを取得
+    final weeklyEntries =
+        WeeklyScheduleService.instance.getEntriesForDate(date);
 
     int created = 0;
-    for (final customer in customers) {
-      if (!customer.isActive) continue;
-      // 日曜（7）は regularDays には含まれないが念のためスキップ
-      if (!customer.regularDays.contains(weekday)) continue;
 
-      final boxKey = '${customer.id}_$dateKey';
-      if (_box.containsKey(boxKey)) continue; // 既存レコードは触らない
+    if (weeklyEntries.isNotEmpty) {
+      // ── 週間利用計画ベース ────────────────────────────────
+      // cancelled は既に除外済み（WeeklyScheduleService.getEntriesForDate）
+      final customerMap = <String, Customer>{
+        for (final c in customers) c.id: c,
+      };
 
-      final record = AttendanceRecord(
-        customerId: customer.id,
-        customerName: customer.name,
-        dateKey: dateKey,
-        status: AttendanceStatus.scheduled,
+      for (final entry in weeklyEntries) {
+        final boxKey = '${entry.customerId}_$dateKey';
+        if (_box.containsKey(boxKey)) continue; // 既存レコードは触らない
+
+        // 週間計画から名前を取得（念のため Customer マスタでも上書き）
+        final customerName =
+            customerMap[entry.customerId]?.name ?? entry.customerName;
+
+        // 週間計画の文字列時刻（"HH:mm"）を DateTime? に変換
+        final plannedStart = _parseTimeString(dateKey, entry.plannedStartTime);
+        final plannedEnd = _parseTimeString(dateKey, entry.plannedEndTime);
+
+        final record = AttendanceRecord(
+          customerId: entry.customerId,
+          customerName: customerName,
+          dateKey: dateKey,
+          status: AttendanceStatus.scheduled,
+          // 週間計画の時刻設定をコピー
+          plannedStartTime: plannedStart,
+          plannedEndTime: plannedEnd,
+        );
+        await _box.put(boxKey, record);
+        created++;
+      }
+      debugPrint(
+        '[AttendanceService] ensureTodayScheduled (weekly plan): created=$created',
       );
-      await _box.put(boxKey, record);
-      created++;
+    } else {
+      // ── 従来の regularDays ベース（週間計画なし）────────────
+      final weekday = date.weekday; // 1=月,2=火,3=水,4=木,5=金,6=土,7=日
+
+      for (final customer in customers) {
+        if (!customer.isActive) continue;
+        // 日曜（7）は regularDays には含まれないが念のためスキップ
+        if (!customer.regularDays.contains(weekday)) continue;
+
+        final boxKey = '${customer.id}_$dateKey';
+        if (_box.containsKey(boxKey)) continue; // 既存レコードは触らない
+
+        final record = AttendanceRecord(
+          customerId: customer.id,
+          customerName: customer.name,
+          dateKey: dateKey,
+          status: AttendanceStatus.scheduled,
+        );
+        await _box.put(boxKey, record);
+        created++;
+      }
+      debugPrint(
+        '[AttendanceService] ensureTodayScheduled (regularDays fallback): created=$created',
+      );
     }
-    debugPrint('[AttendanceService] ensureTodayScheduled: created=$created');
+
     return created;
+  }
+
+  /// ensureTodayScheduledRecords で利用した週間計画があるかどうかを返す
+  /// （デバッグ / ホーム画面のバッジ更新用）
+  bool hasWeeklyPlanForDate(DateTime date) {
+    return WeeklyScheduleService.instance.getEntriesForDate(date).isNotEmpty;
   }
 
   // ── ステータス変更 ──────────────────────────────────────────
@@ -376,4 +433,30 @@ class AttendanceService {
       getRecordsByDate(date)
           .where((r) => r.status == AttendanceStatus.scheduled)
           .length;
+
+  // ── プライベートヘルパー ──────────────────────────────────────
+
+  /// "HH:mm" 形式の文字列を dateKey の日付の DateTime に変換する
+  /// 変換できない場合は null を返す
+  DateTime? _parseTimeString(String dateKey, String? timeStr) {
+    if (timeStr == null) return null;
+    try {
+      // dateKey = "2026-06-15"
+      final dateParts = dateKey.split('-');
+      if (dateParts.length != 3) return null;
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+
+      // timeStr = "09:00"
+      final timeParts = timeStr.split(':');
+      if (timeParts.length != 2) return null;
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+
+      return DateTime(year, month, day, hour, minute);
+    } catch (_) {
+      return null;
+    }
+  }
 }

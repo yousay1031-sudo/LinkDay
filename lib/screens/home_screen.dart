@@ -7,6 +7,7 @@ import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
 import 'customer_management_screen.dart';
+import 'weekly_schedule_screen.dart';
 
 /// メニュー項目データクラス
 class _MenuItem {
@@ -127,6 +128,16 @@ class _HomeScreenState extends State<HomeScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => const AttendanceScreen(),
+        ),
+      ).then((_) => _loadCounts());
+      return;
+    }
+    // 週間利用計画
+    if (item.route == '/weekly-plan') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const WeeklyScheduleScreen(),
         ),
       ).then((_) => _loadCounts());
       return;
