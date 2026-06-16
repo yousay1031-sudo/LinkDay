@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="LinkDay - 放課後等デイサービス管理システム">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="LinkDay">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>LinkDay</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════
+    Service Worker 自動更新・キャッシュ制御スクリプト
+    ───────────────────────────────────────────────────────────────────
+    問題:  Flutter Web の Service Worker はアグレッシブにキャッシュするため、
+           再ビルド後も古いバージョンが使われ続けることがある。
+    対策1: controllerchange イベントで新SW検出時に自動リロード
+    対策2: 既存 SW の待機中バージョンを即時 activate させる
+    対策3: 古い SW を全 unregister してフレッシュスタートを促す
+    ═══════════════════════════════════════════════════════════════════
+  -->
+  <script>
+    (function () {
+      'use strict';
+
+      // ── 無限リロード防止フラグ ──────────────────────────────────
+      // sessionStorage はタブを閉じると消えるため、
+      // 1セッション内での過剰リロードを防ぐ
+      var RELOAD_FLAG_KEY = 'ld_sw_reloading';
+
+      if (!('serviceWorker' in navigator)) {
+        // Service Worker 非対応環境（古いブラウザ等）はそのまま続行
+        return;
+      }
+
+      // ── 1. controller 交代（新SW が制御権を取得）したら自動リロード ──
+      // これが最も重要: 新ビルドの SW が activate されたタイミングで
+      // ページを再読み込みし、確実に最新 JS を使わせる
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (sessionStorage.getItem(RELOAD_FLAG_KEY)) {
+          // すでにこのセッションでリロード済み → 無限ループ防止
+          return;
+        }
+        sessionStorage.setItem(RELOAD_FLAG_KEY, '1');
+        window.location.reload();
+      });
+
+      // ── 2. 登録済み SW の skipWaiting を促す ──────────────────────
+      // waiting 状態（インストール済みだが activate 待ち）の SW に
+      // SKIP_WAITING メッセージを送り、即時 activate させる
+      navigator.serviceWorker.ready.then(function (registration) {
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+
+        // updatefound: 新しい SW のインストールが始まったら
+        registration.addEventListener('updatefound', function () {
+          var newWorker = registration.installing;
+          if (!newWorker) return;
+
+          newWorker.addEventListener('statechange', function () {
+            // installed = インストール完了（waiting 状態）
+            if (newWorker.state === 'installed' &&
+                navigator.serviceWorker.controller) {
+              // waiting SW に skipWaiting を要求
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      });
+
+      // ── 3. 開発時ヘルパー: 古い SW の自動クリーンアップ ────────────
+      // URL に ?nocache=1 を付けるとすべての SW を unregister して
+      // フレッシュな状態に戻せる（開発者向け緊急手段）
+      if (window.location.search.indexOf('nocache=1') !== -1) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          var promises = registrations.map(function (r) { return r.unregister(); });
+          Promise.all(promises).then(function () {
+            // クエリパラメータを消してからリロード
+            var url = window.location.href.replace(/[?&]nocache=1/, '');
+            window.location.replace(url);
+          });
+        });
+      }
+    })();
+  </script>
+</head>
+<body>
+  <!--
+    ═══════════════════════════════════════════════════════════════════
+    キャッシュバスティング: flutter_bootstrap.js にタイムスタンプを付与
+    ───────────────────────────────────────────────────────────────────
+    <script src="flutter_bootstrap.js" async> の代わりに
+    JS で動的に script タグを生成してタイムスタンプクエリを付与する。
+    これにより、再ビルドのたびにブラウザが必ずサーバーから
+    最新の flutter_bootstrap.js を取得する。
+    ═══════════════════════════════════════════════════════════════════
+  -->
+  <script>
+    (function () {
+      var script = document.createElement('script');
+      // タイムスタンプ: ビルドごとに変わる → ブラウザキャッシュをバイパス
+      // 注意: flutter_bootstrap.js 自体は小さいファイルなので
+      //       毎回取得してもパフォーマンス影響は軽微
+      script.src = 'flutter_bootstrap.js?v=' + new Date().getTime();
+      script.async = true;
+      document.body.appendChild(script);
+    })();
+  </script>
+</body>
+</html>

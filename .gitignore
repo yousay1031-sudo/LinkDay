@@ -1,0 +1,80 @@
+# ============================================================
+# LinkDay - Flutter .gitignore
+# ============================================================
+
+# ── ビルド成果物 ────────────────────────────────────────────
+/build/
+/coverage/
+
+# ── Dart / Flutter ツール ───────────────────────────────────
+/.dart_tool/
+/.flutter-plugins
+/.flutter-plugins-dependencies
+/.packages
+/.pub-cache/
+/.pub/
+
+# ── Web ビルド成果物 ─────────────────────────────────────────
+# (build/ に含まれるが念のため明示)
+/web/main.dart.js
+/web/flutter_service_worker.js
+
+# ── IDE / エディタ ───────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# ── OS 固有 ──────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# ── Android ─────────────────────────────────────────────────
+/android/app/debug
+/android/app/profile
+/android/app/release
+**/android/.gradle/
+**/android/local.properties
+**/android/captures/
+**/android/key.properties
+
+# ── iOS ─────────────────────────────────────────────────────
+**/ios/Flutter/.last_build_id
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+
+# ── macOS ───────────────────────────────────────────────────
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+**/macos/Flutter/ephemeral/
+
+# ── その他 ──────────────────────────────────────────────────
+*.class
+*.log
+*.pyc
+*.swp
+*.swiftpm/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+app.*.symbols
+app.*.map.json
+doc/api/
+
+# ============================================================
+# 【意図的に含めるファイル】
+# ============================================================
+# pubspec.lock       → 依存バージョン再現性のため含める
+# **/*.g.dart        → build_runner 成果物だが今回は含める
+#                      (CI 環境でのビルド簡略化のため)
+# lib/firebase_options.dart → Web 用 API キー公開可
+#                              (Firebase Console でドメイン制限済み)
+# ============================================================
