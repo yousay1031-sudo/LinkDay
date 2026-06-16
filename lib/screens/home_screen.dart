@@ -7,6 +7,8 @@ import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
 import 'customer_management_screen.dart';
+import 'settings_screen.dart';
+import 'transport_screen.dart';
 import 'weekly_schedule_screen.dart';
 
 /// メニュー項目データクラス
@@ -138,6 +140,16 @@ class _HomeScreenState extends State<HomeScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => const WeeklyScheduleScreen(),
+        ),
+      ).then((_) => _loadCounts());
+      return;
+    }
+    // 送迎計画
+    if (item.route == '/transport') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const TransportScreen(),
         ),
       ).then((_) => _loadCounts());
       return;
@@ -484,6 +496,19 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => _onClearCache(context),
           ),
 
+        // 設定アイコン
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          tooltip: '設定',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SettingsScreen(),
+              ),
+            ).then((_) => _loadCounts());
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.logout),
           tooltip: 'ログアウト',

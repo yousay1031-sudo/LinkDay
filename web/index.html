@@ -34,6 +34,41 @@
 
   <!--
     ═══════════════════════════════════════════════════════════════════
+    Google Maps JavaScript API 動的ロード
+    ───────────────────────────────────────────────────────────────────
+    APIキーはビルド時に --dart-define=GOOGLE_MAPS_API_KEY=xxx で渡すか、
+    SharedPreferences から読み出した後に Flutter 側から
+    window.loadGoogleMaps(key) を呼び出す。
+    ═══════════════════════════════════════════════════════════════════
+  -->
+  <script>
+    // Flutter 側から呼び出せるグローバル関数
+    // SettingsService.loadApiKey() 取得後に dart:js で呼び出す
+    window.loadGoogleMaps = function(key) {
+      if (!key || key === '' || key === '<<GOOGLE_MAPS_API_KEY>>') return;
+      // 二重ロード防止
+      if (window._googleMapsLoaded) return;
+      window._googleMapsLoaded = true;
+      var script = document.createElement('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js'
+        + '?key=' + encodeURIComponent(key)
+        + '&libraries=geometry,places'
+        + '&callback=__googleMapsReady';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    };
+
+    // Callback: Google Maps API 読み込み完了
+    window.__googleMapsReady = function() {
+      window._googleMapsReady = true;
+      // Flutter 側に通知（window.dispatchEvent でイベント送信）
+      window.dispatchEvent(new CustomEvent('googleMapsReady'));
+    };
+  </script>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════
     Service Worker 自動更新・キャッシュ制御スクリプト
     ───────────────────────────────────────────────────────────────────
     問題:  Flutter Web の Service Worker はアグレッシブにキャッシュするため、

@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'firebase_options.dart';
+import 'models/app_settings.dart';
 import 'models/attendance_record.dart';
 import 'models/customer.dart';
+import 'models/transport_plan.dart';
 import 'models/weekly_schedule.dart';
 import 'services/attendance_service.dart';
 import 'services/customer_service.dart';
+import 'services/settings_service.dart';
+import 'services/transport_plan_service.dart';
 import 'services/weekly_schedule_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/auth_gate.dart';
@@ -27,6 +31,11 @@ Future<void> main() async {
   Hive.registerAdapter(DailySlotAdapter());         // typeId=4
   Hive.registerAdapter(ScheduleStatusAdapter());    // typeId=5
   Hive.registerAdapter(ScheduleEntryAdapter());     // typeId=6
+  // Day 6: 設定・送迎計画
+  Hive.registerAdapter(AppSettingsAdapter());       // typeId=7
+  Hive.registerAdapter(TransportVehicleRouteAdapter()); // typeId=8
+  Hive.registerAdapter(TransportStopAdapter());     // typeId=9
+  Hive.registerAdapter(TransportTypeAdapter());     // typeId=10
 
   // ── 3. Firebase 初期化
   await Firebase.initializeApp(
@@ -41,6 +50,12 @@ Future<void> main() async {
 
   // ── 6. AttendanceService の Hive ボックスを開く
   await AttendanceService.instance.init();
+
+  // ── 7. SettingsService の Hive ボックスを開く（Day 6）
+  await SettingsService.instance.init();
+
+  // ── 8. TransportPlanService の Hive ボックスを開く（Day 6）
+  await TransportPlanService.instance.init();
 
   runApp(const LinkDayApp());
 }
