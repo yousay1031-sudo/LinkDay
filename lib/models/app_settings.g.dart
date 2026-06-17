@@ -1,4 +1,5 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// Manually updated to add fields 11/12 for 2-key API support
 
 part of 'app_settings.dart';
 
@@ -28,13 +29,15 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
       defaultPickupStart: fields[8] as String,
       defaultDropoffEnd: fields[9] as String,
       updatedAt: fields[10] as DateTime?,
+      jsApiKeyLegacy: fields[11] as String?,
+      restApiKeyLegacy: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AppSettings obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.facilityName)
       ..writeByte(1)
@@ -56,7 +59,11 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
       ..writeByte(9)
       ..write(obj.defaultDropoffEnd)
       ..writeByte(10)
-      ..write(obj.updatedAt);
+      ..write(obj.updatedAt)
+      ..writeByte(11)
+      ..write(obj.jsApiKeyLegacy)
+      ..writeByte(12)
+      ..write(obj.restApiKeyLegacy);
   }
 
   @override

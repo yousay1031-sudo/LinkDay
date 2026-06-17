@@ -32,7 +32,7 @@ class _TransportScreenState extends State<TransportScreen>
 
   // 設定
   String _facilityAddress = 'ココスタディ';
-  String? _apiKey;
+  String? _restApiKey; // REST API キー（Geocoding/Directions用）
 
   @override
   void initState() {
@@ -55,11 +55,11 @@ class _TransportScreenState extends State<TransportScreen>
 
   Future<void> _loadSettings() async {
     final settings = SettingsService.instance.getSettings();
-    final key = await SettingsService.instance.loadApiKey();
+    final key = await SettingsService.instance.loadRestApiKey();
     if (mounted) {
       setState(() {
         _facilityAddress = settings.facilityAddress;
-        _apiKey = key;
+        _restApiKey = key;
       });
     }
   }
@@ -129,7 +129,7 @@ class _TransportScreenState extends State<TransportScreen>
         dateKey: _dateKey,
         customers: customers,
         type: type,
-        apiKey: _apiKey,
+        apiKey: _restApiKey,
       );
 
       // 保存
@@ -150,7 +150,7 @@ class _TransportScreenState extends State<TransportScreen>
   // ── ルート最適化 ────────────────────────────────────────────
 
   Future<void> _optimizeRoute(TransportVehicleRoute route) async {
-    if (_apiKey == null || _apiKey!.isEmpty) {
+    if (_restApiKey == null || _restApiKey!.isEmpty) {
       _showSnack('APIキーが設定されていません。設定画面で登録してください。', isError: true);
       return;
     }
@@ -164,7 +164,7 @@ class _TransportScreenState extends State<TransportScreen>
       await TransportPlanService.instance.optimizeRoute(
         route,
         _facilityAddress,
-        _apiKey!,
+        _restApiKey!,
       );
       await _loadRoutes();
       _showSnack('${route.vehicleName} のルートを最適化しました');
@@ -587,7 +587,7 @@ class _TransportScreenState extends State<TransportScreen>
 
   Future<void> _optimizeAllRoutes(
       List<TransportVehicleRoute> routes) async {
-    if (_apiKey == null || _apiKey!.isEmpty) {
+    if (_restApiKey == null || _restApiKey!.isEmpty) {
       _showSnack('APIキーが設定されていません', isError: true);
       return;
     }
@@ -596,7 +596,7 @@ class _TransportScreenState extends State<TransportScreen>
       for (final r in routes) {
         if (r.stops.isNotEmpty) {
           await TransportPlanService.instance
-              .optimizeRoute(r, _facilityAddress, _apiKey!);
+              .optimizeRoute(r, _facilityAddress, _restApiKey!);
         }
       }
       await _loadRoutes();
@@ -865,9 +865,9 @@ class _TransportScreenState extends State<TransportScreen>
           child: Icon(Icons.home, color: Colors.white, size: 18),
         ),
       ),
-      title: Text(
+      title: const Text(
         '事業所',
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
       ),
       subtitle: Text(
         _facilityAddress,

@@ -125,7 +125,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   }
 
   Future<void> _fetchPolyline() async {
-    final apiKey = await SettingsService.instance.loadApiKey();
+    // 地図ポリライン取得は Directions REST API → REST キー使用
+    final apiKey = await SettingsService.instance.loadRestApiKey();
     final allHaveGeocode = widget.route.stops.every(
       (s) => s.lat != null && s.lng != null,
     );

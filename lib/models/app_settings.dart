@@ -40,6 +40,19 @@ class AppSettings extends HiveObject {
   @HiveField(10)
   DateTime updatedAt;
 
+  // ── Day 6 patch: 2キー方式 ───────────────────────────────────
+  // field 11/12 はオプション追加なので既存データには影響しない（null 扱い）
+
+  /// Maps JavaScript API 用キー（リファラー制限 OK）
+  /// Hive には保存せず SharedPreferences に移動したため、
+  /// このフィールドは互換のみ保持（常に null）
+  @HiveField(11)
+  String? jsApiKeyLegacy; // reserved / unused
+
+  /// REST API 用キー legacy storage（SharedPreferences に移行済み）
+  @HiveField(12)
+  String? restApiKeyLegacy; // reserved / unused
+
   AppSettings({
     this.facilityName = 'ココスタディ',
     this.facilityAddress = '北海道帯広市西5条南21丁目8 2階',
@@ -52,6 +65,8 @@ class AppSettings extends HiveObject {
     this.defaultPickupStart = '08:30',
     this.defaultDropoffEnd = '16:30',
     DateTime? updatedAt,
+    this.jsApiKeyLegacy,
+    this.restApiKeyLegacy,
   })  : vehicleNames = vehicleNames ?? ['車両A', '車両B'],
         vehicleCapacities = vehicleCapacities ?? [5, 5],
         updatedAt = updatedAt ?? DateTime.now();
@@ -79,6 +94,7 @@ class AppSettings extends HiveObject {
       defaultDropoffEnd: defaultDropoffEnd,
     );
   }
+
 
   /// 事業所の緯度経度が取得済みかどうか
   bool get hasGeocode => facilityLat != null && facilityLng != null;
