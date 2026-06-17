@@ -199,25 +199,60 @@ class TransportPlanService {
     return routes;
   }
 
-  /// ルート最適化（Nearest Neighbor TSP + Distance Matrix API）
+  /// ルート最適化（Nearest Neighbor TSP + Directions API）
   ///
-  /// 戻り値: 最適化済みルート（停留所の順番が更新される）
+  /// 構成: 事業所 → 停留所1 → ... → 停留所N → 事業所 （ラウンドトリップ）
+  /// お迎え・お送り両方とも同じ構成
+  ///
+  /// 時刻算出ロジック:
+  ///   お迎え: 事業所帰着時刻(利用開始) から逆算で各停留所のお迎え時刻を算出
+  ///   お送り: 事業所出発時刻(利用終了) から順算で各停留所の到着時刻を算出
   Future<TransportVehicleRoute> optimizeRoute(
     TransportVehicleRoute route,
     String facilityAddress,
     String apiKey,
   ) async {
-    if (route.stops.length <= 1) {
-      // 停留所が1件以下なら最適化不要
+    final settings = SettingsService.instance.getSettings();
+    final facilityLat = settings.facilityLat;
+    final facilityLng = settings.facilityLng;
+
+    debugPrint('[TransportPlanService] optimizeRoute: '
+        '${route.vehicleName} ${route.typeLabel}, '
+        'stops=${route.stops.length}, '
+        'facilityLatLng=${facilityLat != null ? "$facilityLat,$facilityLng" : "null"}');
+
+    if (route.stops.isEmpty) {
       route.optimizedAt = DateTime.now();
       await saveRoute(route);
       return route;
     }
 
-    // 全拠点（事業所 + 停留所）の LatLng を収集
-    final settings = SettingsService.instance.getSettings();
-    final facilityLat = settings.facilityLat;
-    final facilityLng = settings.facilityLng;
+    if (route.stops.length == 1) {
+      // 停留所が1件なら並び替え不要、時刻・距離計算のみ
+      route.stops[0].orderIndex = 0;
+      if (facilityLat != null && facilityLng != null && apiKey.isNotEmpty) {
+        try {
+          await _attachDirectionsDataRoundTrip(
+            route: route,
+            reorderedStops: route.stops,
+            facilityLat: facilityLat,
+            facilityLng: facilityLng,
+            facilityAddress: facilityAddress,
+            apiKey: apiKey,
+          );
+        } catch (e) {
+          debugPrint('[TransportPlanService] directions (1 stop) failed: $e');
+        }
+      }
+      route.optimizedAt = DateTime.now();
+      route.googleMapsUrl = GoogleMapsService.buildGoogleMapsUrlRoundTrip(
+        facilityLatLng: facilityLat != null ? '$facilityLat,$facilityLng' : null,
+        facilityAddress: facilityAddress,
+        stops: route.stops,
+      );
+      await saveRoute(route);
+      return route;
+    }
 
     // すべての停留所が LatLng を持っているか確認
     final allHaveGeocode = route.stops.every(
@@ -227,7 +262,7 @@ class TransportPlanService {
     List<int> optimizedOrder;
 
     if (allHaveGeocode && facilityLat != null && facilityLng != null) {
-      // 距離行列を構築（事業所 + 停留所全員）
+      // Haversine 距離行列を構築（事業所 + 停留所全員）
       // index 0 = 事業所、1〜n = 停留所
       final n = route.stops.length + 1;
       final allLats = [facilityLat, ...route.stops.map((s) => s.lat!)];
@@ -259,21 +294,20 @@ class TransportPlanService {
     }
 
     // 停留所を最適順に並び替え
-    final reordered = optimizedOrder
-        .map((i) => route.stops[i])
-        .toList();
-
-    // orderIndex を更新
+    final reordered = optimizedOrder.map((i) => route.stops[i]).toList();
     for (int i = 0; i < reordered.length; i++) {
       reordered[i].orderIndex = i;
     }
 
-    // Directions API でセグメントの距離・時間を取得
-    if (allHaveGeocode && facilityLat != null && facilityLng != null && apiKey.isNotEmpty) {
+    // Directions API でセグメントの距離・時間を取得（ラウンドトリップ）
+    if (allHaveGeocode && facilityLat != null && facilityLng != null &&
+        apiKey.isNotEmpty) {
       try {
-        await _attachDirectionsData(
+        await _attachDirectionsDataRoundTrip(
           route: route,
           reorderedStops: reordered,
+          facilityLat: facilityLat,
+          facilityLng: facilityLng,
           facilityAddress: facilityAddress,
           apiKey: apiKey,
         );
@@ -287,64 +321,163 @@ class TransportPlanService {
       ..addAll(reordered);
     route.optimizedAt = DateTime.now();
 
-    // Google Maps URL を生成
-    route.googleMapsUrl = GoogleMapsService.buildGoogleMapsUrlFromStops(
+    // 事業所往復 Google Maps URL を生成
+    route.googleMapsUrl = GoogleMapsService.buildGoogleMapsUrlRoundTrip(
+      facilityLatLng: facilityLat != null ? '$facilityLat,$facilityLng' : null,
       facilityAddress: facilityAddress,
       stops: reordered,
-      type: route.transportType,
     );
 
     await saveRoute(route);
-    debugPrint(
-        '[TransportPlanService] optimized: ${route.vehicleName}, stops=${reordered.length}');
+    debugPrint('[TransportPlanService] optimized: ${route.vehicleName}, '
+        'stops=${reordered.length}, '
+        'totalDist=${route.totalDistanceLabel}, '
+        'totalDur=${route.totalDurationLabel}');
     return route;
   }
 
-  /// Directions API でセグメント距離・時間を設定
-  Future<void> _attachDirectionsData({
+  /// Directions API（ラウンドトリップ）でセグメント距離・時間を設定し、時刻も算出
+  ///
+  /// legs 構成:
+  ///   legs[0]: 事業所 → stops[0]
+  ///   legs[1]: stops[0] → stops[1]
+  ///   ...
+  ///   legs[n]: stops[n-1] → 事業所
+  ///
+  /// 時刻計算:
+  ///   お迎え: 事業所帰着時刻(利用開始)から逆算
+  ///   お送り: 事業所出発時刻(利用終了)から順算
+  Future<void> _attachDirectionsDataRoundTrip({
     required TransportVehicleRoute route,
     required List<TransportStop> reorderedStops,
+    required double facilityLat,
+    required double facilityLng,
     required String facilityAddress,
     required String apiKey,
   }) async {
     if (reorderedStops.isEmpty) return;
 
-    final stopAddresses = reorderedStops.map((s) => s.address).toList();
-    String origin, destination;
-    List<String> waypoints;
+    final facilityLatLngStr = '$facilityLat,$facilityLng';
 
-    if (route.transportType == TransportType.pickup) {
-      // お迎え: 事業所を最後に
-      origin = stopAddresses.first;
-      destination = facilityAddress;
-      waypoints = stopAddresses.length > 1 ? stopAddresses.sublist(1) : [];
-    } else {
-      // お送り: 事業所を最初に
-      origin = facilityAddress;
-      destination = stopAddresses.last;
-      waypoints = stopAddresses.length > 1
-          ? stopAddresses.sublist(0, stopAddresses.length - 1)
-          : [];
-    }
+    // 停留所の LatLng 文字列リスト
+    final waypointLatLngs = reorderedStops.map((s) {
+      if (s.lat != null && s.lng != null) {
+        return '${s.lat},${s.lng}';
+      }
+      return s.address; // LatLng ない場合は住所でこなし
+    }).toList();
 
-    final result = await GoogleMapsService.instance.getDirections(
-      origin: origin,
-      destination: destination,
-      waypoints: waypoints,
+    final result = await GoogleMapsService.instance.getDirectionsRoundTrip(
+      facilityLatLng: facilityLatLngStr,
+      waypointLatLngs: waypointLatLngs,
       apiKey: apiKey,
     );
 
     route.totalDistanceMeters = result.totalDistanceMeters;
     route.totalDurationSeconds = result.totalDurationSeconds;
 
-    // 各停留所に距離・時間を設定
+    // legs[0] = 事業所→stops[0]、legs[i] = stops[i-1]→stops[i]、legs[n] = stops[n-1]→事業所
     for (int i = 0; i < reorderedStops.length; i++) {
       if (i < result.legDistanceMeters.length) {
-        reorderedStops[i].distanceFromPrevMeters = result.legDistanceMeters[i];
+        reorderedStops[i].distanceFromPrevMeters =
+            result.legDistanceMeters[i];
         reorderedStops[i].durationFromPrevSeconds =
             result.legDurationSeconds[i];
       }
     }
+
+    // 時刻算出
+    _assignScheduledTimes(
+      route: route,
+      reorderedStops: reorderedStops,
+      legDurationSeconds: result.legDurationSeconds,
+    );
+  }
+
+  /// 時刻計算ロジック
+  ///
+  /// お迎え: 事業所帰着時刻(利用開始) から逆算して各停留所のお迎え時刻を算出
+  ///   時刻[stops[k]] = 時刻[stops[k+1]] − legs[k+1].duration
+  ///
+  /// お送り: 事業所出発時刻(利用終了) から順算して各停留所の到着時刻を算出
+  ///   時刻[stops[0]] = 事業所出発 + legs[0].duration
+  ///   時刻[stops[k]] = 時刻[stops[k-1]] + legs[k].duration
+  void _assignScheduledTimes({
+    required TransportVehicleRoute route,
+    required List<TransportStop> reorderedStops,
+    required List<int> legDurationSeconds,
+  }) {
+    if (reorderedStops.isEmpty || legDurationSeconds.isEmpty) return;
+
+    final settings = SettingsService.instance.getSettings();
+    final isPickup = route.transportType == TransportType.pickup;
+
+    // ベース時刻を HH:mm 文字列から DateTime に変換
+    final baseTimeStr = isPickup
+        ? settings.defaultPickupStart // お迎え: 帰着時刻 = 利用開始
+        : settings.defaultDropoffEnd; // お送り: 出発時刻 = 利用終了
+
+    DateTime? baseTime;
+    try {
+      final parts = baseTimeStr.split(':');
+      if (parts.length == 2) {
+        final now = DateTime.now();
+        baseTime = DateTime(
+          now.year, now.month, now.day,
+          int.parse(parts[0]),
+          int.parse(parts[1]),
+        );
+      }
+    } catch (_) {
+      return; // 時刻取得失敗: 計算スキップ
+    }
+    if (baseTime == null) return;
+
+    if (isPickup) {
+      // お迎え: 逆算
+      // legs: [F→s0, s0→s1, ..., sN-1→F]
+      // 帰着時刻 = baseTime
+      // sN の時刻 = baseTime - legs[N]  (最後の leg = sN-1→F)
+      // s(N-1) の時刻 = sN の時刻 - legs[N-1]
+      // ...
+      var current = baseTime;
+      // 最後の leg (停留所→事業所) の時間を引いた地点が最終停留所の時刻
+      if (legDurationSeconds.length > reorderedStops.length) {
+        current = current.subtract(
+          Duration(seconds: legDurationSeconds.last),
+        );
+      }
+      // 後ろから逆算
+      for (int i = reorderedStops.length - 1; i >= 0; i--) {
+        reorderedStops[i].scheduledTime =
+            '${current.hour.toString().padLeft(2, '0')}:'
+            '${current.minute.toString().padLeft(2, '0')}';
+        if (i > 0 && i < legDurationSeconds.length) {
+          current = current.subtract(
+            Duration(seconds: legDurationSeconds[i]),
+          );
+        }
+      }
+    } else {
+      // お送り: 順算
+      // legs: [F→s0, s0→s1, ..., sN-1→F]
+      // 出発時刻 = baseTime
+      // s0 の時刻 = baseTime + legs[0]
+      // s1 の時刻 = s0 の時刻 + legs[1]
+      var current = baseTime;
+      for (int i = 0; i < reorderedStops.length; i++) {
+        if (i < legDurationSeconds.length) {
+          current = current.add(Duration(seconds: legDurationSeconds[i]));
+        }
+        reorderedStops[i].scheduledTime =
+            '${current.hour.toString().padLeft(2, '0')}:'
+            '${current.minute.toString().padLeft(2, '0')}';
+      }
+    }
+
+    debugPrint('[TransportPlanService] _assignScheduledTimes: '
+        'type=${route.typeLabel}, '
+        'stops=${reorderedStops.map((s) => '「${s.customerName}=${s.scheduledTime}」').join(", ")}');
   }
 
   // ── クラスタリング ────────────────────────────────────────────

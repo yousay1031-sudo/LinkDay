@@ -160,11 +160,12 @@ class TransportPdfService {
     // ルートテーブル
     final settings = SettingsService.instance.getSettings();
     final facilityName = settings.facilityName;
-    // お迎え: 事業所(出発) → 停留所1 → 停留所2 ... → 事業所(到着)
-    // お送り: 事業所(出発) → 停留所1 → 停留所2 ... → 最終停留所
+    // お迎え: 事業所(出発) → 停留所1 → ... → 停留所N → 事業所(帰着)
+    // お送り: 事業所(出発) → 停留所1 → ... → 停留所N → 事業所(帰着)
+    // 両区分ともラウンドトリップ構成
     final rows = <pw.TableRow>[];
 
-    // ヘッダー行
+    // ── ヘッダー行
     rows.add(pw.TableRow(
       decoration: const pw.BoxDecoration(color: PdfColors.blueGrey100),
       children: [
@@ -176,25 +177,26 @@ class TransportPdfService {
       ],
     ));
 
-    // 出発点（事業所）
-    if (route.transportType == TransportType.dropoff) {
-      rows.add(pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColors.orange50),
-        children: [
-          _cell('出発', boldStyle),
-          _cell(facilityName, boldStyle),
-          _cell(settings.facilityAddress, baseStyle),
-          _cell(settings.defaultPickupStart, baseStyle),
-          _cell('—', baseStyle),
-        ],
-      ));
-    }
+    // ── 出発点: 事業所（お迎え・お送り両方）
+    final isPickup = route.transportType == TransportType.pickup;
+    final departureTime = isPickup
+        ? _calcPickupDepartureTime(route, settings.defaultPickupStart)
+        : settings.defaultDropoffEnd;
+    rows.add(pw.TableRow(
+      decoration: const pw.BoxDecoration(color: PdfColors.lightBlue50),
+      children: [
+        _cell('出発', boldStyle),
+        _cell(facilityName, boldStyle),
+        _cell(settings.facilityAddress, baseStyle),
+        _cell(departureTime, baseStyle),
+        _cell('—', baseStyle),
+      ],
+    ));
 
-    // 各停留所
+    // ── 各停留所
     for (int i = 0; i < route.stops.length; i++) {
       final stop = route.stops[i];
-      final rowColor =
-          i.isEven ? PdfColors.white : PdfColors.grey50;
+      final rowColor = i.isEven ? PdfColors.white : PdfColors.grey50;
       rows.add(pw.TableRow(
         decoration: pw.BoxDecoration(color: rowColor),
         children: [
@@ -212,19 +214,18 @@ class TransportPdfService {
       ));
     }
 
-    // 到着点（事業所）お迎えの場合
-    if (route.transportType == TransportType.pickup) {
-      rows.add(pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColors.orange50),
-        children: [
-          _cell('着', boldStyle),
-          _cell(facilityName, boldStyle),
-          _cell(settings.facilityAddress, baseStyle),
-          _cell('—', baseStyle),
-          _cell('—', baseStyle),
-        ],
-      ));
-    }
+    // ── 帰着点: 事業所（お迎え・お送り両方）
+    final arrivalTime = _calcArrivalTime(route);
+    rows.add(pw.TableRow(
+      decoration: const pw.BoxDecoration(color: PdfColors.lightBlue50),
+      children: [
+        _cell('帰着', boldStyle),
+        _cell(facilityName, boldStyle),
+        _cell(settings.facilityAddress, baseStyle),
+        _cell(arrivalTime ?? '—', baseStyle),
+        _cell('—', baseStyle),
+      ],
+    ));
 
     widgets.add(pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
@@ -263,5 +264,63 @@ class TransportPdfService {
 
   String _today() {
     return DateFormat('yyyy/M/d HH:mm').format(DateTime.now());
+  }
+
+  /// お迎えの事業所「出発」時刻を逆算で求める
+  /// = 最初の停留所の scheduledTime - 事業所→最初停留所 の durationFromPrevSeconds
+  String _calcPickupDepartureTime(
+      TransportVehicleRoute route, String defaultPickupStart) {
+    if (route.stops.isEmpty) return defaultPickupStart;
+    final firstStop = route.stops.first;
+    if (firstStop.scheduledTime == null ||
+        firstStop.durationFromPrevSeconds == null) {
+      return defaultPickupStart;
+    }
+    try {
+      final parts = firstStop.scheduledTime!.split(':');
+      final base = DateTime(2000, 1, 1,
+          int.parse(parts[0]), int.parse(parts[1]));
+      final departure =
+          base.subtract(Duration(seconds: firstStop.durationFromPrevSeconds!));
+      return '${departure.hour.toString().padLeft(2, '0')}:'
+          '${departure.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return defaultPickupStart;
+    }
+  }
+
+  /// 帰着時刻を推定する
+  /// = 最終停留所の scheduledTime + 最終停留所→事業所 の durationFromPrevSeconds
+  /// （最終 leg の duration は route.totalDurationSeconds - 全停留所間 duration の合計）
+  String? _calcArrivalTime(TransportVehicleRoute route) {
+    if (route.stops.isEmpty) return null;
+    final lastStop = route.stops.last;
+    if (lastStop.scheduledTime == null) return null;
+
+    // 最終 leg の duration を求める
+    // = totalDurationSeconds - 各停留所の durationFromPrevSeconds の合計
+    int? lastLegDuration;
+    if (route.totalDurationSeconds != null) {
+      int stopDurSum = 0;
+      for (final s in route.stops) {
+        stopDurSum += s.durationFromPrevSeconds ?? 0;
+      }
+      final remaining = route.totalDurationSeconds! - stopDurSum;
+      if (remaining > 0) lastLegDuration = remaining;
+    }
+
+    if (lastLegDuration == null) return null;
+
+    try {
+      final parts = lastStop.scheduledTime!.split(':');
+      final base = DateTime(2000, 1, 1,
+          int.parse(parts[0]), int.parse(parts[1]));
+      final arrival =
+          base.add(Duration(seconds: lastLegDuration));
+      return '${arrival.hour.toString().padLeft(2, '0')}:'
+          '${arrival.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return null;
+    }
   }
 }

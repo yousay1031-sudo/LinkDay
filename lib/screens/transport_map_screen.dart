@@ -421,6 +421,10 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   // ── 左パネル: 停留所サマリー ─────────────────────────────────
 
   Widget _buildStopPanel() {
+    final settings = SettingsService.instance.getSettings();
+    final facilityName = settings.facilityName;
+    final stopItems = _buildStopItems(facilityName);
+
     return Container(
       width: 220,
       decoration: BoxDecoration(
@@ -484,14 +488,14 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             ),
           ),
 
-          // 停留所リスト
+          // 停留所リスト（出発:事業所 → 各停留所 → 帰着:事業所）
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _stopItems.length,
+              itemCount: stopItems.length,
               separatorBuilder: (_, __) =>
                   const Divider(height: 1, indent: 12),
-              itemBuilder: (ctx, i) => _stopItems[i],
+              itemBuilder: (ctx, i) => stopItems[i],
             ),
           ),
 
@@ -518,40 +522,73 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     );
   }
 
-  /// 停留所リストのアイテム（事業所 + 各利用者）
-  List<Widget> get _stopItems {
+  /// 停留所リストのアイテム（出発:事業所 → 各停留所 → 帰着:事業所）
+  List<Widget> _buildStopItems(String facilityName) {
     final items = <Widget>[];
-    final isPickup = widget.route.transportType == TransportType.pickup;
 
-    // お送り: 事業所を先頭に
-    if (!isPickup) {
-      items.add(_facilityItem);
-    }
+    // ── 出発: 事業所（ラウンドトリップ共通）
+    items.add(_buildFacilityListItem(facilityName, label: '出発', isStart: true));
 
+    // ── 各停留所
     for (int i = 0; i < widget.route.stops.length; i++) {
       final s = widget.route.stops[i];
+
+      // 距離/時間ラベル
+      String? durationLabel;
+      String? distanceLabel;
+      if (s.durationFromPrevSeconds != null) {
+        final m = s.durationFromPrevSeconds! ~/ 60;
+        durationLabel = m < 60 ? '$m分' : '${m ~/ 60}時間${m % 60}分';
+      }
+      if (s.distanceFromPrevMeters != null) {
+        distanceLabel = s.distanceFromPrevMeters! < 1000
+            ? '${s.distanceFromPrevMeters}m'
+            : '${(s.distanceFromPrevMeters! / 1000).toStringAsFixed(1)}km';
+      }
+
       items.add(ListTile(
         dense: true,
         leading: CircleAvatar(
           radius: 14,
-          backgroundColor: AppColors.secondary.withValues(alpha: 0.15),
+          backgroundColor: AppColors.primary.withValues(alpha: 0.15),
           child: Text(
             '${i + 1}',
             style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: AppColors.secondary),
+                color: AppColors.primary),
           ),
         ),
         title: Text(
           s.customerName,
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
         ),
-        subtitle: Text(
-          s.address.isNotEmpty ? s.address : '住所未登録',
-          style: const TextStyle(fontSize: 10),
-          overflow: TextOverflow.ellipsis,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (s.scheduledTime != null)
+              Text(
+                '予定: ${s.scheduledTime}',
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.secondary),
+              ),
+            Text(
+              s.address.isNotEmpty ? s.address : '住所未登録',
+              style: const TextStyle(fontSize: 10),
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (durationLabel != null || distanceLabel != null)
+              Text(
+                [if (durationLabel != null) durationLabel, if (distanceLabel != null) distanceLabel]
+                    .join(' / '),
+                style: const TextStyle(
+                    fontSize: 9, color: AppColors.onSurfaceVariant),
+              ),
+          ],
         ),
+        isThreeLine: true,
         onTap: () {
           if (s.lat != null && s.lng != null) {
             _mapController?.animateCamera(
@@ -562,36 +599,48 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       ));
     }
 
-    // お迎え: 事業所を末尾に
-    if (isPickup) {
-      items.add(_facilityItem);
-    }
+    // ── 帰着: 事業所（ラウンドトリップ共通）
+    items.add(_buildFacilityListItem(facilityName, label: '帰着', isStart: false));
 
     return items;
   }
 
-  Widget get _facilityItem => ListTile(
-        dense: true,
-        leading: CircleAvatar(
-          radius: 14,
-          backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-          child: const Icon(Icons.home, size: 16, color: AppColors.primary),
+  /// 事業所リストアイテム（出発 / 帰着）
+  Widget _buildFacilityListItem(
+    String facilityName, {
+    required String label,
+    required bool isStart,
+  }) {
+    return ListTile(
+      dense: true,
+      leading: CircleAvatar(
+        radius: 14,
+        backgroundColor: AppColors.secondary.withValues(alpha: 0.15),
+        child: Icon(
+          isStart ? Icons.play_arrow : Icons.flag,
+          size: 16,
+          color: AppColors.secondary,
         ),
-        title: const Text(
-          'ココスタディ',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          widget.facilityAddress,
-          style: const TextStyle(fontSize: 10),
-          overflow: TextOverflow.ellipsis,
-        ),
-        onTap: () {
-          if (_facilityLatLng != null) {
-            _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(_facilityLatLng!, 14),
-            );
-          }
-        },
-      );
+      ),
+      title: Text(
+        '$label: $facilityName',
+        style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: AppColors.secondary),
+      ),
+      subtitle: Text(
+        widget.facilityAddress,
+        style: const TextStyle(fontSize: 10),
+        overflow: TextOverflow.ellipsis,
+      ),
+      onTap: () {
+        if (_facilityLatLng != null) {
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(_facilityLatLng!, 14),
+          );
+        }
+      },
+    );
+  }
 }
