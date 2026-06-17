@@ -3,7 +3,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_settings.dart';
-import 'google_maps_service.dart';
+import 'maps_js_service.dart';
+import 'maps_loader.dart';
 
 const String _kBoxName = 'app_settings';
 const String _kSettingsKey = 'settings';
@@ -196,99 +197,80 @@ class SettingsService {
     return key != null && key.isNotEmpty;
   }
 
-  // ── 2キー方式: REST API キー ─────────────────────────────────
+  // ── REST API キー（後方互換エイリアス）──────────────────────
+  // RESTキー方式は廃止。内部的に JS キーに委譲する。
 
-  /// REST API キーを保存（Geocoding/Directions/DistanceMatrix 用）
-  Future<void> saveRestApiKey(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kRestApiKeyPref, key.trim());
-    debugPrint('[SettingsService] REST API key saved');
-  }
+  /// @deprecated JSキー方式に統一。内部的に saveJsApiKey() を呼ぶ
+  Future<void> saveRestApiKey(String key) => saveJsApiKey(key);
 
-  /// REST API キーを読み出す
-  Future<String?> loadRestApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString(_kRestApiKeyPref);
-    return (key != null && key.isNotEmpty) ? key : null;
-  }
+  /// @deprecated JSキー方式に統一。内部的に loadJsApiKey() を呼ぶ
+  Future<String?> loadRestApiKey() => loadJsApiKey();
 
-  /// REST API キーをクリア
-  Future<void> clearRestApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kRestApiKeyPref);
-    debugPrint('[SettingsService] REST API key cleared');
-  }
+  /// @deprecated JSキー方式に統一。内部的に clearJsApiKey() を呼ぶ
+  Future<void> clearRestApiKey() => clearJsApiKey();
 
-  /// REST API キーが設定済みか
-  Future<bool> hasRestApiKey() async {
-    final key = await loadRestApiKey();
-    return key != null && key.isNotEmpty;
-  }
+  /// @deprecated JSキー方式に統一。内部的に hasJsApiKey() を呼ぶ
+  Future<bool> hasRestApiKey() => hasJsApiKey();
 
   // ── 後方互換: 旧 loadApiKey / saveApiKey ────────────────────
-  // transport_screen.dart 等の呼び出し元が使う旧インターフェース。
-  // REST キーを返す/保存するように委譲する。
+  // すべて loadJsApiKey / saveJsApiKey に委譲
 
-  /// @deprecated 代わりに loadRestApiKey() を使ってください
-  Future<String?> loadApiKey() => loadRestApiKey();
+  /// @deprecated 代わりに loadJsApiKey() を使ってください
+  Future<String?> loadApiKey() => loadJsApiKey();
 
-  /// @deprecated 代わりに saveRestApiKey() を使ってください
-  Future<void> saveApiKey(String key) => saveRestApiKey(key);
+  /// @deprecated 代わりに saveJsApiKey() を使ってください
+  Future<void> saveApiKey(String key) => saveJsApiKey(key);
 
-  /// @deprecated 代わりに clearRestApiKey() を使ってください
-  Future<void> clearApiKey() => clearRestApiKey();
+  /// @deprecated 代わりに clearJsApiKey() を使ってください
+  Future<void> clearApiKey() => clearJsApiKey();
 
-  /// @deprecated 代わりに hasRestApiKey() を使ってください
-  Future<bool> hasApiKey() => hasRestApiKey();
+  /// @deprecated 代わりに hasJsApiKey() を使ってください
+  Future<bool> hasApiKey() => hasJsApiKey();
 
   // ── Geocoding ────────────────────────────────────────────────
 
-  /// 事業所住所を Geocoding して座標を保存する（REST API キー使用）
+  /// 事業所住所を Geocoding して座標を保存する（JS Interop 版）
   Future<({double lat, double lng})> geocodeFacility() async {
-    final key = await loadRestApiKey();
+    final key = await loadJsApiKey();
     if (key == null || key.isEmpty) {
-      throw Exception('REST API キー（ルート計算用）が設定されていません');
+      throw Exception('Google Maps API キーが設定されていません。設定画面で入力してください。');
     }
     final settings = getSettings();
-    final result = await GoogleMapsService.instance.geocodeAddress(
+    // JS Interop 経由で Geocoder を呼ぶ
+    final result = await MapsJsService.instance.geocodeAddress(
       settings.facilityAddress,
-      key,
     );
     await saveFacilityGeocode(result.lat, result.lng);
-    return result;
+    return (lat: result.lat, lng: result.lng);
   }
 
   // ── テスト ────────────────────────────────────────────────────
 
-  /// REST API キーのテスト（Geocoding API を呼んで成功か確認）
-  Future<ApiKeyStatus> testRestApiKey(String key) async {
+  /// API キーのテスト（MapsLoader でロード → Geocoder で事業所住所を変換）
+  Future<ApiKeyStatus> testJsApiKey(String key) async {
     if (key.isEmpty) return ApiKeyStatus.notSet;
     try {
+      // 1. Maps JS API をロード
+      MapsLoader.reset(); // キー変更を反映するためリセット
+      await MapsLoader.ensureLoaded(key);
+
+      // 2. Geocoder で事業所住所を変換して有効性を確認
       final settings = getSettings();
-      await GoogleMapsService.instance.geocodeAddress(
-        settings.facilityAddress,
-        key,
-      );
+      await MapsJsService.instance.geocodeAddress(settings.facilityAddress);
+
+      debugPrint('[SettingsService] JS API key test succeeded');
       return ApiKeyStatus.valid;
     } catch (e) {
-      debugPrint('[SettingsService] REST API key test failed: $e');
+      debugPrint('[SettingsService] JS API key test failed: $e');
       return ApiKeyStatus.invalid;
     }
   }
 
-  /// JS API キーのテスト（Maps JavaScript API のロード URL に疎通確認）
-  /// Web では実際のロードで確認するため、ここでは簡易フォーマット確認のみ
-  Future<ApiKeyStatus> testJsApiKey(String key) async {
-    if (key.isEmpty) return ApiKeyStatus.notSet;
-    // JS キーは "AIza" で始まる39文字の形式チェックのみ（REST呼び出し不可）
-    if (key.startsWith('AIza') && key.length >= 35) {
-      return ApiKeyStatus.valid;
-    }
-    return ApiKeyStatus.invalid;
-  }
+  /// @deprecated 代わりに testJsApiKey() を使ってください
+  Future<ApiKeyStatus> testRestApiKey(String key) => testJsApiKey(key);
 
-  /// @deprecated 代わりに testRestApiKey() を使ってください
-  Future<ApiKeyStatus> testApiKey(String key) => testRestApiKey(key);
+  /// @deprecated 代わりに testJsApiKey() を使ってください
+  Future<ApiKeyStatus> testApiKey(String key) => testJsApiKey(key);
 }
 
 /// API キーの状態
@@ -297,3 +279,4 @@ enum ApiKeyStatus {
   valid,    // 有効（または形式OK）
   invalid,  // 無効・エラー
 }
+

@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart';
 import 'models/app_settings.dart';
@@ -56,6 +57,9 @@ Future<void> main() async {
 
   // ── 8. TransportPlanService の Hive ボックスを開く（Day 6）
   await TransportPlanService.instance.init();
+
+  // ── 9. 日本語ロケールデータ初期化（PDF出力の LocaleDataException 対策）
+  await initializeDateFormatting('ja_JP', null);
 
   runApp(const LinkDayApp());
 }

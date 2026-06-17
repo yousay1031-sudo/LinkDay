@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 import '../models/customer.dart';
 import '../models/transport_plan.dart';
 import 'google_maps_service.dart';
+import 'maps_js_service.dart';
 import 'settings_service.dart';
 
 const String _kBoxName = 'transport_plans';
@@ -119,30 +122,28 @@ class TransportPlanService {
       return '';
     }).toList();
 
-    // APIキーがある場合は Geocoding してクラスタリング
+    // APIキーがある場合は JS Interop 経由で Geocoding してクラスタリング
     List<({double lat, double lng})?> latLngs;
     if (apiKey != null && apiKey.isNotEmpty) {
       try {
-        latLngs = await GoogleMapsService.instance.geocodeBatch(
+        final jsResults = await MapsJsService.instance.geocodeBatch(
           addresses.where((a) => a.isNotEmpty).toList(),
-          apiKey,
         );
-        // 住所が空の顧客用に null を補完
-        final fullLatLngs = <({double lat, double lng})?>[]; 
+        // GeoResult → record 型に変換、住所が空の顧客用に null を補完
+        final fullLatLngs = <({double lat, double lng})?>[];
         int geocodeIndex = 0;
         for (final addr in addresses) {
           if (addr.isEmpty) {
             fullLatLngs.add(null);
           } else {
-            fullLatLngs.add(geocodeIndex < latLngs.length
-                ? latLngs[geocodeIndex]
-                : null);
+            final r = geocodeIndex < jsResults.length ? jsResults[geocodeIndex] : null;
+            fullLatLngs.add(r != null ? (lat: r.lat, lng: r.lng) : null);
             geocodeIndex++;
           }
         }
         latLngs = fullLatLngs;
       } catch (e) {
-        debugPrint('[TransportPlanService] geocode batch failed: $e');
+        debugPrint('[TransportPlanService] geocode batch (JS) failed: $e');
         latLngs = List.filled(customers.length, null);
       }
     } else {
@@ -209,9 +210,9 @@ class TransportPlanService {
   ///   お送り: 事業所出発時刻(利用終了) から順算で各停留所の到着時刻を算出
   Future<TransportVehicleRoute> optimizeRoute(
     TransportVehicleRoute route,
-    String facilityAddress,
-    String apiKey,
-  ) async {
+    String facilityAddress, [
+    String? apiKey, // deprecated: 互換性維持のため残す。内部では MapsJsService を使用
+  ]) async {
     final settings = SettingsService.instance.getSettings();
     final facilityLat = settings.facilityLat;
     final facilityLng = settings.facilityLng;
@@ -230,7 +231,7 @@ class TransportPlanService {
     if (route.stops.length == 1) {
       // 停留所が1件なら並び替え不要、時刻・距離計算のみ
       route.stops[0].orderIndex = 0;
-      if (facilityLat != null && facilityLng != null && apiKey.isNotEmpty) {
+      if (facilityLat != null && facilityLng != null) {
         try {
           await _attachDirectionsDataRoundTrip(
             route: route,
@@ -238,7 +239,6 @@ class TransportPlanService {
             facilityLat: facilityLat,
             facilityLng: facilityLng,
             facilityAddress: facilityAddress,
-            apiKey: apiKey,
           );
         } catch (e) {
           debugPrint('[TransportPlanService] directions (1 stop) failed: $e');
@@ -300,8 +300,7 @@ class TransportPlanService {
     }
 
     // Directions API でセグメントの距離・時間を取得（ラウンドトリップ）
-    if (allHaveGeocode && facilityLat != null && facilityLng != null &&
-        apiKey.isNotEmpty) {
+    if (allHaveGeocode && facilityLat != null && facilityLng != null) {
       try {
         await _attachDirectionsDataRoundTrip(
           route: route,
@@ -309,7 +308,6 @@ class TransportPlanService {
           facilityLat: facilityLat,
           facilityLng: facilityLng,
           facilityAddress: facilityAddress,
-          apiKey: apiKey,
         );
       } catch (e) {
         debugPrint('[TransportPlanService] directions failed: $e');
@@ -336,7 +334,7 @@ class TransportPlanService {
     return route;
   }
 
-  /// Directions API（ラウンドトリップ）でセグメント距離・時間を設定し、時刻も算出
+  /// Directions API（ラウンドトリップ、JS Interop版）でセグメント距離・時間を設定し、時刻も算出
   ///
   /// legs 構成:
   ///   legs[0]: 事業所 → stops[0]
@@ -353,36 +351,40 @@ class TransportPlanService {
     required double facilityLat,
     required double facilityLng,
     required String facilityAddress,
-    required String apiKey,
   }) async {
     if (reorderedStops.isEmpty) return;
 
-    final facilityLatLngStr = '$facilityLat,$facilityLng';
+    // LatLng を持つ停留所のみ waypoint として使用
+    final validStops = reorderedStops
+        .where((s) => s.lat != null && s.lng != null)
+        .toList();
+    if (validStops.isEmpty) return;
 
-    // 停留所の LatLng 文字列リスト
-    final waypointLatLngs = reorderedStops.map((s) {
-      if (s.lat != null && s.lng != null) {
-        return '${s.lat},${s.lng}';
-      }
-      return s.address; // LatLng ない場合は住所でこなし
-    }).toList();
+    final facilityLatLng = LatLng(facilityLat, facilityLng);
+    final waypointLatLngs = validStops
+        .map((s) => LatLng(s.lat!, s.lng!))
+        .toList();
 
-    final result = await GoogleMapsService.instance.getDirectionsRoundTrip(
-      facilityLatLng: facilityLatLngStr,
+    debugPrint('[TransportPlanService] _attachDirectionsDataRoundTrip: '
+        'facility=$facilityLat,$facilityLng, '
+        'waypoints=${waypointLatLngs.length}件');
+
+    // JS Interop 経由で Directions API を呼ぶ
+    final result = await MapsJsService.instance.getDirectionsRoundTrip(
+      facilityLatLng: facilityLatLng,
       waypointLatLngs: waypointLatLngs,
-      apiKey: apiKey,
+      optimize: false,
     );
 
     route.totalDistanceMeters = result.totalDistanceMeters;
     route.totalDurationSeconds = result.totalDurationSeconds;
 
+    // JsDirectionsResult: legDistances / legDurations
     // legs[0] = 事業所→stops[0]、legs[i] = stops[i-1]→stops[i]、legs[n] = stops[n-1]→事業所
     for (int i = 0; i < reorderedStops.length; i++) {
-      if (i < result.legDistanceMeters.length) {
-        reorderedStops[i].distanceFromPrevMeters =
-            result.legDistanceMeters[i];
-        reorderedStops[i].durationFromPrevSeconds =
-            result.legDurationSeconds[i];
+      if (i < result.legDistances.length) {
+        reorderedStops[i].distanceFromPrevMeters = result.legDistances[i];
+        reorderedStops[i].durationFromPrevSeconds = result.legDurations[i];
       }
     }
 
@@ -390,7 +392,7 @@ class TransportPlanService {
     _assignScheduledTimes(
       route: route,
       reorderedStops: reorderedStops,
-      legDurationSeconds: result.legDurationSeconds,
+      legDurationSeconds: result.legDurations,
     );
   }
 

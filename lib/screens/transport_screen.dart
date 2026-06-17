@@ -35,7 +35,7 @@ class _TransportScreenState extends State<TransportScreen>
 
   // 設定
   String _facilityAddress = 'ここすたでぃ';
-  String? _restApiKey; // REST API キー（Geocoding/Directions用）
+  String? _jsApiKey; // Google Maps API キー（JS Interop経由）
 
   @override
   void initState() {
@@ -60,13 +60,13 @@ class _TransportScreenState extends State<TransportScreen>
 
   Future<void> _loadSettings() async {
     final settings = SettingsService.instance.getSettings();
-    final key = await SettingsService.instance.loadRestApiKey();
+    final key = await SettingsService.instance.loadJsApiKey();
     if (mounted) {
       setState(() {
         _facilityAddress = settings.facilityAddress.isNotEmpty
             ? settings.facilityAddress
             : 'ここすたでぃ';
-        _restApiKey = key;
+        _jsApiKey = key;
       });
     }
   }
@@ -221,8 +221,8 @@ class _TransportScreenState extends State<TransportScreen>
       return;
     }
 
-    if (useApi && (_restApiKey == null || _restApiKey!.isEmpty)) {
-      _showSnack('AIルートにはRESTキーが必要です。設定画面で登録してください。',
+    if (useApi && (_jsApiKey == null || _jsApiKey!.isEmpty)) {
+      _showSnack('APIキーが設定されていません。設定画面で登録してください。',
           isError: true);
       return;
     }
@@ -230,7 +230,7 @@ class _TransportScreenState extends State<TransportScreen>
     setState(() => _isLoading = true);
 
     try {
-      final apiKey = useApi ? _restApiKey : null;
+      final apiKey = useApi ? _jsApiKey : null;
 
       // お迎え・お送り両方生成
       final pickupRoutes = await TransportPlanService.instance.autoGroupCustomers(
@@ -285,7 +285,7 @@ class _TransportScreenState extends State<TransportScreen>
         dateKey: _dateKey,
         customers: customers,
         type: type,
-        apiKey: _restApiKey,
+        apiKey: _jsApiKey,
       );
 
       for (final r in routes) {
@@ -306,7 +306,7 @@ class _TransportScreenState extends State<TransportScreen>
   // ── ルート最適化 ────────────────────────────────────────────
 
   Future<void> _optimizeRoute(TransportVehicleRoute route) async {
-    if (_restApiKey == null || _restApiKey!.isEmpty) {
+    if (_jsApiKey == null || _jsApiKey!.isEmpty) {
       _showSnack('APIキーが設定されていません。設定画面で登録してください。',
           isError: true);
       return;
@@ -321,7 +321,7 @@ class _TransportScreenState extends State<TransportScreen>
       await TransportPlanService.instance.optimizeRoute(
         route,
         _facilityAddress,
-        _restApiKey!,
+        // apiKey は内部で SettingsService から取得するため不要
       );
       await _loadRoutes();
       _showSnack('${route.vehicleName} のルートを最適化しました');
@@ -833,7 +833,7 @@ class _TransportScreenState extends State<TransportScreen>
 
   Future<void> _optimizeAllRoutes(
       List<TransportVehicleRoute> routes) async {
-    if (_restApiKey == null || _restApiKey!.isEmpty) {
+    if (_jsApiKey == null || _jsApiKey!.isEmpty) {
       _showSnack('APIキーが設定されていません', isError: true);
       return;
     }
@@ -842,7 +842,7 @@ class _TransportScreenState extends State<TransportScreen>
       for (final r in routes) {
         if (r.stops.isNotEmpty) {
           await TransportPlanService.instance
-              .optimizeRoute(r, _facilityAddress, _restApiKey!);
+              .optimizeRoute(r, _facilityAddress);
         }
       }
       await _loadRoutes();

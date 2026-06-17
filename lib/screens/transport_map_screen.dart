@@ -5,7 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/transport_plan.dart';
-import '../services/google_maps_service.dart';
+import '../services/maps_js_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 
@@ -125,46 +125,41 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   }
 
   Future<void> _fetchPolyline() async {
-    // 地図ポリライン取得は Directions REST API → REST キー使用
-    final apiKey = await SettingsService.instance.loadRestApiKey();
+    // JS Interop 経由で Directions API（ラウンドトリップ）を呼ぶ
+    final facility = SettingsService.instance.getSettings();
+    final facilityLat = facility.facilityLat;
+    final facilityLng = facility.facilityLng;
     final allHaveGeocode = widget.route.stops.every(
       (s) => s.lat != null && s.lng != null,
     );
+    final apiKey = await SettingsService.instance.loadJsApiKey();
 
-    if (!allHaveGeocode || apiKey == null || apiKey.isEmpty) {
+    if (!allHaveGeocode ||
+        facilityLat == null ||
+        facilityLng == null ||
+        apiKey == null ||
+        apiKey.isEmpty) {
       // LatLng だけでシンプルなポリライン（直線）を描く
       _buildSimplePolyline();
       return;
     }
 
     try {
-      final stopAddresses = widget.route.stops.map((s) => s.address).toList();
-      final String origin, destination;
-      final List<String> waypoints;
+      final facilityLatLng = LatLng(facilityLat, facilityLng);
+      final waypointLatLngs = widget.route.stops
+          .map((s) => LatLng(s.lat!, s.lng!))
+          .toList();
 
-      if (widget.route.transportType == TransportType.pickup) {
-        origin = stopAddresses.first;
-        destination = widget.facilityAddress;
-        waypoints =
-            stopAddresses.length > 1 ? stopAddresses.sublist(1) : [];
-      } else {
-        origin = widget.facilityAddress;
-        destination = stopAddresses.last;
-        waypoints = stopAddresses.length > 1
-            ? stopAddresses.sublist(0, stopAddresses.length - 1)
-            : [];
-      }
+      debugPrint('[TransportMapScreen] fetchPolyline RoundTrip JS: '
+          'facility=$facilityLat,$facilityLng, stops=${waypointLatLngs.length}');
 
-      final result = await GoogleMapsService.instance.getDirections(
-        origin: origin,
-        destination: destination,
-        waypoints: waypoints,
-        apiKey: apiKey,
+      final result = await MapsJsService.instance.getDirectionsRoundTrip(
+        facilityLatLng: facilityLatLng,
+        waypointLatLngs: waypointLatLngs,
+        optimize: false,
       );
 
-      _routePolylinePoints = result.polylinePoints
-          .map((p) => LatLng(p.lat, p.lng))
-          .toList();
+      _routePolylinePoints = result.polylinePoints;
 
       _polylines.add(
         Polyline(
@@ -176,7 +171,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         ),
       );
     } catch (e) {
-      debugPrint('[TransportMapScreen] directions failed: $e');
+      debugPrint('[TransportMapScreen] directions JS failed: $e');
       // フォールバック: 直線ポリライン
       _buildSimplePolyline();
     }

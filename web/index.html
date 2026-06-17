@@ -42,28 +42,131 @@
     ═══════════════════════════════════════════════════════════════════
   -->
   <script>
-    // Flutter 側から呼び出せるグローバル関数
-    // SettingsService.loadApiKey() 取得後に dart:js で呼び出す
-    window.loadGoogleMaps = function(key) {
-      if (!key || key === '' || key === '<<GOOGLE_MAPS_API_KEY>>') return;
-      // 二重ロード防止
-      if (window._googleMapsLoaded) return;
-      window._googleMapsLoaded = true;
-      var script = document.createElement('script');
-      script.src = 'https://maps.googleapis.com/maps/api/js'
-        + '?key=' + encodeURIComponent(key)
-        + '&libraries=geometry,places'
-        + '&callback=__googleMapsReady';
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
+    // ─── Google Maps JavaScript API 動的ロード（Promise版）────────
+    // Flutter dart:js_interop から呼び出す。
+    // APIキーは SharedPreferences から読み出した後に Flutter 側が渡す。
+    // loadGoogleMaps(apiKey) → Promise<void>
+    window.loadGoogleMaps = function(apiKey) {
+      return new Promise(function(resolve, reject) {
+        // キー未設定チェック
+        if (!apiKey || apiKey === '' || apiKey === '<<GOOGLE_MAPS_API_KEY>>') {
+          reject(new Error('Google Maps API キーが設定されていません'));
+          return;
+        }
+        // 既にロード済み（同じキー）
+        if (window.google && window.google.maps) {
+          resolve();
+          return;
+        }
+        // 既にロード中（別の Promise が進行中）
+        if (window._googleMapsLoading) {
+          window._googleMapsLoadCallbacks = window._googleMapsLoadCallbacks || [];
+          window._googleMapsLoadCallbacks.push({ resolve: resolve, reject: reject });
+          return;
+        }
+        window._googleMapsLoading = true;
+        window._googleMapsLoadCallbacks = [{ resolve: resolve, reject: reject }];
+
+        var script = document.createElement('script');
+        script.src = 'https://maps.googleapis.com/maps/api/js'
+          + '?key=' + encodeURIComponent(apiKey)
+          + '&libraries=geometry,places'
+          + '&language=ja'
+          + '&region=JP'
+          + '&callback=__googleMapsReady';
+        script.async = true;
+        script.defer = true;
+        script.onerror = function(e) {
+          window._googleMapsLoading = false;
+          var cbs = window._googleMapsLoadCallbacks || [];
+          window._googleMapsLoadCallbacks = [];
+          cbs.forEach(function(cb) { cb.reject(new Error('Google Maps スクリプトのロードに失敗しました')); });
+        };
+        document.head.appendChild(script);
+      });
     };
 
     // Callback: Google Maps API 読み込み完了
     window.__googleMapsReady = function() {
-      window._googleMapsReady = true;
-      // Flutter 側に通知（window.dispatchEvent でイベント送信）
+      window._googleMapsLoading = false;
+      var cbs = window._googleMapsLoadCallbacks || [];
+      window._googleMapsLoadCallbacks = [];
+      cbs.forEach(function(cb) { cb.resolve(); });
+      // Flutter 側にも CustomEvent で通知
       window.dispatchEvent(new CustomEvent('googleMapsReady'));
+    };
+
+    // ─── JS Interop: Geocoder ────────────────────────────────────
+    // geocodeAddress(address) → Promise<{lat, lng}>
+    window.geocodeAddress = function(address) {
+      return new Promise(function(resolve, reject) {
+        if (!window.google || !window.google.maps) {
+          reject(new Error('Google Maps がまだロードされていません'));
+          return;
+        }
+        var geocoder = new google.maps.Geocoder();
+        geocoder.geocode(
+          { address: address, region: 'JP' },
+          function(results, status) {
+            if (status === 'OK' && results && results.length > 0) {
+              var loc = results[0].geometry.location;
+              resolve({ lat: loc.lat(), lng: loc.lng() });
+            } else if (status === 'ZERO_RESULTS') {
+              reject(new Error('ZERO_RESULTS: 住所が見つかりませんでした: ' + address));
+            } else {
+              reject(new Error('Geocoder エラー: ' + status));
+            }
+          }
+        );
+      });
+    };
+
+    // ─── JS Interop: DirectionsService ───────────────────────────
+    // getDirections(requestJson) → Promise<resultJson>
+    // requestJson: { facilityLat, facilityLng, waypointLatLngs: [{lat,lng},...], optimize }
+    window.getDirectionsRoundTrip = function(requestJson) {
+      return new Promise(function(resolve, reject) {
+        if (!window.google || !window.google.maps) {
+          reject(new Error('Google Maps がまだロードされていません'));
+          return;
+        }
+        var req = JSON.parse(requestJson);
+        var facilityLatLng = new google.maps.LatLng(req.facilityLat, req.facilityLng);
+        var waypoints = (req.waypointLatLngs || []).map(function(wp) {
+          return { location: new google.maps.LatLng(wp.lat, wp.lng), stopover: true };
+        });
+
+        var service = new google.maps.DirectionsService();
+        service.route({
+          origin: facilityLatLng,
+          destination: facilityLatLng,
+          waypoints: waypoints,
+          optimizeWaypoints: req.optimize || false,
+          travelMode: google.maps.TravelMode.DRIVING,
+          region: 'JP'
+        }, function(result, status) {
+          if (status === 'OK' && result) {
+            var route = result.routes[0];
+            var legs = route.legs;
+            var legDistances = legs.map(function(l) { return l.distance.value; });
+            var legDurations = legs.map(function(l) { return l.duration.value; });
+            var totalDist = legDistances.reduce(function(a, b) { return a + b; }, 0);
+            var totalDur  = legDurations.reduce(function(a, b) { return a + b; }, 0);
+            var waypointOrder = route.waypoint_order || [];
+            var polyline = route.overview_polyline.points;
+            resolve(JSON.stringify({
+              legDistances: legDistances,
+              legDurations: legDurations,
+              totalDistanceMeters: totalDist,
+              totalDurationSeconds: totalDur,
+              waypointOrder: waypointOrder,
+              encodedPolyline: polyline
+            }));
+          } else {
+            reject(new Error('DirectionsService エラー: ' + status));
+          }
+        });
+      });
     };
   </script>
 

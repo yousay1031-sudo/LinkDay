@@ -19,18 +19,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _facilityNameCtrl = TextEditingController();
   final _facilityAddressCtrl = TextEditingController();
   // 2キー方式
-  final _jsApiKeyCtrl = TextEditingController();
-  final _restApiKeyCtrl = TextEditingController();
+  final _jsApiKeyCtrl = TextEditingController(); // 共通 API キー（1つに統一）
   final _maxStudentsCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   // ── 状態 ─────────────────────────────────────────────────────
   bool _jsApiKeyVisible = false;
-  bool _restApiKeyVisible = false;
   ApiKeyStatus _jsApiKeyStatus = ApiKeyStatus.notSet;
-  ApiKeyStatus _restApiKeyStatus = ApiKeyStatus.notSet;
   bool _testingJsKey = false;
-  bool _testingRestKey = false;
   bool _geocoding = false;
   int _vehicleCount = 2;
   final List<TextEditingController> _vehicleNameCtrls = [];
@@ -49,7 +45,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _facilityNameCtrl.dispose();
     _facilityAddressCtrl.dispose();
     _jsApiKeyCtrl.dispose();
-    _restApiKeyCtrl.dispose();
     _maxStudentsCtrl.dispose();
     for (final c in _vehicleNameCtrls) {
       c.dispose();
@@ -63,18 +58,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     final settings = SettingsService.instance.getSettings();
     final jsKey = await SettingsService.instance.loadJsApiKey();
-    final restKey = await SettingsService.instance.loadRestApiKey();
 
     setState(() {
       _facilityNameCtrl.text = settings.facilityName;
       _facilityAddressCtrl.text = settings.facilityAddress;
       _maxStudentsCtrl.text = settings.maxStudentsPerDay.toString();
       _jsApiKeyCtrl.text = jsKey ?? '';
-      _restApiKeyCtrl.text = restKey ?? '';
       _jsApiKeyStatus =
           (jsKey != null && jsKey.isNotEmpty) ? ApiKeyStatus.valid : ApiKeyStatus.notSet;
-      _restApiKeyStatus =
-          (restKey != null && restKey.isNotEmpty) ? ApiKeyStatus.valid : ApiKeyStatus.notSet;
       _vehicleCount = settings.vehicleCount;
       _pickupStart = _parseTime(settings.defaultPickupStart);
       _dropoffEnd = _parseTime(settings.defaultDropoffEnd);
@@ -106,12 +97,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveFacility() async {
     if (!_formKey.currentState!.validate()) return;
+    final newAddress = _facilityAddressCtrl.text.trim();
+    final prevSettings = SettingsService.instance.getSettings();
+    final addressChanged = prevSettings.facilityAddress != newAddress;
+
     await SettingsService.instance.updateFacility(
       _facilityNameCtrl.text.trim(),
-      _facilityAddressCtrl.text.trim(),
+      newAddress,
     );
     if (!mounted) return;
     _showSnack('事業所情報を保存しました', AppColors.success);
+
+    // 住所が変更された場合は自動でジオコーディングを実行
+    if (addressChanged && newAddress.isNotEmpty) {
+      final jsKey = _jsApiKeyCtrl.text.trim();
+      if (jsKey.isNotEmpty) {
+        // 少し遅延させてスナックバーが表示されてから実行
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
+        await _geocodeFacility();
+      } else {
+        // API キー未設定の場合はヒントを表示
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
+        _showSnack(
+          '住所を変更しました。APIキーを設定すると緯度経度を自動取得できます。',
+          AppColors.warning,
+        );
+      }
+    }
   }
 
   Future<void> _saveVehicles() async {
@@ -135,24 +149,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _showSnack('運営時間を保存しました', AppColors.success);
   }
 
-  // ── JS API キー操作 ─────────────────────────────────────────
+  // ── API キー操作（1キー方式） ─────────────────────────────
 
   Future<void> _saveJsApiKey() async {
     final key = _jsApiKeyCtrl.text.trim();
     if (key.isEmpty) {
-      _showSnack('Maps JavaScript API キーを入力してください', AppColors.error);
+      _showSnack('Google Maps API キーを入力してください', AppColors.error);
       return;
     }
     await SettingsService.instance.saveJsApiKey(key);
     if (!mounted) return;
     setState(() => _jsApiKeyStatus = ApiKeyStatus.valid);
-    _showSnack('JS API キーを保存しました', AppColors.success);
+    _showSnack('API キーを保存しました', AppColors.success);
   }
 
   Future<void> _testJsApiKey() async {
     final key = _jsApiKeyCtrl.text.trim();
     if (key.isEmpty) {
-      _showSnack('Maps JavaScript API キーを入力してください', AppColors.error);
+      _showSnack('Google Maps API キーを入力してください', AppColors.error);
       return;
     }
     setState(() => _testingJsKey = true);
@@ -162,13 +176,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _jsApiKeyStatus = status);
       switch (status) {
         case ApiKeyStatus.valid:
-          _showSnack('✅ JS API キーの形式は正しいです', AppColors.success);
+          _showSnack('✅ API キー有効（地図表示・ルート計算・ジオコーディングが動作します）', AppColors.success);
           break;
         case ApiKeyStatus.invalid:
-          _showSnack('❌ JS API キーの形式が不正です（AIza で始まる文字列を確認）', AppColors.error);
+          _showSnack('❌ API キーが無効です。キーの制限設定または権限を確認してください。', AppColors.error);
           break;
         case ApiKeyStatus.notSet:
-          _showSnack('⚠️ JS API キーが未設定です', AppColors.warning);
+          _showSnack('⚠️ API キーが未設定です', AppColors.warning);
           break;
       }
     } catch (e) {
@@ -181,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _clearJsApiKey() async {
-    final confirmed = await _confirmClear('JS API キー（地図表示用）');
+    final confirmed = await _confirmClear('Google Maps API キー');
     if (confirmed != true || !mounted) return;
     await SettingsService.instance.clearJsApiKey();
     if (!mounted) return;
@@ -189,64 +203,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _jsApiKeyCtrl.clear();
       _jsApiKeyStatus = ApiKeyStatus.notSet;
     });
-    _showSnack('JS API キーを削除しました', AppColors.warning);
-  }
-
-  // ── REST API キー操作 ────────────────────────────────────────
-
-  Future<void> _saveRestApiKey() async {
-    final key = _restApiKeyCtrl.text.trim();
-    if (key.isEmpty) {
-      _showSnack('REST API キーを入力してください', AppColors.error);
-      return;
-    }
-    await SettingsService.instance.saveRestApiKey(key);
-    if (!mounted) return;
-    setState(() => _restApiKeyStatus = ApiKeyStatus.valid);
-    _showSnack('REST API キーを保存しました', AppColors.success);
-  }
-
-  Future<void> _testRestApiKey() async {
-    final key = _restApiKeyCtrl.text.trim();
-    if (key.isEmpty) {
-      _showSnack('REST API キーを入力してください', AppColors.error);
-      return;
-    }
-    setState(() => _testingRestKey = true);
-    try {
-      final status = await SettingsService.instance.testRestApiKey(key);
-      if (!mounted) return;
-      setState(() => _restApiKeyStatus = status);
-      switch (status) {
-        case ApiKeyStatus.valid:
-          _showSnack('✅ REST API キーは有効です（Geocoding 成功）', AppColors.success);
-          break;
-        case ApiKeyStatus.invalid:
-          _showSnack('❌ REST API キーが無効 / 権限不足 / リファラー制限の可能性があります', AppColors.error);
-          break;
-        case ApiKeyStatus.notSet:
-          _showSnack('⚠️ REST API キーが未設定です', AppColors.warning);
-          break;
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _restApiKeyStatus = ApiKeyStatus.invalid);
-      _showSnack('テスト失敗: $e', AppColors.error);
-    } finally {
-      if (mounted) setState(() => _testingRestKey = false);
-    }
-  }
-
-  Future<void> _clearRestApiKey() async {
-    final confirmed = await _confirmClear('REST API キー（ルート計算用）');
-    if (confirmed != true || !mounted) return;
-    await SettingsService.instance.clearRestApiKey();
-    if (!mounted) return;
-    setState(() {
-      _restApiKeyCtrl.clear();
-      _restApiKeyStatus = ApiKeyStatus.notSet;
-    });
-    _showSnack('REST API キーを削除しました', AppColors.warning);
+    _showSnack('API キーを削除しました', AppColors.warning);
   }
 
   Future<bool?> _confirmClear(String target) {
@@ -618,18 +575,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── ヘルプバナー ───────────────────────────────────────
           _buildApiKeyHelpBanner(),
           const SizedBox(height: 16),
-
-          // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          // キー① Maps JavaScript API（地図表示用）
-          // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           _buildKeySubHeader(
-            icon: Icons.language,
-            color: AppColors.secondary,
-            title: 'Maps JavaScript API キー',
-            subtitle: '地図表示用 — HTTPリファラー制限 OK',
+            icon: Icons.vpn_key,
+            color: AppColors.primary,
+            title: 'Google Maps API キー',
+            subtitle: '地図表示・ジオコーディング・ルート計算すべてに利用 — HTTPリファラー制限 OK',
             status: _jsApiKeyStatus,
           ),
           const SizedBox(height: 8),
@@ -637,7 +589,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             controller: _jsApiKeyCtrl,
             obscureText: !_jsApiKeyVisible,
             decoration: InputDecoration(
-              labelText: 'JS API キー (AIza...)',
+              labelText: 'API キー (AIza...)',
               prefixIcon: const Icon(Icons.vpn_key_outlined),
               suffixIcon: IconButton(
                 icon: Icon(
@@ -650,8 +602,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Google Cloud Console → APIとサービス → 認証情報\n'
-            '「HTTPリファラー」制限を付けて安全に使用できます',
+            'Maps JavaScript API キーを入力してください。\n'
+            '地図表示・住所検索・ルート計算すべてに使用されます。\n'
+            '「HTTPリファラー」制限を付けてください。',
             style: TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant, height: 1.5),
           ),
           const SizedBox(height: 10),
@@ -664,7 +617,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: const Icon(Icons.save, size: 16),
                 label: const Text('保存'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.secondary,
+                  backgroundColor: AppColors.primary,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 ),
               ),
@@ -676,11 +629,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.check_circle_outline, size: 16),
-                label: Text(_testingJsKey ? 'チェック中...' : 'チェック'),
+                    : const Icon(Icons.network_check, size: 16),
+                label: Text(_testingJsKey ? 'テスト中...' : 'テスト'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.secondary,
-                  side: const BorderSide(color: AppColors.secondary),
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 ),
               ),
@@ -694,115 +647,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-
-          const SizedBox(height: 20),
-          const Divider(),
-          const SizedBox(height: 12),
-
-          // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          // キー② REST API（Geocoding / Directions / DistanceMatrix）
-          // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          _buildKeySubHeader(
-            icon: Icons.route,
-            color: AppColors.primary,
-            title: 'REST API キー',
-            subtitle: 'ルート計算用 — リファラー制限を付けないこと',
-            status: _restApiKeyStatus,
-          ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: _restApiKeyCtrl,
-            obscureText: !_restApiKeyVisible,
-            decoration: InputDecoration(
-              labelText: 'REST API キー (AIza...)',
-              prefixIcon: const Icon(Icons.vpn_key),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _restApiKeyVisible ? Icons.visibility_off : Icons.visibility,
-                ),
-                onPressed: () =>
-                    setState(() => _restApiKeyVisible = !_restApiKeyVisible),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          // 警告: REST キーにリファラー制限を付けないよう注意
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.warning_amber, size: 14, color: AppColors.warning),
-                SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'このキーには「HTTPリファラー」制限を付けないでください。\n'
-                    'IPアドレス制限または予算アラートで保護してください。',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.warning,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ElevatedButton.icon(
-                onPressed: _saveRestApiKey,
-                icon: const Icon(Icons.save, size: 16),
-                label: const Text('保存'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: _testingRestKey ? null : _testRestApiKey,
-                icon: _testingRestKey
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.network_check, size: 16),
-                label: Text(_testingRestKey ? 'テスト中...' : 'テスト'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _clearRestApiKey,
-                icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.error),
-                label: const Text('クリア', style: TextStyle(color: AppColors.error)),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                ),
-              ),
-            ],
-          ),
-
           const SizedBox(height: 16),
           const Divider(),
           const SizedBox(height: 8),
-
-          // 必要 API リスト
           const Text(
-            '有効にすべき Google Cloud API:\n'
-            '• Maps JavaScript API（JS キー）\n'
-            '• Geocoding API（REST キー）\n'
-            '• Directions API（REST キー）\n'
-            '• Distance Matrix API（REST キー）',
+            'Google Cloud Console で有効にする API:\n'
+            '• Maps JavaScript API\n'
+            '• Geocoding API\n'
+            '• Directions API',
             style: TextStyle(
               fontSize: 11,
               color: AppColors.onSurfaceVariant,
@@ -814,7 +666,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// なぜ2つのキーが必要かのヘルプバナー
   Widget _buildApiKeyHelpBanner() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -830,8 +681,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Google の仕様により、地図表示用と REST API 用でキーを分ける必要があります。\n'
-              'JS用はHTTPリファラー制限で安全に。REST用はIP制限または予算アラートで保護してください。',
+              'JavaScript API 経由に統一しました。\n'
+              'JSキー（1つ）で地図表示・住所検索・ルート計算すべてが動作します。\n'
+              'CORSエラーなし、キーがURLに露出しない安全な構成です。',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.info,
@@ -843,7 +695,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
   /// キーのサブヘッダー（アイコン・タイトル・状態バッジ）
   Widget _buildKeySubHeader({
     required IconData icon,
