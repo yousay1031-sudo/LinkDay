@@ -30,8 +30,11 @@ class _TransportScreenState extends State<TransportScreen>
   List<TransportVehicleRoute> _pickupRoutes = [];
   List<TransportVehicleRoute> _dropoffRoutes = [];
 
+  // 利用予定者（週間計画 or regularDays から取得）
+  List<Customer> _scheduledCustomers = [];
+
   // 設定
-  String _facilityAddress = 'ココスタディ';
+  String _facilityAddress = 'ここすたでぃ';
   String? _restApiKey; // REST API キー（Geocoding/Directions用）
 
   @override
@@ -39,7 +42,7 @@ class _TransportScreenState extends State<TransportScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadSettings();
-    _loadRoutes();
+    _loadAll();
   }
 
   @override
@@ -53,14 +56,49 @@ class _TransportScreenState extends State<TransportScreen>
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
+  // ── 設定読み込み ─────────────────────────────────────────────
+
   Future<void> _loadSettings() async {
     final settings = SettingsService.instance.getSettings();
     final key = await SettingsService.instance.loadRestApiKey();
     if (mounted) {
       setState(() {
-        _facilityAddress = settings.facilityAddress;
+        _facilityAddress = settings.facilityAddress.isNotEmpty
+            ? settings.facilityAddress
+            : 'ここすたでぃ';
         _restApiKey = key;
       });
+    }
+  }
+
+  // ── 全データ読み込み ─────────────────────────────────────────
+
+  Future<void> _loadAll() async {
+    setState(() => _isLoading = true);
+    try {
+      // 利用予定者を取得（3段階フォールバック）
+      final customers = await _fetchScheduledCustomers();
+
+      // ルートを取得
+      final pickup = TransportPlanService.instance.getPickupRoutes(_dateKey);
+      final dropoff = TransportPlanService.instance.getDropoffRoutes(_dateKey);
+
+      if (mounted) {
+        setState(() {
+          _scheduledCustomers = customers;
+          _pickupRoutes = pickup;
+          _dropoffRoutes = dropoff;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '読み込みエラー: $e';
+        });
+      }
     }
   }
 
@@ -87,36 +125,154 @@ class _TransportScreenState extends State<TransportScreen>
     }
   }
 
-  /// その日の利用予定者を取得する（週間計画 → regularDays フォールバック）
-  List<Customer> _getScheduledCustomers() {
-    final dayOfWeek = _selectedDate.weekday; // 1=月〜7=日
-    final allActive = CustomerService.instance.getAllCustomers();
+  // ────────────────────────────────────────────────────────────
+  // 利用予定者取得（3段階フォールバック）
+  // ────────────────────────────────────────────────────────────
 
-    // 週間利用計画から対象者を取得
-    final fromSchedule = allActive.where((c) {
+  /// 指定日の利用予定者を取得する
+  ///
+  /// 優先度 1: WeeklyScheduleService.getEntriesForDate（週間利用計画）
+  /// 優先度 2: AttendanceService のスケジュール（未実装なら省略）
+  /// 優先度 3: CustomerService の regularDays
+  Future<List<Customer>> _fetchScheduledCustomers() async {
+    final allActive = CustomerService.instance.getAllCustomers();
+    final dateLabel = _dateKey;
+
+    // ── 優先度 1: 週間利用計画 ──────────────────────────────
+    try {
       final entries =
           WeeklyScheduleService.instance.getEntriesForDate(_selectedDate);
-      // entries は ScheduleEntry リスト（顧客IDを持つ）
-      return entries.any((e) =>
-          e.customerId == c.id &&
-          e.status.name != 'cancelled'); // cancelled 以外
-    }).toList();
+      // planned + additional (cancelled 除外済み)
 
-    if (fromSchedule.isNotEmpty) return fromSchedule;
+      if (entries.isNotEmpty) {
+        // ScheduleEntry.customerId → Customer に変換
+        final result = <Customer>[];
+        final idSet = <String>{};
+        for (final entry in entries) {
+          if (idSet.contains(entry.customerId)) continue;
+          final customer = CustomerService.instance.getCustomerById(entry.customerId);
+          if (customer != null && customer.isActive) {
+            result.add(customer);
+            idSet.add(entry.customerId);
+          }
+        }
 
-    // フォールバック: regularDays
-    if (dayOfWeek >= 1 && dayOfWeek <= 6) {
-      return allActive
-          .where((c) => c.regularDays.contains(dayOfWeek))
-          .toList();
+        debugPrint('[TransportScreen] [$dateLabel] '
+            'source=weekly_schedule, '
+            'entries=${entries.length}, '
+            'matched=${result.length}, '
+            'ids=${result.map((c) => c.id).toList()}');
+
+        if (result.isNotEmpty) return result;
+        debugPrint('[TransportScreen] [$dateLabel] '
+            '週間計画にエントリあるが顧客マッチなし。フォールバックへ。');
+      } else {
+        debugPrint('[TransportScreen] [$dateLabel] '
+            '週間計画にエントリなし。フォールバックへ。');
+      }
+    } catch (e) {
+      debugPrint('[TransportScreen] [$dateLabel] '
+          '週間計画取得エラー: $e。フォールバックへ。');
     }
+
+    // ── 優先度 2: regularDays（曜日フォールバック）──────────
+    final dayOfWeek = _selectedDate.weekday; // 1=月〜7=日
+    if (dayOfWeek >= 1 && dayOfWeek <= 6) {
+      final result =
+          allActive.where((c) => c.regularDays.contains(dayOfWeek)).toList();
+
+      debugPrint('[TransportScreen] [$dateLabel] '
+          'source=regular_days, '
+          'weekday=$dayOfWeek, '
+          'matched=${result.length}, '
+          'ids=${result.map((c) => c.id).toList()}');
+
+      if (result.isNotEmpty) return result;
+    }
+
+    // ── 優先度 3: アクティブ顧客全員（最終フォールバック）──
+    debugPrint('[TransportScreen] [$dateLabel] '
+        'source=all_active_customers (final fallback), '
+        'count=${allActive.length}');
     return [];
   }
 
   // ── 自動グループ分け ────────────────────────────────────────
 
+  /// AppBar 用: 簡易グループ分け（APIキーなし）
+  Future<void> _runAutoAssignSimple() async {
+    await _runAutoAssign(useApi: false);
+  }
+
+  /// AppBar 用: AI実道路距離グループ分け
+  Future<void> _runAutoAssignDistance() async {
+    await _runAutoAssign(useApi: true);
+  }
+
+  /// お迎え・お送り両方を同時にグループ分け
+  Future<void> _runAutoAssign({required bool useApi}) async {
+    // 利用者を再取得（日付変更後に呼ばれる場合があるため）
+    final customers = _scheduledCustomers.isNotEmpty
+        ? _scheduledCustomers
+        : await _fetchScheduledCustomers();
+
+    if (customers.isEmpty) {
+      _showSnack('利用予定者がいません', isError: true);
+      return;
+    }
+
+    if (useApi && (_restApiKey == null || _restApiKey!.isEmpty)) {
+      _showSnack('AIルートにはRESTキーが必要です。設定画面で登録してください。',
+          isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final apiKey = useApi ? _restApiKey : null;
+
+      // お迎え・お送り両方生成
+      final pickupRoutes = await TransportPlanService.instance.autoGroupCustomers(
+        dateKey: _dateKey,
+        customers: customers,
+        type: TransportType.pickup,
+        apiKey: apiKey,
+      );
+      final dropoffRoutes =
+          await TransportPlanService.instance.autoGroupCustomers(
+        dateKey: _dateKey,
+        customers: customers,
+        type: TransportType.dropoff,
+        apiKey: apiKey,
+      );
+
+      // 保存
+      for (final r in pickupRoutes) {
+        await TransportPlanService.instance.saveRoute(r);
+      }
+      for (final r in dropoffRoutes) {
+        await TransportPlanService.instance.saveRoute(r);
+      }
+
+      await _loadRoutes();
+      final mode = useApi ? 'AI実道路' : '簡易';
+      _showSnack(
+        '[$mode] ${customers.length}名 → '
+        'お迎え${pickupRoutes.length}台 / お送り${dropoffRoutes.length}台',
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      _showSnack('グループ分けエラー: $e', isError: true);
+    }
+  }
+
+  /// タブ内アクションバー用（旧互換）
   Future<void> _autoGroup(TransportType type) async {
-    final customers = _getScheduledCustomers();
+    final customers = _scheduledCustomers.isNotEmpty
+        ? _scheduledCustomers
+        : await _fetchScheduledCustomers();
+
     if (customers.isEmpty) {
       _showSnack('利用予定者がいません', isError: true);
       return;
@@ -132,14 +288,14 @@ class _TransportScreenState extends State<TransportScreen>
         apiKey: _restApiKey,
       );
 
-      // 保存
       for (final r in routes) {
         await TransportPlanService.instance.saveRoute(r);
       }
 
       await _loadRoutes();
       _showSnack(
-        '${type == TransportType.pickup ? 'お迎え' : 'お送り'}を自動グループ分けしました（${customers.length}名 → ${routes.length}台）',
+        '${type == TransportType.pickup ? 'お迎え' : 'お送り'}を自動グループ分けしました'
+        '（${customers.length}名 → ${routes.length}台）',
       );
     } catch (e) {
       setState(() => _isLoading = false);
@@ -151,7 +307,8 @@ class _TransportScreenState extends State<TransportScreen>
 
   Future<void> _optimizeRoute(TransportVehicleRoute route) async {
     if (_restApiKey == null || _restApiKey!.isEmpty) {
-      _showSnack('APIキーが設定されていません。設定画面で登録してください。', isError: true);
+      _showSnack('APIキーが設定されていません。設定画面で登録してください。',
+          isError: true);
       return;
     }
     if (route.stops.isEmpty) {
@@ -172,6 +329,12 @@ class _TransportScreenState extends State<TransportScreen>
       setState(() => _isLoading = false);
       _showSnack('最適化エラー: $e', isError: true);
     }
+  }
+
+  /// AppBar: 全ルート最適化（お迎え・お送り両方）
+  Future<void> _optimizeAllRoutesAppBar() async {
+    final allRoutes = [..._pickupRoutes, ..._dropoffRoutes];
+    await _optimizeAllRoutes(allRoutes);
   }
 
   // ── Google Maps を開く ──────────────────────────────────────
@@ -207,14 +370,19 @@ class _TransportScreenState extends State<TransportScreen>
       final wps = addresses.length > 1
           ? addresses.sublist(1).map(Uri.encodeComponent).join('/')
           : '';
-      return 'https://www.google.com/maps/dir/$origin/${wps.isNotEmpty ? '$wps/' : ''}$dest?travelmode=driving';
+      return 'https://www.google.com/maps/dir/$origin/'
+          '${wps.isNotEmpty ? '$wps/' : ''}$dest?travelmode=driving';
     } else {
       final origin = Uri.encodeComponent(_facilityAddress);
       final dest = Uri.encodeComponent(addresses.last);
       final wps = addresses.length > 1
-          ? addresses.sublist(0, addresses.length - 1).map(Uri.encodeComponent).join('/')
+          ? addresses
+              .sublist(0, addresses.length - 1)
+              .map(Uri.encodeComponent)
+              .join('/')
           : '';
-      return 'https://www.google.com/maps/dir/$origin/${wps.isNotEmpty ? '$wps/' : ''}$dest?travelmode=driving';
+      return 'https://www.google.com/maps/dir/$origin/'
+          '${wps.isNotEmpty ? '$wps/' : ''}$dest?travelmode=driving';
     }
   }
 
@@ -286,7 +454,8 @@ class _TransportScreenState extends State<TransportScreen>
 
   // ── 停留所削除 ──────────────────────────────────────────────
 
-  Future<void> _removeStop(TransportVehicleRoute route, int stopIndex) async {
+  Future<void> _removeStop(
+      TransportVehicleRoute route, int stopIndex) async {
     final stops = List<TransportStop>.from(route.stops)
       ..removeAt(stopIndex);
     for (int i = 0; i < stops.length; i++) {
@@ -341,18 +510,56 @@ class _TransportScreenState extends State<TransportScreen>
               minHeight: 3,
               color: AppColors.primary,
             ),
-          if (_errorMessage != null)
-            _buildErrorBanner(),
+          if (_errorMessage != null) _buildErrorBanner(),
           Expanded(child: _buildTabView()),
         ],
       ),
     );
   }
 
+  // ── AppBar ───────────────────────────────────────────────────
+
   AppBar _buildAppBar() {
     return AppBar(
       title: const Text('送迎計画'),
       actions: [
+        // 自動グループ分けポップアップ
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.auto_awesome),
+          tooltip: '自動グループ分け',
+          onSelected: (mode) {
+            if (mode == 'simple') {
+              _runAutoAssignSimple();
+            } else {
+              _runAutoAssignDistance();
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'simple',
+              child: Row(children: [
+                Icon(Icons.shuffle, size: 18),
+                SizedBox(width: 8),
+                Text('簡易（定員均等）'),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'distance',
+              child: Row(children: [
+                Icon(Icons.route, size: 18),
+                SizedBox(width: 8),
+                Text('AI実道路距離'),
+              ]),
+            ),
+          ],
+        ),
+        // ルート最適化（全件）
+        IconButton(
+          icon: const Icon(Icons.alt_route),
+          tooltip: 'ルート最適化（全件）',
+          onPressed: _isLoading ? null : _optimizeAllRoutesAppBar,
+        ),
+        // PDF出力
         IconButton(
           icon: const Icon(Icons.picture_as_pdf),
           tooltip: 'PDF出力',
@@ -381,11 +588,11 @@ class _TransportScreenState extends State<TransportScreen>
                 _selectedDate =
                     _selectedDate.subtract(const Duration(days: 1));
               });
-              _loadRoutes();
+              _loadAll();
             },
           ),
           GestureDetector(
-            onTap: () => _pickDate(),
+            onTap: _pickDate,
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -401,7 +608,8 @@ class _TransportScreenState extends State<TransportScreen>
                       size: 16, color: AppColors.primary),
                   const SizedBox(width: 8),
                   Text(
-                    '${_selectedDate.year}年${_selectedDate.month}月${_selectedDate.day}日（$wd）',
+                    '${_selectedDate.year}年${_selectedDate.month}月'
+                    '${_selectedDate.day}日（$wd）',
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -418,14 +626,13 @@ class _TransportScreenState extends State<TransportScreen>
               setState(() {
                 _selectedDate = _selectedDate.add(const Duration(days: 1));
               });
-              _loadRoutes();
+              _loadAll();
             },
           ),
-          // 今日ボタン
           TextButton(
             onPressed: () {
               setState(() => _selectedDate = DateTime.now());
-              _loadRoutes();
+              _loadAll();
             },
             child: const Text('今日',
                 style: TextStyle(color: AppColors.primary)),
@@ -445,7 +652,7 @@ class _TransportScreenState extends State<TransportScreen>
     );
     if (picked != null && mounted) {
       setState(() => _selectedDate = picked);
-      _loadRoutes();
+      _loadAll();
     }
   }
 
@@ -467,7 +674,8 @@ class _TransportScreenState extends State<TransportScreen>
                 const Icon(Icons.arrow_downward, size: 18),
                 const SizedBox(width: 6),
                 Text(
-                  'お迎え（${_pickupRoutes.fold(0, (s, r) => s + r.stops.length)}名）',
+                  'お迎え'
+                  '（${_pickupRoutes.fold(0, (s, r) => s + r.stops.length)}名）',
                 ),
               ],
             ),
@@ -479,7 +687,8 @@ class _TransportScreenState extends State<TransportScreen>
                 const Icon(Icons.arrow_upward, size: 18),
                 const SizedBox(width: 6),
                 Text(
-                  'お送り（${_dropoffRoutes.fold(0, (s, r) => s + r.stops.length)}名）',
+                  'お送り'
+                  '（${_dropoffRoutes.fold(0, (s, r) => s + r.stops.length)}名）',
                 ),
               ],
             ),
@@ -525,7 +734,6 @@ class _TransportScreenState extends State<TransportScreen>
     final label = type == TransportType.pickup ? 'お迎え' : 'お送り';
     return CustomScrollView(
       slivers: [
-        // 自動グループ分けボタンバー
         SliverToBoxAdapter(child: _buildActionBar(type, routes)),
         if (routes.isEmpty)
           SliverFillRemaining(
@@ -544,42 +752,80 @@ class _TransportScreenState extends State<TransportScreen>
     );
   }
 
+  // ── アクションバー（タブ内）─────────────────────────────────
+
   Widget _buildActionBar(
       TransportType type, List<TransportVehicleRoute> routes) {
-    final scheduledCount = _getScheduledCustomers().length;
+    final count = _scheduledCustomers.length;
     return Container(
       color: AppColors.background,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
       child: Row(
         children: [
-          Text(
-            '利用予定 $scheduledCount 名',
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.onSurfaceVariant,
+          // 利用予定者数バッジ
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: count > 0
+                  ? AppColors.primary.withValues(alpha: 0.12)
+                  : AppColors.onSurfaceVariant.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.people_outline,
+                  size: 14,
+                  color: count > 0
+                      ? AppColors.primary
+                      : AppColors.onSurfaceVariant,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '利用予定 $count 名',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: count > 0
+                        ? AppColors.primary
+                        : AppColors.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
           const Spacer(),
+          // このタブのみ自動グループ分け
           OutlinedButton.icon(
             onPressed: _isLoading ? null : () => _autoGroup(type),
-            icon: const Icon(Icons.auto_awesome, size: 18),
+            icon: const Icon(Icons.auto_awesome, size: 16),
             label: const Text('自動グループ分け'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary,
               side: const BorderSide(color: AppColors.primary),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              textStyle: const TextStyle(fontSize: 12),
             ),
           ),
-          const SizedBox(width: 8),
-          if (routes.isNotEmpty)
+          if (routes.isNotEmpty) ...[
+            const SizedBox(width: 8),
             OutlinedButton.icon(
-              onPressed: _isLoading ? null : () => _optimizeAllRoutes(routes),
-              icon: const Icon(Icons.route, size: 18),
+              onPressed:
+                  _isLoading ? null : () => _optimizeAllRoutes(routes),
+              icon: const Icon(Icons.route, size: 16),
               label: const Text('全最適化'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.secondary,
                 side: const BorderSide(color: AppColors.secondary),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                textStyle: const TextStyle(fontSize: 12),
               ),
             ),
+          ],
         ],
       ),
     );
@@ -607,23 +853,218 @@ class _TransportScreenState extends State<TransportScreen>
     }
   }
 
+  // ── 空状態UI（利用予定数 + 大ボタン）────────────────────────
+
   Widget _buildEmptyState(String label) {
+    final count = _scheduledCustomers.length;
+    final weekdays = ['月', '火', '水', '木', '金', '土', '日'];
+    final wd = weekdays[_selectedDate.weekday - 1];
+    final dateStr =
+        '${_selectedDate.month}月${_selectedDate.day}日（$wd）';
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.directions_car_outlined,
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.directions_car_outlined,
               size: 64,
-              color: AppColors.onSurfaceVariant.withValues(alpha: 0.4)),
-          const SizedBox(height: 16),
-          Text('$label ルートがありません',
+              color: AppColors.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '$label ルートがありません',
               style: const TextStyle(
-                  color: AppColors.onSurfaceVariant, fontSize: 15)),
-          const SizedBox(height: 8),
-          const Text('「自動グループ分け」で作成してください',
-              style:
-                  TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13)),
-        ],
+                  color: AppColors.onSurfaceVariant,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            // 利用予定数の表示
+            if (count > 0) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.people,
+                        size: 16, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$dateStrの利用予定: $count名',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // 自動グループ分け 大ボタン
+              ElevatedButton.icon(
+                onPressed: _isLoading ? null : _showAutoAssignMenu,
+                icon: const Icon(Icons.auto_awesome, size: 20),
+                label: const Text(
+                  '自動グループ分け',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 28, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  elevation: 3,
+                ),
+              ),
+            ] else ...[
+              Text(
+                '$dateStrの週間計画にデータがありません',
+                style: const TextStyle(
+                    color: AppColors.onSurfaceVariant, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '週間利用計画を先に作成してください',
+                style: TextStyle(
+                    color: AppColors.onSurfaceVariant, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 空状態の大ボタンから呼ぶ自動グループ分けメニュー
+  void _showAutoAssignMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ハンドル
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.onSurfaceVariant.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '自動グループ分けモード',
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${_scheduledCustomers.length}名をお迎え・お送り両方に割り当てます',
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              _autoAssignTile(
+                icon: Icons.shuffle,
+                title: '簡易（定員均等）',
+                subtitle: 'APIキー不要。利用者を均等に振り分けます',
+                color: AppColors.secondary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _runAutoAssignSimple();
+                },
+              ),
+              const SizedBox(height: 8),
+              _autoAssignTile(
+                icon: Icons.route,
+                title: 'AI実道路距離',
+                subtitle: 'Google Maps APIを使って地理的に最適化します',
+                color: AppColors.primary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _runAutoAssignDistance();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _autoAssignTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: color)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: color),
+          ],
+        ),
       ),
     );
   }
@@ -658,7 +1099,6 @@ class _TransportScreenState extends State<TransportScreen>
       ),
       child: Row(
         children: [
-          // 車両アイコン
           Container(
             width: 40,
             height: 40,
@@ -696,7 +1136,8 @@ class _TransportScreenState extends State<TransportScreen>
                 Row(
                   children: [
                     if (route.totalDistanceLabel != '—') ...[
-                      const Icon(Icons.straighten, size: 13,
+                      const Icon(Icons.straighten,
+                          size: 13,
                           color: AppColors.onSurfaceVariant),
                       const SizedBox(width: 3),
                       Text(route.totalDistanceLabel,
@@ -706,7 +1147,8 @@ class _TransportScreenState extends State<TransportScreen>
                       const SizedBox(width: 10),
                     ],
                     if (route.totalDurationLabel != '—') ...[
-                      const Icon(Icons.timer_outlined, size: 13,
+                      const Icon(Icons.timer_outlined,
+                          size: 13,
                           color: AppColors.onSurfaceVariant),
                       const SizedBox(width: 3),
                       Text(route.totalDurationLabel,
@@ -716,8 +1158,8 @@ class _TransportScreenState extends State<TransportScreen>
                     ],
                     if (route.optimizedAt != null) ...[
                       const SizedBox(width: 8),
-                      const Icon(Icons.check_circle, size: 13,
-                          color: AppColors.success),
+                      const Icon(Icons.check_circle,
+                          size: 13, color: AppColors.success),
                       const SizedBox(width: 3),
                       const Text('最適化済',
                           style: TextStyle(
@@ -728,39 +1170,41 @@ class _TransportScreenState extends State<TransportScreen>
               ],
             ),
           ),
-          // アクションメニュー
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: AppColors.onSurfaceVariant),
+            icon: const Icon(Icons.more_vert,
+                color: AppColors.onSurfaceVariant),
             onSelected: (v) => _onCardMenuSelected(v, route),
-            itemBuilder: (_) => [
-              const PopupMenuItem(
+            itemBuilder: (_) => const [
+              PopupMenuItem(
                   value: 'optimize',
                   child: Row(children: [
                     Icon(Icons.route, size: 18),
                     SizedBox(width: 8),
                     Text('ルート最適化'),
                   ])),
-              const PopupMenuItem(
+              PopupMenuItem(
                   value: 'map',
                   child: Row(children: [
                     Icon(Icons.map, size: 18),
                     SizedBox(width: 8),
                     Text('地図を見る'),
                   ])),
-              const PopupMenuItem(
+              PopupMenuItem(
                   value: 'gmaps',
                   child: Row(children: [
                     Icon(Icons.open_in_new, size: 18),
                     SizedBox(width: 8),
                     Text('Google マップで開く'),
                   ])),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuDivider(),
+              PopupMenuItem(
                   value: 'delete',
                   child: Row(children: [
-                    Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                    Icon(Icons.delete_outline,
+                        size: 18, color: AppColors.error),
                     SizedBox(width: 8),
-                    Text('削除', style: TextStyle(color: AppColors.error)),
+                    Text('削除',
+                        style: TextStyle(color: AppColors.error)),
                   ])),
             ],
           ),
@@ -773,16 +1217,12 @@ class _TransportScreenState extends State<TransportScreen>
     switch (value) {
       case 'optimize':
         _optimizeRoute(route);
-        break;
       case 'map':
         _openMap(route);
-        break;
       case 'gmaps':
         _openGoogleMaps(route);
-        break;
       case 'delete':
         _deleteRoute(route);
-        break;
     }
   }
 
@@ -812,18 +1252,18 @@ class _TransportScreenState extends State<TransportScreen>
     );
   }
 
-  // ── 停留所リスト（並び替え可能）───────────────────────────────
+  // ── 停留所リスト ─────────────────────────────────────────────
 
   Widget _buildStopsList(TransportVehicleRoute route) {
     return Column(
       children: [
-        // 出発地（お迎え: 最初の利用者宅、お送り: 事業所）
         _buildFacilityTile(
-          route.transportType == TransportType.pickup ? null : _facilityAddress,
+          route.transportType == TransportType.pickup
+              ? null
+              : _facilityAddress,
           isStart: true,
           type: route.transportType,
         ),
-        // 並び替え可能な停留所リスト
         ReorderableListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -835,9 +1275,10 @@ class _TransportScreenState extends State<TransportScreen>
             return _buildStopTile(stop, i, route);
           },
         ),
-        // 到着地（お迎え: 事業所、お送り: 最後の利用者宅）
         _buildFacilityTile(
-          route.transportType == TransportType.dropoff ? null : _facilityAddress,
+          route.transportType == TransportType.dropoff
+              ? null
+              : _facilityAddress,
           isStart: false,
           type: route.transportType,
         ),
@@ -848,8 +1289,6 @@ class _TransportScreenState extends State<TransportScreen>
   Widget _buildFacilityTile(String? address,
       {required bool isStart, required TransportType type}) {
     final isPickup = type == TransportType.pickup;
-    // お迎え: 開始=不定(最初の利用者宅)、終了=事業所
-    // お送り: 開始=事業所、終了=不定(最後の利用者宅)
     final isFacility = (isPickup && !isStart) || (!isPickup && isStart);
     if (!isFacility) return const SizedBox.shrink();
 
@@ -871,7 +1310,8 @@ class _TransportScreenState extends State<TransportScreen>
       ),
       subtitle: Text(
         _facilityAddress,
-        style: const TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
+        style: const TextStyle(
+            fontSize: 11, color: AppColors.onSurfaceVariant),
         overflow: TextOverflow.ellipsis,
       ),
       dense: true,
@@ -940,7 +1380,8 @@ class _TransportScreenState extends State<TransportScreen>
             ),
           const SizedBox(width: 4),
           IconButton(
-            icon: const Icon(Icons.close, size: 18, color: AppColors.error),
+            icon:
+                const Icon(Icons.close, size: 18, color: AppColors.error),
             onPressed: () => _removeStop(route, index),
             tooltip: '除外',
             padding: EdgeInsets.zero,
@@ -962,7 +1403,6 @@ class _TransportScreenState extends State<TransportScreen>
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: Row(
         children: [
-          // ルート最適化
           _footerButton(
             icon: Icons.route,
             label: '最適化',
@@ -970,7 +1410,6 @@ class _TransportScreenState extends State<TransportScreen>
             color: AppColors.secondary,
           ),
           const SizedBox(width: 8),
-          // 地図表示
           _footerButton(
             icon: Icons.map_outlined,
             label: '地図',
@@ -978,7 +1417,6 @@ class _TransportScreenState extends State<TransportScreen>
             color: AppColors.success,
           ),
           const SizedBox(width: 8),
-          // Googleマップ
           _footerButton(
             icon: Icons.open_in_new,
             label: 'G-Maps',
@@ -1020,7 +1458,9 @@ class _TransportScreenState extends State<TransportScreen>
             const SizedBox(width: 4),
             Text(label,
                 style: TextStyle(
-                    fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+                    fontSize: 12,
+                    color: color,
+                    fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -1028,6 +1468,8 @@ class _TransportScreenState extends State<TransportScreen>
   }
 
   String _formatDateTime(DateTime dt) {
-    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return '${dt.month}/${dt.day} '
+        '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
   }
 }
