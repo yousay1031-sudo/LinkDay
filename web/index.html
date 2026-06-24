@@ -188,8 +188,12 @@
           }
 
           // ── intermediates: 利用者宅の中間 waypoint ──
+          // 注意: intermediates の型は Iterable<Waypoint> であるため、
+          // { location: LatLngLiteral } 形式の Waypoint として指定する。
+          // { lat, lng } の LatLngLiteral を直接渡すと型エラーになる。
+          // Waypoint 仕様: https://developers.google.com/maps/documentation/javascript/reference/route#Waypoint
           var intermediates = waypointLatLngs.map(function(wp) {
-            return { lat: wp.lat, lng: wp.lng };
+            return { location: { lat: wp.lat, lng: wp.lng } };
           });
 
           // ── ComputeRoutesRequest 構築 ──
@@ -238,13 +242,19 @@
           }
 
           // ── polylinePoints: Route.path（LatLngAltitude配列）→ {lat,lng} 配列 ──
-          // LatLngAltitude の .lat / .lng は getter（関数）ではなく直接プロパティ
+          // LatLngAltitude の .lat / .lng は readonly number プロパティ
+          // （旧 LatLng とは異なりメソッドではない）
+          // ただし、一部のブラウザ環境では関数として返る可能性があるため両方に対応。
           var polylinePoints = [];
           if (Array.isArray(route.path)) {
-            polylinePoints = route.path.map(function(pt) {
+            route.path.forEach(function(pt) {
+              if (!pt) return; // null/undefined 対策
               var lat = (typeof pt.lat === 'function') ? pt.lat() : pt.lat;
               var lng = (typeof pt.lng === 'function') ? pt.lng() : pt.lng;
-              return { lat: lat, lng: lng };
+              // lat/lng が有効な数値であることを確認
+              if (lat != null && lng != null && isFinite(lat) && isFinite(lng)) {
+                polylinePoints.push({ lat: lat, lng: lng });
+              }
             });
           }
 
