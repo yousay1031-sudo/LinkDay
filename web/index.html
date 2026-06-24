@@ -121,20 +121,28 @@
       });
     };
 
-    // ─── JS Interop: DirectionsService ───────────────────────────
+    // ─── JS Interop: Routes API (google.maps.routes.Route.computeRoutes) ──
+    //
+    // 【移行履歴】
+    //   2026-02: google.maps.DirectionsService が deprecated
+    //   2026-06: Routes API (google.maps.routes.Route.computeRoutes) に移行完了
+    //   移行ガイド: https://developers.google.com/maps/documentation/javascript/routes/routes-js-migration
+    //   Routes API リファレンス: https://developers.google.com/maps/documentation/javascript/reference/route
+    //
     // getDirectionsRoundTrip(requestJson) → Promise<resultJson>
     // requestJson: { facilityLat, facilityLng, waypointLatLngs: [{lat,lng},...], optimize }
     //
     // レスポンス構造:
-    //   legs: [{distanceMeters, durationSeconds, distanceText, durationText, startAddress, endAddress}]
-    //   totalDistanceMeters: number
-    //   totalDurationSeconds: number
-    //   waypointOrder: number[]   (optimize=false のとき空配列)
-    //   encodedPolyline: string   (null/undefined のとき空文字列)
+    //   totalDistanceMeters: number          合計距離 [m]
+    //   totalDurationSeconds: number         合計時間 [s]（route.durationMillis / 1000）
+    //   polylinePoints: [{lat, lng}, ...]    ルートポリライン座標列（Route.path より）
+    //   optimizedOrder: number[]             optimize=true 時の waypoint 順序（0始まり）
+    //   legs: [{ distanceMeters, durationSeconds }, ...]  各区間
     //
-    // TODO(2027): google.maps.routes.Route.computeRoutes に移行
-    //   DirectionsService は 2026年2月から deprecated（12ヶ月猶予あり）
-    //   移行ガイド: https://developers.google.com/maps/documentation/javascript/routes/routes-js-migration
+    // Google Cloud Console での Routes API 有効化手順（未有効化の場合）:
+    //   1. https://console.cloud.google.com/apis/library にアクセス
+    //   2. "Routes API" を検索して「有効にする」をクリック
+    //   ※ Maps JavaScript API と同じプロジェクト・APIキーで利用可能
     window.getDirectionsRoundTrip = function(requestJson) {
       return new Promise(function(resolve, reject) {
         if (!window.google || !window.google.maps) {
@@ -150,79 +158,117 @@
           return;
         }
 
-        var facilityLat = req.facilityLat;
-        var facilityLng = req.facilityLng;
+        var facilityLat     = req.facilityLat;
+        var facilityLng     = req.facilityLng;
         var waypointLatLngs = req.waypointLatLngs || [];
+        var optimize        = req.optimize === true;
 
-        // ── デバッグログ: リクエスト内容 ──
-        console.log('[getDirectionsRoundTrip] request:'
+        // ── デバッグログ: Routes API リクエスト ──
+        console.log('[Routes API] request:'
           + ' facility=' + facilityLat + ',' + facilityLng
           + ', stops=' + waypointLatLngs.length
-          + ', optimize=' + (req.optimize || false));
+          + ', optimize=' + optimize);
 
-        var facilityLatLng = new google.maps.LatLng(facilityLat, facilityLng);
-        var waypoints = waypointLatLngs.map(function(wp) {
-          return { location: new google.maps.LatLng(wp.lat, wp.lng), stopover: true };
-        });
+        // ── Routes API ライブラリを動的ロード ──
+        // importLibrary("routes") で google.maps.routes.Route を取得する
+        google.maps.importLibrary('routes').then(function(routesLib) {
+          var Route = routesLib.Route;
 
-        var service = new google.maps.DirectionsService();
-        service.route({
-          origin: facilityLatLng,
-          destination: facilityLatLng,
-          waypoints: waypoints,
-          optimizeWaypoints: req.optimize === true,
-          travelMode: google.maps.TravelMode.DRIVING,
-          region: 'JP'
-        }, function(result, status) {
-          // ── ステータスチェック ──
-          if (status !== 'OK' || !result || !result.routes || result.routes.length === 0) {
-            console.warn('[getDirectionsRoundTrip] failed: status=' + status
-              + ', result=' + (result ? typeof result : 'null'));
-            reject(new Error('DirectionsService failed: ' + status));
+          // ── fields: 必要なフィールドのみ要求（パフォーマンス最適化）──
+          var fields = [
+            'distanceMeters',
+            'durationMillis',
+            'legs.distanceMeters',
+            'legs.durationMillis',
+            'path'
+          ];
+          // optimize=true のとき optimizedIntermediateWaypointIndices も取得
+          if (optimize) {
+            fields.push('optimizedIntermediateWaypointIndices');
+          }
+
+          // ── intermediates: 利用者宅の中間 waypoint ──
+          var intermediates = waypointLatLngs.map(function(wp) {
+            return { lat: wp.lat, lng: wp.lng };
+          });
+
+          // ── ComputeRoutesRequest 構築 ──
+          var computeRequest = {
+            origin:               { lat: facilityLat, lng: facilityLng },
+            destination:          { lat: facilityLat, lng: facilityLng },
+            intermediates:        intermediates,
+            travelMode:           'DRIVING',
+            routingPreference:    'TRAFFIC_AWARE',
+            optimizeWaypointOrder: optimize,
+            language:             'ja',
+            region:               'JP',
+            units:                'METRIC',
+            fields:               fields
+          };
+
+          return Route.computeRoutes(computeRequest);
+
+        }).then(function(response) {
+          // ── レスポンス検証 ──
+          if (!response || !response.routes || response.routes.length === 0) {
+            console.warn('[Routes API] no routes returned');
+            reject(new Error('Routes API: ルートが返されませんでした'));
             return;
           }
 
-          var route = result.routes[0];
+          var route = response.routes[0];
 
-          // ── legs: 各フィールドを null 安全に取得 ──
-          var legs = (route.legs || []).map(function(leg) {
+          // ── 合計距離・時間（null 安全）──
+          var totalDistanceMeters  = (route.distanceMeters != null) ? route.distanceMeters : 0;
+          var totalDurationSeconds = (route.durationMillis != null)
+            ? Math.floor(route.durationMillis / 1000) : 0;
+
+          // ── legs: 各区間の距離・時間（null 安全）──
+          var legs = (Array.isArray(route.legs) ? route.legs : []).map(function(leg) {
             return {
-              distanceMeters:  (leg.distance  && leg.distance.value  != null) ? leg.distance.value  : 0,
-              durationSeconds: (leg.duration  && leg.duration.value  != null) ? leg.duration.value  : 0,
-              distanceText:    (leg.distance  && leg.distance.text)  ? leg.distance.text  : '',
-              durationText:    (leg.duration  && leg.duration.text)  ? leg.duration.text  : '',
-              startAddress:    leg.start_address || '',
-              endAddress:      leg.end_address   || ''
+              distanceMeters:  (leg.distanceMeters != null) ? leg.distanceMeters : 0,
+              durationSeconds: (leg.durationMillis != null) ? Math.floor(leg.durationMillis / 1000) : 0
             };
           });
 
-          // ── 合計距離・時間 ──
-          var totalDistanceMeters  = legs.reduce(function(s, l) { return s + l.distanceMeters;  }, 0);
-          var totalDurationSeconds = legs.reduce(function(s, l) { return s + l.durationSeconds; }, 0);
+          // ── optimizedOrder: optimize=false のとき []、undefined 対策 ──
+          var optimizedOrder = [];
+          if (optimize && Array.isArray(route.optimizedIntermediateWaypointIndices)) {
+            optimizedOrder = route.optimizedIntermediateWaypointIndices;
+          }
 
-          // ── waypoint_order: optimize=false のとき undefined になる可能性あり ──
-          var waypointOrder = Array.isArray(route.waypoint_order) ? route.waypoint_order : [];
+          // ── polylinePoints: Route.path（LatLngAltitude配列）→ {lat,lng} 配列 ──
+          // LatLngAltitude の .lat / .lng は getter（関数）ではなく直接プロパティ
+          var polylinePoints = [];
+          if (Array.isArray(route.path)) {
+            polylinePoints = route.path.map(function(pt) {
+              var lat = (typeof pt.lat === 'function') ? pt.lat() : pt.lat;
+              var lng = (typeof pt.lng === 'function') ? pt.lng() : pt.lng;
+              return { lat: lat, lng: lng };
+            });
+          }
 
-          // ── エンコードポリライン: overview_polyline が null の場合は空文字列 ──
-          var encodedPolyline = (route.overview_polyline && route.overview_polyline.points)
-            ? route.overview_polyline.points
-            : '';
-
-          // ── デバッグログ: レスポンス内容 ──
-          console.log('[getDirectionsRoundTrip] response:'
+          // ── デバッグログ: Routes API レスポンス ──
+          console.log('[Routes API] response:'
             + ' legs=' + legs.length
             + ', totalDist=' + totalDistanceMeters + 'm'
             + ', totalDur=' + totalDurationSeconds + 's'
-            + ', waypointOrder=[' + waypointOrder.join(',') + ']'
-            + ', polylineLen=' + encodedPolyline.length);
+            + ', optimizedOrder=[' + optimizedOrder.join(',') + ']'
+            + ', pathPoints=' + polylinePoints.length);
 
           resolve(JSON.stringify({
-            legs: legs,
             totalDistanceMeters:  totalDistanceMeters,
             totalDurationSeconds: totalDurationSeconds,
-            waypointOrder:        waypointOrder,
-            encodedPolyline:      encodedPolyline
+            polylinePoints:       polylinePoints,
+            optimizedOrder:       optimizedOrder,
+            legs:                 legs
           }));
+
+        }).catch(function(err) {
+          // ── Routes API 呼び出しエラー ──
+          var msg = (err && err.message) ? err.message : String(err);
+          console.warn('[Routes API] failed:', msg);
+          reject(new Error('Routes API failed: ' + msg));
         });
       });
     };

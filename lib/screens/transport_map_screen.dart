@@ -140,7 +140,9 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   }
 
   Future<void> _fetchPolyline() async {
-    // JS Interop 経由で Directions API（ラウンドトリップ）を呼ぶ
+    // Routes API (computeRoutes) 経由でポリラインを取得する
+    // 旧 DirectionsService は 2026-02 deprecated のため廃止済み。
+    // result.polylinePoints は Routes API の Route.path から変換した LatLng 列。
     final facility = SettingsService.instance.getSettings();
     final facilityLat = facility.facilityLat;
     final facilityLng = facility.facilityLng;
@@ -165,7 +167,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           .map((s) => LatLng(s.lat!, s.lng!))
           .toList();
 
-      debugPrint('[TransportMapScreen] fetchPolyline RoundTrip JS: '
+      debugPrint('[TransportMapScreen] fetchPolyline Routes API: '
           'facility=$facilityLat,$facilityLng, stops=${waypointLatLngs.length}');
 
       final result = await MapsJsService.instance.getDirectionsRoundTrip(
@@ -174,19 +176,28 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         optimize: false,
       );
 
+      // result.polylinePoints: Routes API の Route.path → {lat,lng} 変換済み座標列
       _routePolylinePoints = result.polylinePoints;
 
-      _polylines.add(
-        Polyline(
-          polylineId: const PolylineId('route'),
-          points: _routePolylinePoints,
-          color: AppColors.primary,
-          width: 4,
-          patterns: const [],
-        ),
-      );
+      if (_routePolylinePoints.isNotEmpty) {
+        _polylines.add(
+          Polyline(
+            polylineId: const PolylineId('route'),
+            points: _routePolylinePoints,
+            color: AppColors.primary,
+            width: 4,
+            patterns: const [],
+          ),
+        );
+        debugPrint('[TransportMapScreen] Routes API polyline: '
+            '${_routePolylinePoints.length}点');
+      } else {
+        // polylinePoints が空（path フィールドが返されなかった）→ 直線フォールバック
+        debugPrint('[TransportMapScreen] polylinePoints が空 → 直線フォールバック');
+        _buildSimplePolyline();
+      }
     } catch (e) {
-      debugPrint('[TransportMapScreen] directions JS failed: $e');
+      debugPrint('[TransportMapScreen] Routes API failed: $e');
       // フォールバック: 直線ポリライン
       _buildSimplePolyline();
     }

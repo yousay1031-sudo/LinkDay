@@ -352,9 +352,13 @@ class TransportPlanService {
     return route;
   }
 
-  /// Directions API（ラウンドトリップ、JS Interop版）でセグメント距離・時間を設定し、時刻も算出
+  /// Routes API（ラウンドトリップ、JS Interop版）でセグメント距離・時間を設定し、時刻も算出
   ///
-  /// legs 構成:
+  /// 【使用API】
+  ///   google.maps.routes.Route.computeRoutes()（Routes API）
+  ///   旧 DirectionsService は 2026-02 に deprecated のため廃止済み。
+  ///
+  /// legs 構成（origin=事業所、destination=事業所）:
   ///   legs[0]: 事業所 → stops[0]
   ///   legs[1]: stops[0] → stops[1]
   ///   ...
@@ -372,7 +376,7 @@ class TransportPlanService {
   }) async {
     if (reorderedStops.isEmpty) return;
 
-    // LatLng を持つ停留所のみ waypoint として使用
+    // LatLng を持つ停留所のみ intermediate waypoint として使用
     final validStops = reorderedStops
         .where((s) => s.lat != null && s.lng != null)
         .toList();
@@ -383,30 +387,33 @@ class TransportPlanService {
         .map((s) => LatLng(s.lat!, s.lng!))
         .toList();
 
-    debugPrint('[TransportPlanService] _attachDirectionsDataRoundTrip: '
+    debugPrint('[TransportPlanService] _attachDirectionsDataRoundTrip (Routes API): '
         'facility=$facilityLat,$facilityLng, '
         'waypoints=${waypointLatLngs.length}件');
 
-    // JS Interop 経由で Directions API を呼ぶ
+    // JS Interop 経由で Routes API を呼ぶ
     final result = await MapsJsService.instance.getDirectionsRoundTrip(
       facilityLatLng: facilityLatLng,
       waypointLatLngs: waypointLatLngs,
       optimize: false,
     );
 
-    route.totalDistanceMeters = result.totalDistanceMeters;
+    // 合計距離・時間を route に設定
+    route.totalDistanceMeters  = result.totalDistanceMeters;
     route.totalDurationSeconds = result.totalDurationSeconds;
 
-    // JsDirectionsResult: legDistances / legDurations
+    // 各区間の距離・時間を停留所に設定
+    // result.legDistances / result.legDurations は JsDirectionsResult の互換ゲッター
+    // （legs[i].distanceMeters / legs[i].durationSeconds の派生）
     // legs[0] = 事業所→stops[0]、legs[i] = stops[i-1]→stops[i]、legs[n] = stops[n-1]→事業所
     for (int i = 0; i < reorderedStops.length; i++) {
       if (i < result.legDistances.length) {
-        reorderedStops[i].distanceFromPrevMeters = result.legDistances[i];
+        reorderedStops[i].distanceFromPrevMeters  = result.legDistances[i];
         reorderedStops[i].durationFromPrevSeconds = result.legDurations[i];
       }
     }
 
-    // 時刻算出
+    // 時刻算出（Routes API の durationSeconds を使用）
     _assignScheduledTimes(
       route: route,
       reorderedStops: reorderedStops,

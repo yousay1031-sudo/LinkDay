@@ -10,6 +10,8 @@ import 'maps_loader.dart';
 import 'settings_service.dart';
 
 // ── JS グローバル関数バインディング ──────────────────────────────
+// dart:js_interop (@JS アノテーション) で index.html の window.* を呼び出す。
+// package:js は使用しない（dart:js_interop に統一）。
 
 @JS('geocodeAddress')
 external JSPromise _geocodeAddressJs(String address);
@@ -26,38 +28,86 @@ class GeoResult {
   const GeoResult({required this.lat, required this.lng});
 }
 
-/// Directions ラウンドトリップ結果
+/// Routes API (computeRoutes) の各区間結果
+///
+/// JS側 legs[i] = { distanceMeters, durationSeconds }
+class RouteLeg {
+  /// 区間距離 [m]
+  final int distanceMeters;
+
+  /// 区間所要時間 [s]
+  final int durationSeconds;
+
+  const RouteLeg({
+    required this.distanceMeters,
+    required this.durationSeconds,
+  });
+}
+
+/// Routes API ラウンドトリップ結果
+///
+/// 【JS側レスポンス構造（index.html 参照）】
+///   totalDistanceMeters: number          合計距離 [m]
+///   totalDurationSeconds: number         合計時間 [s]（durationMillis / 1000）
+///   polylinePoints: [{lat, lng}, ...]    ルートポリライン座標列
+///   optimizedOrder: number[]             optimize=true 時の waypoint 順序（0始まり）
+///   legs: [{ distanceMeters, durationSeconds }, ...]  各区間
+///
+/// 【移行履歴】
+///   旧: JsDirectionsResult（DirectionsService 用）→ 廃止
+///   新: JsDirectionsResult（Routes API 用、同名で互換レイヤーを維持）
+///
+/// legDistances / legDurations は旧 DirectionsService 形式との互換ゲッター。
+/// transport_plan_service.dart がこれらを参照しているため残す。
 class JsDirectionsResult {
-  /// legs[0]: 事業所→stops[0], legs[n]: stops[n-1]→事業所
-  final List<int> legDistances;
-  final List<int> legDurations;
+  /// 合計距離 [m]
   final int totalDistanceMeters;
+
+  /// 合計時間 [s]
   final int totalDurationSeconds;
 
-  /// TSP 最適化後の waypoint 順序（optimize=true のとき意味がある）
-  final List<int> waypointOrder;
-
-  /// エンコードされたポリライン（デコードは Dart 側で行う）
-  final String encodedPolyline;
-
-  /// ポリラインポイント（デコード済み）
+  /// ルートポリライン（Routes API の Route.path から変換）
   final List<LatLng> polylinePoints;
 
+  /// TSP 最適化後の waypoint 順序（optimize=true のとき意味がある）
+  /// Routes API では optimizedIntermediateWaypointIndices（0始まり）
+  final List<int> optimizedOrder;
+
+  /// 各区間の距離・時間リスト
+  /// legs[0]: 事業所→stops[0]、legs[n]: stops[n-1]→事業所
+  final List<RouteLeg> legs;
+
   const JsDirectionsResult({
-    required this.legDistances,
-    required this.legDurations,
     required this.totalDistanceMeters,
     required this.totalDurationSeconds,
-    required this.waypointOrder,
-    required this.encodedPolyline,
     required this.polylinePoints,
+    required this.optimizedOrder,
+    required this.legs,
   });
+
+  // ── 互換ゲッター（旧フィールド名との互換性）──────────────────
+  // transport_plan_service.dart が result.legDistances / result.legDurations を
+  // 参照しているため、legs から派生させる互換ゲッターを提供する。
+
+  /// 各区間の距離 [m] リスト（旧 legDistances との互換）
+  List<int> get legDistances => legs.map((l) => l.distanceMeters).toList();
+
+  /// 各区間の時間 [s] リスト（旧 legDurations との互換）
+  List<int> get legDurations => legs.map((l) => l.durationSeconds).toList();
+
+  /// @deprecated: Routes API では encodedPolyline は存在しない
+  /// polylinePoints を使ってください。
+  String get encodedPolyline => '';
 }
 
 /// Google Maps JS API（JS Interop版）クライアント
 ///
-/// dart:js_interop 経由で window.google.maps.* を呼ぶ。
+/// dart:js_interop 経由で window.google.maps.routes.Route.computeRoutes を呼ぶ。
 /// CORS 問題なし、キーはブラウザ URL に露出しない。
+///
+/// 【移行済み API】
+///   旧: google.maps.DirectionsService.route() → deprecated（2026-02）
+///   新: google.maps.routes.Route.computeRoutes() → 本実装
 class MapsJsService {
   MapsJsService._();
   static final MapsJsService instance = MapsJsService._();
@@ -111,23 +161,24 @@ class MapsJsService {
     return results;
   }
 
-  // ── Directions（ラウンドトリップ） ──────────────────────────
+  // ── Routes API（ラウンドトリップ） ───────────────────────────
 
   /// 事業所を起点・終点とするラウンドトリップルートを取得する
   ///
+  /// 【使用API】
+  ///   google.maps.routes.Route.computeRoutes()（Routes API）
+  ///   旧 DirectionsService は 2026-02 に deprecated のため廃止済み。
+  ///
   /// [facilityLatLng] 事業所の緯度経度
-  /// [waypointLatLngs] 停留所の緯度経度リスト
+  /// [waypointLatLngs] 停留所の緯度経度リスト（intermediates として渡す）
   /// [optimize] TSP最適化を行うか（true=最適化、false=順番固定）
   ///
-  /// 構成: 事業所 → 停留所1 → ... → 停留所N → 事業所
+  /// 構成: 事業所(origin) → 停留所1〜N(intermediates) → 事業所(destination)
   ///
-  /// JS側レスポンス構造（index.html 参照）:
-  ///   legs: [{distanceMeters, durationSeconds, distanceText, durationText,
-  ///           startAddress, endAddress}]
-  ///   totalDistanceMeters: number
-  ///   totalDurationSeconds: number
-  ///   waypointOrder: number[]   (optimize=false のとき [])
-  ///   encodedPolyline: string   (null/undefined のとき '')
+  /// 戻り値の legs 構成:
+  ///   legs[0]:   事業所 → stops[0]
+  ///   legs[i]:   stops[i-1] → stops[i]
+  ///   legs[n]:   stops[n-1] → 事業所
   Future<JsDirectionsResult> getDirectionsRoundTrip({
     required LatLng facilityLatLng,
     required List<LatLng> waypointLatLngs,
@@ -147,8 +198,8 @@ class MapsJsService {
       'optimize': optimize,
     });
 
-    // ── デバッグログ: リクエスト ──
-    debugPrint('[MapsJsService] getDirectionsRoundTrip request: '
+    // ── デバッグログ: Routes API リクエスト ──
+    debugPrint('[MapsJsService] Routes API request: '
         'facility=${facilityLatLng.latitude},${facilityLatLng.longitude}, '
         'stops=${waypointLatLngs.length}件, optimize=$optimize');
 
@@ -156,74 +207,85 @@ class MapsJsService {
       final jsResult = await _getDirectionsRoundTripJs(requestJson).toDart;
 
       // dartify() の戻り値は String（JSON文字列）のはずだが、
-      // null や JSObject が返ってくる場合に備えて null 安全にキャスト
+      // null や JSObject が返る場合に備えて null 安全にキャスト
       final dartified = jsResult.dartify();
       if (dartified == null) {
-        throw StateError('getDirectionsRoundTrip: JS から null が返されました');
+        throw StateError('Routes API: JS から null が返されました');
       }
-      final resultStr = dartified as String? ?? '';
+      final resultStr = (dartified as String?) ?? '';
       if (resultStr.isEmpty) {
-        throw StateError('getDirectionsRoundTrip: JS から空文字列が返されました');
+        throw StateError('Routes API: JS から空文字列が返されました');
       }
 
-      final map = jsonDecode(resultStr);
-      if (map is! Map<String, dynamic>) {
+      final decoded = jsonDecode(resultStr);
+      if (decoded is! Map<String, dynamic>) {
         throw StateError(
-            'getDirectionsRoundTrip: レスポンスが Map ではありません (${map.runtimeType})');
+            'Routes API: レスポンスが Map ではありません (${decoded.runtimeType})');
       }
-
-      // ── legs パース（新構造: オブジェクト配列）──
-      // JS側: legs = [{distanceMeters, durationSeconds, ...}, ...]
-      final legsRaw = map['legs'];
-      final legsList = (legsRaw is List) ? legsRaw : <dynamic>[];
-
-      final legDistances = <int>[];
-      final legDurations = <int>[];
-
-      for (final leg in legsList) {
-        if (leg is Map) {
-          legDistances.add((leg['distanceMeters']  as num?)?.toInt() ?? 0);
-          legDurations.add((leg['durationSeconds'] as num?)?.toInt() ?? 0);
-        } else {
-          legDistances.add(0);
-          legDurations.add(0);
-        }
-      }
+      final map = decoded;
 
       // ── 合計距離・時間（null 安全）──
       final totalDist = (map['totalDistanceMeters'] as num?)?.toInt() ?? 0;
       final totalDur  = (map['totalDurationSeconds'] as num?)?.toInt() ?? 0;
 
-      // ── waypointOrder（null / 非List のとき空配列）──
-      final waypointRaw = map['waypointOrder'];
-      final waypointOrder = (waypointRaw is List)
-          ? waypointRaw.map((e) => (e as num?)?.toInt() ?? 0).toList()
+      // ── legs パース（新構造: オブジェクト配列）──
+      // JS側: legs = [{distanceMeters, durationSeconds}, ...]
+      final legsRaw = map['legs'];
+      final legsList = (legsRaw is List) ? legsRaw : <dynamic>[];
+
+      final legs = <RouteLeg>[];
+      for (final leg in legsList) {
+        if (leg is Map) {
+          legs.add(RouteLeg(
+            distanceMeters:  (leg['distanceMeters']  as num?)?.toInt() ?? 0,
+            durationSeconds: (leg['durationSeconds'] as num?)?.toInt() ?? 0,
+          ));
+        } else {
+          legs.add(const RouteLeg(distanceMeters: 0, durationSeconds: 0));
+        }
+      }
+
+      // ── optimizedOrder（null / 非List のとき空配列）──
+      final orderRaw = map['optimizedOrder'];
+      final optimizedOrder = (orderRaw is List)
+          ? orderRaw.map((e) => (e as num?)?.toInt() ?? 0).toList()
           : <int>[];
 
-      // ── encodedPolyline（null のとき空文字列）──
-      final encodedPolyline = (map['encodedPolyline'] as String?) ?? '';
-      final polylinePoints =
-          encodedPolyline.isNotEmpty ? _decodePolyline(encodedPolyline) : <LatLng>[];
+      // ── polylinePoints（Routes API: {lat,lng} 配列 → LatLng 変換）──
+      // 旧 encodedPolyline は存在しない。Route.path から座標列を取得する。
+      final ptsRaw = map['polylinePoints'];
+      final polylinePoints = <LatLng>[];
+      if (ptsRaw is List) {
+        for (final pt in ptsRaw) {
+          if (pt is Map) {
+            final lat = (pt['lat'] as num?)?.toDouble();
+            final lng = (pt['lng'] as num?)?.toDouble();
+            if (lat != null && lng != null) {
+              polylinePoints.add(LatLng(lat, lng));
+            }
+          }
+        }
+      }
 
-      // ── デバッグログ: レスポンス ──
-      debugPrint('[MapsJsService] getDirectionsRoundTrip response: '
-          'totalDist=${totalDist}m, totalDur=${totalDur}s, '
-          'legs=${legDistances.length}件, '
-          'waypointOrder=$waypointOrder, '
-          'polylineLen=${encodedPolyline.length}');
+      // ── デバッグログ: Routes API レスポンス ──
+      final distKm  = (totalDist / 1000).toStringAsFixed(1);
+      final durMin  = (totalDur  / 60  ).toStringAsFixed(0);
+      debugPrint('[MapsJsService] Routes API success: '
+          'totalDist=${distKm}km, totalDur=${durMin}min, '
+          'legs=${legs.length}件, '
+          'optimizedOrder=$optimizedOrder, '
+          'pathPoints=${polylinePoints.length}');
 
       return JsDirectionsResult(
-        legDistances: legDistances,
-        legDurations: legDurations,
         totalDistanceMeters: totalDist,
         totalDurationSeconds: totalDur,
-        waypointOrder: waypointOrder,
-        encodedPolyline: encodedPolyline,
         polylinePoints: polylinePoints,
+        optimizedOrder: optimizedOrder,
+        legs: legs,
       );
     } catch (e, st) {
-      // ── デバッグログ: 失敗詳細 ──
-      debugPrint('[MapsJsService] getDirectionsRoundTrip FAILED: $e');
+      // ── デバッグログ: Routes API 失敗 ──
+      debugPrint('[MapsJsService] Routes API failed: $e');
       debugPrint('[MapsJsService]   facility=${facilityLatLng.latitude},'
           '${facilityLatLng.longitude}, stops=${waypointLatLngs.length}件');
       debugPrint('[MapsJsService]   stackTrace: $st');
@@ -241,37 +303,5 @@ class MapsJsService {
       return dartified.map((k, v) => MapEntry(k.toString(), v));
     }
     return {};
-  }
-
-  /// エンコードされたポリラインを LatLng リストにデコードする
-  List<LatLng> _decodePolyline(String encoded) {
-    final result = <LatLng>[];
-    int index = 0;
-    int lat = 0;
-    int lng = 0;
-
-    while (index < encoded.length) {
-      int shift = 0, b = 0, result0 = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result0 |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      final dlat = (result0 & 1) != 0 ? ~(result0 >> 1) : (result0 >> 1);
-      lat += dlat;
-
-      shift = 0;
-      result0 = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result0 |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      final dlng = (result0 & 1) != 0 ? ~(result0 >> 1) : (result0 >> 1);
-      lng += dlng;
-
-      result.add(LatLng(lat / 1e5, lng / 1e5));
-    }
-    return result;
   }
 }
