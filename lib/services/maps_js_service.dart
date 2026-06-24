@@ -120,6 +120,14 @@ class MapsJsService {
   /// [optimize] TSP最適化を行うか（true=最適化、false=順番固定）
   ///
   /// 構成: 事業所 → 停留所1 → ... → 停留所N → 事業所
+  ///
+  /// JS側レスポンス構造（index.html 参照）:
+  ///   legs: [{distanceMeters, durationSeconds, distanceText, durationText,
+  ///           startAddress, endAddress}]
+  ///   totalDistanceMeters: number
+  ///   totalDurationSeconds: number
+  ///   waypointOrder: number[]   (optimize=false のとき [])
+  ///   encodedPolyline: string   (null/undefined のとき '')
   Future<JsDirectionsResult> getDirectionsRoundTrip({
     required LatLng facilityLatLng,
     required List<LatLng> waypointLatLngs,
@@ -139,29 +147,70 @@ class MapsJsService {
       'optimize': optimize,
     });
 
-    debugPrint('[MapsJsService] getDirectionsRoundTrip: '
+    // ── デバッグログ: リクエスト ──
+    debugPrint('[MapsJsService] getDirectionsRoundTrip request: '
         'facility=${facilityLatLng.latitude},${facilityLatLng.longitude}, '
         'stops=${waypointLatLngs.length}件, optimize=$optimize');
 
     try {
       final jsResult = await _getDirectionsRoundTripJs(requestJson).toDart;
-      final resultStr = jsResult.dartify() as String;
-      final map = jsonDecode(resultStr) as Map<String, dynamic>;
 
-      final legDistances =
-          (map['legDistances'] as List).map((e) => (e as num).toInt()).toList();
-      final legDurations =
-          (map['legDurations'] as List).map((e) => (e as num).toInt()).toList();
-      final totalDist = (map['totalDistanceMeters'] as num).toInt();
-      final totalDur = (map['totalDurationSeconds'] as num).toInt();
-      final waypointOrder =
-          (map['waypointOrder'] as List).map((e) => (e as num).toInt()).toList();
-      final encodedPolyline = map['encodedPolyline'] as String;
-      final polylinePoints = _decodePolyline(encodedPolyline);
+      // dartify() の戻り値は String（JSON文字列）のはずだが、
+      // null や JSObject が返ってくる場合に備えて null 安全にキャスト
+      final dartified = jsResult.dartify();
+      if (dartified == null) {
+        throw StateError('getDirectionsRoundTrip: JS から null が返されました');
+      }
+      final resultStr = dartified as String? ?? '';
+      if (resultStr.isEmpty) {
+        throw StateError('getDirectionsRoundTrip: JS から空文字列が返されました');
+      }
 
-      debugPrint('[MapsJsService] getDirectionsRoundTrip result: '
+      final map = jsonDecode(resultStr);
+      if (map is! Map<String, dynamic>) {
+        throw StateError(
+            'getDirectionsRoundTrip: レスポンスが Map ではありません (${map.runtimeType})');
+      }
+
+      // ── legs パース（新構造: オブジェクト配列）──
+      // JS側: legs = [{distanceMeters, durationSeconds, ...}, ...]
+      final legsRaw = map['legs'];
+      final legsList = (legsRaw is List) ? legsRaw : <dynamic>[];
+
+      final legDistances = <int>[];
+      final legDurations = <int>[];
+
+      for (final leg in legsList) {
+        if (leg is Map) {
+          legDistances.add((leg['distanceMeters']  as num?)?.toInt() ?? 0);
+          legDurations.add((leg['durationSeconds'] as num?)?.toInt() ?? 0);
+        } else {
+          legDistances.add(0);
+          legDurations.add(0);
+        }
+      }
+
+      // ── 合計距離・時間（null 安全）──
+      final totalDist = (map['totalDistanceMeters'] as num?)?.toInt() ?? 0;
+      final totalDur  = (map['totalDurationSeconds'] as num?)?.toInt() ?? 0;
+
+      // ── waypointOrder（null / 非List のとき空配列）──
+      final waypointRaw = map['waypointOrder'];
+      final waypointOrder = (waypointRaw is List)
+          ? waypointRaw.map((e) => (e as num?)?.toInt() ?? 0).toList()
+          : <int>[];
+
+      // ── encodedPolyline（null のとき空文字列）──
+      final encodedPolyline = (map['encodedPolyline'] as String?) ?? '';
+      final polylinePoints =
+          encodedPolyline.isNotEmpty ? _decodePolyline(encodedPolyline) : <LatLng>[];
+
+      // ── デバッグログ: レスポンス ──
+      debugPrint('[MapsJsService] getDirectionsRoundTrip response: '
           'totalDist=${totalDist}m, totalDur=${totalDur}s, '
-          'legs=${legDistances.length}, waypointOrder=$waypointOrder');
+          'legs=${legDistances.length}件, '
+          'waypointOrder=$waypointOrder, '
+          'polylineLen=${encodedPolyline.length}');
 
       return JsDirectionsResult(
         legDistances: legDistances,
@@ -172,8 +221,12 @@ class MapsJsService {
         encodedPolyline: encodedPolyline,
         polylinePoints: polylinePoints,
       );
-    } catch (e) {
-      debugPrint('[MapsJsService] getDirectionsRoundTrip error: $e');
+    } catch (e, st) {
+      // ── デバッグログ: 失敗詳細 ──
+      debugPrint('[MapsJsService] getDirectionsRoundTrip FAILED: $e');
+      debugPrint('[MapsJsService]   facility=${facilityLatLng.latitude},'
+          '${facilityLatLng.longitude}, stops=${waypointLatLngs.length}件');
+      debugPrint('[MapsJsService]   stackTrace: $st');
       rethrow;
     }
   }

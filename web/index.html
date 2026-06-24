@@ -122,17 +122,46 @@
     };
 
     // ─── JS Interop: DirectionsService ───────────────────────────
-    // getDirections(requestJson) → Promise<resultJson>
+    // getDirectionsRoundTrip(requestJson) → Promise<resultJson>
     // requestJson: { facilityLat, facilityLng, waypointLatLngs: [{lat,lng},...], optimize }
+    //
+    // レスポンス構造:
+    //   legs: [{distanceMeters, durationSeconds, distanceText, durationText, startAddress, endAddress}]
+    //   totalDistanceMeters: number
+    //   totalDurationSeconds: number
+    //   waypointOrder: number[]   (optimize=false のとき空配列)
+    //   encodedPolyline: string   (null/undefined のとき空文字列)
+    //
+    // TODO(2027): google.maps.routes.Route.computeRoutes に移行
+    //   DirectionsService は 2026年2月から deprecated（12ヶ月猶予あり）
+    //   移行ガイド: https://developers.google.com/maps/documentation/javascript/routes/routes-js-migration
     window.getDirectionsRoundTrip = function(requestJson) {
       return new Promise(function(resolve, reject) {
         if (!window.google || !window.google.maps) {
           reject(new Error('Google Maps がまだロードされていません'));
           return;
         }
-        var req = JSON.parse(requestJson);
-        var facilityLatLng = new google.maps.LatLng(req.facilityLat, req.facilityLng);
-        var waypoints = (req.waypointLatLngs || []).map(function(wp) {
+
+        var req;
+        try {
+          req = JSON.parse(requestJson);
+        } catch (parseErr) {
+          reject(new Error('リクエストJSONのパースに失敗: ' + parseErr));
+          return;
+        }
+
+        var facilityLat = req.facilityLat;
+        var facilityLng = req.facilityLng;
+        var waypointLatLngs = req.waypointLatLngs || [];
+
+        // ── デバッグログ: リクエスト内容 ──
+        console.log('[getDirectionsRoundTrip] request:'
+          + ' facility=' + facilityLat + ',' + facilityLng
+          + ', stops=' + waypointLatLngs.length
+          + ', optimize=' + (req.optimize || false));
+
+        var facilityLatLng = new google.maps.LatLng(facilityLat, facilityLng);
+        var waypoints = waypointLatLngs.map(function(wp) {
           return { location: new google.maps.LatLng(wp.lat, wp.lng), stopover: true };
         });
 
@@ -141,30 +170,59 @@
           origin: facilityLatLng,
           destination: facilityLatLng,
           waypoints: waypoints,
-          optimizeWaypoints: req.optimize || false,
+          optimizeWaypoints: req.optimize === true,
           travelMode: google.maps.TravelMode.DRIVING,
           region: 'JP'
         }, function(result, status) {
-          if (status === 'OK' && result) {
-            var route = result.routes[0];
-            var legs = route.legs;
-            var legDistances = legs.map(function(l) { return l.distance.value; });
-            var legDurations = legs.map(function(l) { return l.duration.value; });
-            var totalDist = legDistances.reduce(function(a, b) { return a + b; }, 0);
-            var totalDur  = legDurations.reduce(function(a, b) { return a + b; }, 0);
-            var waypointOrder = route.waypoint_order || [];
-            var polyline = route.overview_polyline.points;
-            resolve(JSON.stringify({
-              legDistances: legDistances,
-              legDurations: legDurations,
-              totalDistanceMeters: totalDist,
-              totalDurationSeconds: totalDur,
-              waypointOrder: waypointOrder,
-              encodedPolyline: polyline
-            }));
-          } else {
-            reject(new Error('DirectionsService エラー: ' + status));
+          // ── ステータスチェック ──
+          if (status !== 'OK' || !result || !result.routes || result.routes.length === 0) {
+            console.warn('[getDirectionsRoundTrip] failed: status=' + status
+              + ', result=' + (result ? typeof result : 'null'));
+            reject(new Error('DirectionsService failed: ' + status));
+            return;
           }
+
+          var route = result.routes[0];
+
+          // ── legs: 各フィールドを null 安全に取得 ──
+          var legs = (route.legs || []).map(function(leg) {
+            return {
+              distanceMeters:  (leg.distance  && leg.distance.value  != null) ? leg.distance.value  : 0,
+              durationSeconds: (leg.duration  && leg.duration.value  != null) ? leg.duration.value  : 0,
+              distanceText:    (leg.distance  && leg.distance.text)  ? leg.distance.text  : '',
+              durationText:    (leg.duration  && leg.duration.text)  ? leg.duration.text  : '',
+              startAddress:    leg.start_address || '',
+              endAddress:      leg.end_address   || ''
+            };
+          });
+
+          // ── 合計距離・時間 ──
+          var totalDistanceMeters  = legs.reduce(function(s, l) { return s + l.distanceMeters;  }, 0);
+          var totalDurationSeconds = legs.reduce(function(s, l) { return s + l.durationSeconds; }, 0);
+
+          // ── waypoint_order: optimize=false のとき undefined になる可能性あり ──
+          var waypointOrder = Array.isArray(route.waypoint_order) ? route.waypoint_order : [];
+
+          // ── エンコードポリライン: overview_polyline が null の場合は空文字列 ──
+          var encodedPolyline = (route.overview_polyline && route.overview_polyline.points)
+            ? route.overview_polyline.points
+            : '';
+
+          // ── デバッグログ: レスポンス内容 ──
+          console.log('[getDirectionsRoundTrip] response:'
+            + ' legs=' + legs.length
+            + ', totalDist=' + totalDistanceMeters + 'm'
+            + ', totalDur=' + totalDurationSeconds + 's'
+            + ', waypointOrder=[' + waypointOrder.join(',') + ']'
+            + ', polylineLen=' + encodedPolyline.length);
+
+          resolve(JSON.stringify({
+            legs: legs,
+            totalDistanceMeters:  totalDistanceMeters,
+            totalDurationSeconds: totalDurationSeconds,
+            waypointOrder:        waypointOrder,
+            encodedPolyline:      encodedPolyline
+          }));
         });
       });
     };

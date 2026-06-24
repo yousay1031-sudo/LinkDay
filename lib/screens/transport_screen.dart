@@ -346,6 +346,15 @@ class _TransportScreenState extends State<TransportScreen>
       );
       await _loadRoutes();
       _showSnack('${route.vehicleName} のルートを最適化しました');
+    } on DirectionsFallbackException catch (e) {
+      // Directions API 失敗 → Haversine フォールバック適用済み
+      // アプリは落ちていない。概算値で表示中である旨を通知する。
+      await _loadRoutes();
+      debugPrint('[TransportScreen] DirectionsFallback: ${e.message}');
+      _showSnack(
+        '⚠ ${e.message}',
+        isError: false, // 警告（エラーではない）
+      );
     } catch (e) {
       setState(() => _isLoading = false);
       _showSnack('最適化エラー: $e', isError: true);
@@ -914,15 +923,30 @@ class _TransportScreenState extends State<TransportScreen>
     }
 
     setState(() => _isLoading = true);
+    bool hasFallback = false;
     try {
       for (final r in routes) {
         if (r.stops.isNotEmpty) {
-          await TransportPlanService.instance
-              .optimizeRoute(r, facilityAddress);
+          try {
+            await TransportPlanService.instance
+                .optimizeRoute(r, facilityAddress);
+          } on DirectionsFallbackException catch (e) {
+            // 個別ルートで Directions 失敗 → フォールバック適用
+            // 他のルートの処理は続行する
+            hasFallback = true;
+            debugPrint('[TransportScreen] DirectionsFallback (${r.vehicleName}): ${e.message}');
+          }
         }
       }
       await _loadRoutes();
-      _showSnack('全ルートを最適化しました');
+      if (hasFallback) {
+        _showSnack(
+          '⚠ 一部ルートで経路計算に失敗しました。直線距離で概算表示しています。',
+          isError: false,
+        );
+      } else {
+        _showSnack('全ルートを最適化しました');
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       _showSnack('最適化エラー: $e', isError: true);

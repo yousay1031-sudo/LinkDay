@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/customer.dart';
 import '../models/transport_plan.dart';
+import '../utils/geo_util.dart';
 import 'google_maps_service.dart';
 import 'maps_js_service.dart';
 import 'settings_service.dart';
@@ -313,6 +314,21 @@ class TransportPlanService {
         );
       } catch (e) {
         debugPrint('[TransportPlanService] directions failed: $e');
+        // ── Haversine 直線距離フォールバック ──
+        // Directions API が失敗してもアプリを落とさず、
+        // 直線距離（Haversine）+ 30km/h 概算で時間を補完する。
+        _attachHaversineFallback(
+          route: route,
+          reorderedStops: reordered,
+          facilityLat: facilityLat,
+          facilityLng: facilityLng,
+        );
+        // 呼び出し元（TransportScreen）へ通知するため例外を再スロー
+        // → UI 側で SnackBar を表示できる
+        throw DirectionsFallbackException(
+          '経路計算に失敗しました。直線距離で概算を表示しています。',
+          cause: e,
+        );
       }
     }
 
@@ -396,6 +412,63 @@ class TransportPlanService {
       reorderedStops: reorderedStops,
       legDurationSeconds: result.legDurations,
     );
+  }
+
+  /// Haversine 直線距離フォールバック
+  ///
+  /// Directions API が失敗した場合に呼ばれる。
+  /// 直線距離（Haversine 公式）と 30km/h 概算速度で
+  /// route および各停留所の距離・時間を設定する。
+  ///
+  /// 注意:
+  ///   - 実際の道路距離より短い場合がある（直線距離のため）
+  ///   - 迂回係数 1.4 を GeoUtil.estimateDurationSeconds 内で補正済み
+  ///   - 設定された値は「概算」であることをUIで明示すること
+  void _attachHaversineFallback({
+    required TransportVehicleRoute route,
+    required List<TransportStop> reorderedStops,
+    required double facilityLat,
+    required double facilityLng,
+  }) {
+    final validStops = reorderedStops
+        .where((s) => s.lat != null && s.lng != null)
+        .toList();
+    if (validStops.isEmpty) return;
+
+    final stopPoints = validStops
+        .map((s) => (lat: s.lat!, lng: s.lng!))
+        .toList();
+
+    final fallback = GeoUtil.roundTripFallback(
+      facilityLat: facilityLat,
+      facilityLng: facilityLng,
+      stops: stopPoints,
+    );
+
+    // 停留所に距離・時間を設定（legs[0]〜legs[n-1]、帰路 legs[n] は除く）
+    for (int i = 0; i < reorderedStops.length; i++) {
+      if (i < fallback.distances.length) {
+        reorderedStops[i].distanceFromPrevMeters  = fallback.distances[i];
+        reorderedStops[i].durationFromPrevSeconds = fallback.durations[i];
+      }
+    }
+
+    // 合計距離・時間（帰路を含む全 legs の合算）
+    final totalDist = fallback.distances.fold(0, (a, b) => a + b);
+    final totalDur  = fallback.durations.fold(0,  (a, b) => a + b);
+    route.totalDistanceMeters  = totalDist;
+    route.totalDurationSeconds = totalDur;
+
+    // 時刻算出（フォールバック値で概算）
+    _assignScheduledTimes(
+      route: route,
+      reorderedStops: reorderedStops,
+      legDurationSeconds: fallback.durations,
+    );
+
+    debugPrint('[TransportPlanService] Haversine fallback applied: '
+        'totalDist=${totalDist}m (概算), totalDur=${totalDur}s (概算), '
+        'stops=${reorderedStops.length}件');
   }
 
   /// 時刻計算ロジック
@@ -579,4 +652,23 @@ class TransportPlanService {
     }
     return x - x * x * x / 3 + x * x * x * x * x / 5;
   }
+}
+
+// ── 例外クラス ────────────────────────────────────────────────────
+
+/// Directions API 失敗時に Haversine フォールバックを適用したことを
+/// 呼び出し元（TransportScreen）に通知するための例外。
+///
+/// catch して SnackBar で「概算表示中」を案内する用途に使う。
+/// アプリはクラッシュしない（フォールバック値は設定済み）。
+class DirectionsFallbackException implements Exception {
+  final String message;
+  final Object? cause;
+
+  const DirectionsFallbackException(this.message, {this.cause});
+
+  @override
+  String toString() =>
+      'DirectionsFallbackException: $message'
+      '${cause != null ? '\n  cause: $cause' : ''}';
 }
