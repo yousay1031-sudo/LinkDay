@@ -213,14 +213,16 @@ class TransportPlanService {
     String facilityAddress, [
     String? apiKey, // deprecated: 互換性維持のため残す。内部では MapsJsService を使用
   ]) async {
+    // 毎回最新の設定を取得（キャッシュを使わない）
     final settings = SettingsService.instance.getSettings();
     final facilityLat = settings.facilityLat;
     final facilityLng = settings.facilityLng;
 
     debugPrint('[TransportPlanService] optimizeRoute: '
         '${route.vehicleName} ${route.typeLabel}, '
-        'stops=${route.stops.length}, '
-        'facilityLatLng=${facilityLat != null ? "$facilityLat,$facilityLng" : "null"}');
+        'stops=${route.stops.length}');
+    debugPrint('[TransportPlanService] using latest facilityLatLng='
+        '${facilityLat != null ? "${facilityLat.toStringAsFixed(7)},${facilityLng!.toStringAsFixed(7)}" : "null (未設定)"}');
 
     if (route.stops.isEmpty) {
       route.optimizedAt = DateTime.now();

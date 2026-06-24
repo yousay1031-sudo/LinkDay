@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
@@ -34,6 +36,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _pickupStart = const TimeOfDay(hour: 8, minute: 30);
   TimeOfDay _dropoffEnd = const TimeOfDay(hour: 16, minute: 30);
 
+  // ── 地図プレビュー状態 ─────────────────────────────────────────
+  /// geocode 後に表示する事業所座標（マーカー位置・地図中心）
+  double? _previewLat;
+  double? _previewLng;
+  /// 地図コントローラー
+  GoogleMapController? _mapController;
+  /// 現在のマーカー位置（ドラッグ後に更新）
+  LatLng? _markerLatLng;
+  bool _savingPosition = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (final c in _vehicleCapCtrls) {
       c.dispose();
     }
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -70,6 +83,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _pickupStart = _parseTime(settings.defaultPickupStart);
       _dropoffEnd = _parseTime(settings.defaultDropoffEnd);
       _rebuildVehicleControllers(settings.vehicleNames, settings.vehicleCapacities);
+
+      // 既存の geocode 済み座標があれば地図プレビューを初期表示
+      if (settings.facilityLat != null && settings.facilityLng != null) {
+        _previewLat = settings.facilityLat;
+        _previewLng = settings.facilityLng;
+        _markerLatLng = LatLng(settings.facilityLat!, settings.facilityLng!);
+      }
     });
   }
 
@@ -230,10 +250,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _geocodeFacility() async {
     setState(() => _geocoding = true);
     try {
-      final result = await SettingsService.instance.geocodeFacility();
+      // 現在の住所欄テキストで geocode（保存前でも最新の入力を使う）
+      final address = _facilityAddressCtrl.text.trim();
+      final result = await SettingsService.instance.geocodeFacility(
+        address: address.isNotEmpty ? address : null,
+      );
       if (!mounted) return;
+
+      final latLng = LatLng(result.lat, result.lng);
+      setState(() {
+        _previewLat = result.lat;
+        _previewLng = result.lng;
+        _markerLatLng = latLng;
+      });
+
+      // 地図が既に起動済みの場合はカメラを移動
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(latLng, 16),
+      );
+
       _showSnack(
-        '緯度経度を取得しました: ${result.lat.toStringAsFixed(5)}, ${result.lng.toStringAsFixed(5)}',
+        '座標取得成功: ${result.lat.toStringAsFixed(7)}, ${result.lng.toStringAsFixed(7)}\n'
+        '地図上でマーカーを確認・微調整してください',
         AppColors.success,
       );
     } catch (e) {
@@ -243,6 +281,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         setState(() => _geocoding = false);
       }
+    }
+  }
+
+  /// マーカーをドラッグした後に呼ばれる（地図プレビュー内）
+  void _onMarkerDragged(LatLng newPosition) {
+    setState(() {
+      _markerLatLng = newPosition;
+      _previewLat = newPosition.latitude;
+      _previewLng = newPosition.longitude;
+    });
+    debugPrint('[SettingsScreen] marker dragged: '
+        '${newPosition.latitude.toStringAsFixed(7)}, '
+        '${newPosition.longitude.toStringAsFixed(7)}');
+  }
+
+  /// 「この位置を事業所に設定」ボタン
+  Future<void> _saveMarkerPosition() async {
+    final pos = _markerLatLng;
+    if (pos == null) return;
+    setState(() => _savingPosition = true);
+    try {
+      await SettingsService.instance.saveFacilityLatLng(
+        pos.latitude,
+        pos.longitude,
+      );
+      if (!mounted) return;
+      _showSnack(
+        '事業所位置を保存しました\n'
+        '緯度: ${pos.latitude.toStringAsFixed(7)}\n'
+        '経度: ${pos.longitude.toStringAsFixed(7)}',
+        AppColors.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('保存失敗: $e', AppColors.error);
+    } finally {
+      if (mounted) setState(() => _savingPosition = false);
+    }
+  }
+
+  /// Google Maps 検索で住所を別タブで確認（修正7）
+  Future<void> _openInGoogleMaps() async {
+    final address = _facilityAddressCtrl.text.trim();
+    if (address.isEmpty) {
+      _showSnack('住所を入力してください', AppColors.error);
+      return;
+    }
+    final normalized = SettingsService.normalizeAddressForGeocode(address);
+    final encoded = Uri.encodeComponent(normalized);
+    final url = 'https://www.google.com/maps/search/?api=1&query=$encoded';
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) _showSnack('Google Maps を開けませんでした', AppColors.error);
     }
   }
 
@@ -329,7 +422,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── セクション: 事業所情報 ────────────────────────────────────
 
   Widget _buildFacilitySection() {
-    final settings = SettingsService.instance.getSettings();
     return _SectionCard(
       title: '事業所情報',
       icon: Icons.business,
@@ -352,55 +444,185 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: const InputDecoration(
               labelText: '事業所住所',
               prefixIcon: Icon(Icons.location_on),
+              helperText: '「2階」などの階数・「〒」郵便番号は自動除去して座標検索します',
+              helperMaxLines: 2,
             ),
             validator: (v) =>
                 (v == null || v.trim().isEmpty) ? '住所は必須です' : null,
           ),
-          const SizedBox(height: 8),
-          // Geocoding 結果表示
-          if (settings.hasGeocode)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.my_location, size: 16, color: AppColors.success),
-                  const SizedBox(width: 6),
-                  Text(
-                    '座標: ${settings.geocodeLabel}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 8),
-          Row(
+          const SizedBox(height: 10),
+          // 操作ボタン行: 座標取得 / G-Maps確認 / 保存
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _geocoding ? null : _geocodeFacility,
-                  icon: _geocoding
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.gps_fixed, size: 18),
-                  label: Text(_geocoding ? '取得中...' : '住所から座標を取得'),
+              OutlinedButton.icon(
+                onPressed: _geocoding ? null : _geocodeFacility,
+                icon: _geocoding
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.gps_fixed, size: 16),
+                label: Text(_geocoding ? '取得中...' : '座標を取得',
+                    style: const TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
               ),
-              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _openInGoogleMaps,
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('G-Mapsで確認',
+                    style: TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.info,
+                  side: const BorderSide(color: AppColors.info),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
               ElevatedButton.icon(
                 onPressed: _saveFacility,
-                icon: const Icon(Icons.save, size: 18),
-                label: const Text('保存'),
+                icon: const Icon(Icons.save, size: 16),
+                label: const Text('保存', style: TextStyle(fontSize: 13)),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
               ),
             ],
           ),
+          // 地図プレビュー（geocode 成功後に表示）
+          if (_previewLat != null && _previewLng != null) ...[
+            const SizedBox(height: 16),
+            _buildLocationMapPreview(),
+          ],
         ],
       ),
+    );
+  }
+
+  /// 事業所位置の地図プレビューウィジェット
+  Widget _buildLocationMapPreview() {
+    final center = LatLng(_previewLat!, _previewLng!);
+    final marker = _markerLatLng ?? center;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 座標表示ヘッダー
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.success.withValues(alpha: 0.08),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(10),
+              topRight: Radius.circular(10),
+            ),
+            border: Border.all(
+                color: AppColors.success.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.my_location, size: 16,
+                  color: AppColors.success),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '緯度: ${marker.latitude.toStringAsFixed(7)}',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.onSurface,
+                          fontFamily: 'monospace'),
+                    ),
+                    Text(
+                      '経度: ${marker.longitude.toStringAsFixed(7)}',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.onSurface,
+                          fontFamily: 'monospace'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'マーカーをドラッグして\n位置を微調整できます',
+                style: TextStyle(
+                    fontSize: 11, color: AppColors.onSurfaceVariant),
+                textAlign: TextAlign.right,
+              ),
+            ],
+          ),
+        ),
+        // Google マップ
+        ClipRRect(
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(10),
+            bottomRight: Radius.circular(10),
+          ),
+          child: SizedBox(
+            height: 260,
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: center,
+                zoom: 16,
+              ),
+              markers: {
+                Marker(
+                  markerId: const MarkerId('facility_preview'),
+                  position: marker,
+                  draggable: true,
+                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueOrange),
+                  infoWindow: InfoWindow(
+                    title: _facilityNameCtrl.text.isNotEmpty
+                        ? _facilityNameCtrl.text
+                        : '事業所',
+                    snippet: _facilityAddressCtrl.text.trim(),
+                  ),
+                  onDragEnd: _onMarkerDragged,
+                ),
+              },
+              onMapCreated: (controller) {
+                _mapController = controller;
+              },
+              myLocationEnabled: false,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: true,
+              mapToolbarEnabled: false,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // 「この位置を事業所に設定」ボタン
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _savingPosition ? null : _saveMarkerPosition,
+            icon: _savingPosition
+                ? const SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.place, size: 18),
+            label: Text(
+              _savingPosition ? '保存中...' : 'この位置を事業所に設定',
+              style: const TextStyle(fontSize: 14),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

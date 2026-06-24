@@ -56,13 +56,17 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
 
   Future<void> _initialize() async {
     try {
-      // 事業所座標を取得（Hive キャッシュ優先）
+      // 毎回最新の設定から事業所座標を取得
       final settings = SettingsService.instance.getSettings();
       if (settings.facilityLat != null && settings.facilityLng != null) {
         _facilityLatLng = LatLng(settings.facilityLat!, settings.facilityLng!);
+        debugPrint('[TransportMapScreen] facilityLatLng (from settings): '
+            '${settings.facilityLat!.toStringAsFixed(7)}, '
+            '${settings.facilityLng!.toStringAsFixed(7)}');
       } else {
-        // キャッシュなし → 北海道帯広市のデフォルト座標
+        // 未設定 → デフォルト座標（北海道帯広市中心）
         _facilityLatLng = const LatLng(42.924, 143.196);
+        debugPrint('[TransportMapScreen] facilityLatLng: null → using default (42.924, 143.196)');
       }
 
       // マーカー構築
@@ -88,8 +92,19 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   void _buildMarkers() {
     _markers.clear();
 
-    // 事業所マーカー（オレンジ、homeアイコン的な star）
+    // 事業所マーカー（オレンジ）— 名前・住所を設定から動的取得
     if (_facilityLatLng != null) {
+      final settings = SettingsService.instance.getSettings();
+      final facilityName = settings.facilityName.isNotEmpty
+          ? settings.facilityName
+          : 'ここすたでぃ';
+      final facilitySnippet = settings.facilityAddress.isNotEmpty
+          ? settings.facilityAddress
+          : widget.facilityAddress;
+      debugPrint('[TransportMapScreen] facilityMarker: '
+          'name=$facilityName, '
+          'lat=${_facilityLatLng!.latitude.toStringAsFixed(7)}, '
+          'lng=${_facilityLatLng!.longitude.toStringAsFixed(7)}');
       _markers.add(
         Marker(
           markerId: const MarkerId('facility'),
@@ -97,8 +112,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           icon: BitmapDescriptor.defaultMarkerWithHue(
               BitmapDescriptor.hueOrange),
           infoWindow: InfoWindow(
-            title: 'ココスタディ',
-            snippet: widget.facilityAddress,
+            title: facilityName,
+            snippet: facilitySnippet,
           ),
         ),
       );

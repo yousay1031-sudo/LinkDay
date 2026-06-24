@@ -229,19 +229,77 @@ class SettingsService {
 
   // ── Geocoding ────────────────────────────────────────────────
 
+  /// Geocoding 用住所の正規化
+  ///
+  /// - 郵便番号（〒xxx-xxxx または xxx-xxxx）を除去
+  /// - 階数情報（x階 / xF / x階部分）を除去（建物全体のマッチング向上）
+  /// - 前後空白を除去
+  /// - 表示用住所は元の文字列を維持
+  static String normalizeAddressForGeocode(String address) {
+    var normalized = address.trim();
+
+    // 郵便番号除去: 〒080-0015 / 080-0015
+    normalized = normalized.replaceAll(RegExp(r'〒?\d{3}-\d{4}\s*'), '');
+
+    // 階数情報除去: " 2階" / " 2F" / " B1F" など（数字+階 or F）
+    // スペースが前に付くパターンを優先除去
+    normalized = normalized.replaceAll(
+        RegExp(r'\s+[Bb]?\d+[Ff階]\s*$'), '');
+    normalized = normalized.replaceAll(
+        RegExp(r'\s+[Bb]?\d+[Ff階][^\s]*\s*$'), '');
+
+    // 号室表示除去: " 201号室" / " 101"（末尾の数字のみのパターン）
+    normalized = normalized.replaceAll(RegExp(r'\s+\d+号室\s*$'), '');
+
+    // 前後空白除去
+    normalized = normalized.trim();
+
+    debugPrint('[SettingsService] normalizeAddress: "$address" → "$normalized"');
+    return normalized;
+  }
+
   /// 事業所住所を Geocoding して座標を保存する（JS Interop 版）
-  Future<({double lat, double lng})> geocodeFacility() async {
+  ///
+  /// - 住所文字列を正規化してから geocode する
+  /// - 成功時は必ず Hive に上書き保存する
+  /// - [address] を指定すると Hive の facilityAddress より優先する
+  Future<({double lat, double lng})> geocodeFacility({
+    String? address,
+  }) async {
     final key = await loadJsApiKey();
     if (key == null || key.isEmpty) {
       throw Exception('Google Maps API キーが設定されていません。設定画面で入力してください。');
     }
     final settings = getSettings();
+    final rawAddress = address ?? settings.facilityAddress;
+
+    // 住所を正規化（階数・郵便番号除去）
+    final geocodeAddress = normalizeAddressForGeocode(rawAddress);
+    if (geocodeAddress.isEmpty) {
+      throw Exception('住所が空です。設定画面で住所を入力してください。');
+    }
+
+    debugPrint('[SettingsService] geocodeFacility: '
+        'raw="$rawAddress" → normalized="$geocodeAddress"');
+
     // JS Interop 経由で Geocoder を呼ぶ
-    final result = await MapsJsService.instance.geocodeAddress(
-      settings.facilityAddress,
-    );
+    final result = await MapsJsService.instance.geocodeAddress(geocodeAddress);
+
+    debugPrint('[SettingsService] geocodeFacility result: '
+        'lat=${result.lat}, lng=${result.lng} '
+        '(address="$geocodeAddress")');
+
+    // 必ず上書き保存（旧座標を確実に更新）
     await saveFacilityGeocode(result.lat, result.lng);
+
     return (lat: result.lat, lng: result.lng);
+  }
+
+  /// 緯度経度を手動で保存する（地図上でマーカーをドラッグ後に呼ぶ）
+  Future<void> saveFacilityLatLng(double lat, double lng) async {
+    await saveFacilityGeocode(lat, lng);
+    debugPrint('[SettingsService] saveFacilityLatLng: '
+        'lat=${lat.toStringAsFixed(7)}, lng=${lng.toStringAsFixed(7)}');
   }
 
   // ── テスト ────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import '../services/transport_pdf_service.dart';
 import '../services/transport_plan_service.dart';
 import '../services/weekly_schedule_service.dart';
 import '../theme/app_theme.dart';
+import 'settings_screen.dart';
 import 'transport_map_screen.dart';
 
 /// 送迎計画画面
@@ -316,11 +317,31 @@ class _TransportScreenState extends State<TransportScreen>
       return;
     }
 
+    // 最新の設定を再読込み（facilityLat/Lng の更新を反映）
+    final latestSettings = SettingsService.instance.getSettings();
+    final facilityLat = latestSettings.facilityLat;
+    final facilityLng = latestSettings.facilityLng;
+    final facilityAddress = latestSettings.facilityAddress.isNotEmpty
+        ? latestSettings.facilityAddress
+        : _facilityAddress;
+
+    debugPrint('[TransportScreen] facilityLatLng='
+        '${facilityLat != null ? "${facilityLat.toStringAsFixed(7)},${facilityLng!.toStringAsFixed(7)}" : "null"}');
+
+    // facilityLat/Lng 未設定の場合は警告して処理を続行（距離計算スキップ）
+    if (facilityLat == null || facilityLng == null) {
+      _showSnack(
+        '事業所位置が未設定です。設定画面で住所確認後、位置を保存してください。',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       await TransportPlanService.instance.optimizeRoute(
         route,
-        _facilityAddress,
+        facilityAddress,
         // apiKey は内部で SettingsService から取得するため不要
       );
       await _loadRoutes();
@@ -511,6 +532,7 @@ class _TransportScreenState extends State<TransportScreen>
               color: AppColors.primary,
             ),
           if (_errorMessage != null) _buildErrorBanner(),
+          _buildFacilityNotSetBanner(),
           Expanded(child: _buildTabView()),
         ],
       ),
@@ -727,6 +749,40 @@ class _TransportScreenState extends State<TransportScreen>
     );
   }
 
+  /// 事業所位置未設定バナー
+  Widget _buildFacilityNotSetBanner() {
+    final settings = SettingsService.instance.getSettings();
+    if (settings.hasGeocode) return const SizedBox.shrink();
+
+    return Container(
+      color: AppColors.warning.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off, color: AppColors.warning, size: 18),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '事業所の位置が未設定です。設定画面で住所を確認し、座標を取得・保存してください。',
+              style: TextStyle(color: AppColors.warning, fontSize: 12),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.warning,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 36),
+            ),
+            child: const Text('設定へ', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── ルートタブ本体 ───────────────────────────────────────────
 
   Widget _buildRouteTab(
@@ -837,12 +893,32 @@ class _TransportScreenState extends State<TransportScreen>
       _showSnack('APIキーが設定されていません', isError: true);
       return;
     }
+
+    // 最新の設定を再読込み
+    final latestSettings = SettingsService.instance.getSettings();
+    final facilityLat = latestSettings.facilityLat;
+    final facilityLng = latestSettings.facilityLng;
+    final facilityAddress = latestSettings.facilityAddress.isNotEmpty
+        ? latestSettings.facilityAddress
+        : _facilityAddress;
+
+    debugPrint('[TransportScreen] _optimizeAllRoutes facilityLatLng='
+        '${facilityLat != null ? "${facilityLat.toStringAsFixed(7)},${facilityLng!.toStringAsFixed(7)}" : "null"}');
+
+    if (facilityLat == null || facilityLng == null) {
+      _showSnack(
+        '事業所位置が未設定です。設定画面で住所確認後、位置を保存してください。',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       for (final r in routes) {
         if (r.stops.isNotEmpty) {
           await TransportPlanService.instance
-              .optimizeRoute(r, _facilityAddress);
+              .optimizeRoute(r, facilityAddress);
         }
       }
       await _loadRoutes();
