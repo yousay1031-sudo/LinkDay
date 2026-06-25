@@ -175,17 +175,19 @@
           var Route = routesLib.Route;
 
           // ── fields: 必要なフィールドのみ要求（パフォーマンス最適化）──
+          // 注意: Maps JS API Routes ライブラリでは "legs.distanceMeters" のような
+          // ドット階層指定は無効（REST API のフィールドマスク記法とは異なる）。
+          // 'legs' を指定するだけで各区間オブジェクトが丸ごと返ってくる。
+          // 'optimizedIntermediateWaypointIndices' は optimizeWaypointOrder=true 時に
+          // 必須（含めないとリクエスト自体が失敗する）。false 時は空配列が返るだけ
+          // なので、常時含めておく方が安全。
           var fields = [
             'distanceMeters',
             'durationMillis',
-            'legs.distanceMeters',
-            'legs.durationMillis',
-            'path'
+            'legs',
+            'path',
+            'optimizedIntermediateWaypointIndices'
           ];
-          // optimize=true のとき optimizedIntermediateWaypointIndices も取得
-          if (optimize) {
-            fields.push('optimizedIntermediateWaypointIndices');
-          }
 
           // ── intermediates: 利用者宅の中間 waypoint ──
           // 注意: intermediates の型は Iterable<Waypoint> であるため、
