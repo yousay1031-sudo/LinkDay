@@ -645,6 +645,7 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
           child: Row(
             children: [
               Expanded(
+                flex: 3,
                 child: OutlinedButton.icon(
                   onPressed: () => setState(() {
                     _preview = null;
@@ -653,12 +654,12 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
                     _step = _Step.pick;
                   }),
                   icon: const Icon(Icons.refresh),
-                  label: const Text('別のファイル'),
+                  label: const Text('別のファイル', softWrap: false),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                flex: 2,
+                flex: 4,
                 child: FilledButton.icon(
                   onPressed: _close,
                   icon: const Icon(Icons.people_outline),
