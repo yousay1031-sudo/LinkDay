@@ -5,7 +5,7 @@ import '../models/customer.dart';
 import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
 import 'customer_edit_screen.dart';
-import 'import_customers_screen.dart';
+import 'customer_import_screen.dart';
 
 class CustomerManagementScreen extends StatefulWidget {
   const CustomerManagementScreen({super.key});
@@ -89,7 +89,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   Future<void> _navigateToImport() async {
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const ImportCustomersScreen()),
+      MaterialPageRoute(builder: (_) => const CustomerImportScreen()),
     );
     if (result == true) {
       _loadCustomers();
