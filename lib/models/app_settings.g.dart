@@ -1,5 +1,4 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-// Manually updated to add fields 11/12 for 2-key API support
 
 part of 'app_settings.dart';
 

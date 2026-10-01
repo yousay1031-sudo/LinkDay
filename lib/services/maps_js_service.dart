@@ -6,6 +6,7 @@ import 'dart:js_interop';
 import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../models/geocode_candidate.dart';
 import 'maps_loader.dart';
 import 'settings_service.dart';
 
@@ -15,6 +16,9 @@ import 'settings_service.dart';
 
 @JS('geocodeAddress')
 external JSPromise _geocodeAddressJs(String address);
+
+@JS('geocodeCandidates')
+external JSPromise _geocodeCandidatesJs(String address, int maxResults);
 
 @JS('getDirectionsRoundTrip')
 external JSPromise _getDirectionsRoundTripJs(String requestJson);
@@ -141,6 +145,65 @@ class MapsJsService {
       return GeoResult(lat: lat, lng: lng);
     } catch (e) {
       debugPrint('[MapsJsService] geocodeAddress error: $e');
+      rethrow;
+    }
+  }
+
+  // ── Geocoding 候補一覧（Day 8） ───────────────────────────────
+
+  /// セッション内キャッシュ（同一文字列の重複 geocode を抑制）
+  final Map<String, GeocodeCandidatesResult> _candidateCache = {};
+
+  /// キャッシュをクリア（テスト・明示リトライ用）
+  void clearCandidateCache() => _candidateCache.clear();
+
+  /// 住所 → 候補一覧（最大 [maxResults] 件）
+  ///
+  /// 帯広エリア bounds バイアス + country=JP 制限は JS 側で付与。
+  /// 0 件は空リスト（例外にしない）。API エラーのみ throw。
+  Future<GeocodeCandidatesResult> geocodeCandidates(
+    String address, {
+    int maxResults = 5,
+    bool useCache = true,
+  }) async {
+    final key = address.trim();
+    if (key.isEmpty) {
+      return GeocodeCandidatesResult(address: key, candidates: const []);
+    }
+    final cached = useCache ? _candidateCache[key] : null;
+    if (cached != null) {
+      debugPrint('[MapsJsService] geocodeCandidates (cache): "$key" → ${cached.candidates.length}件');
+      return cached;
+    }
+    await _getKeyAndEnsureLoaded();
+    debugPrint('[MapsJsService] geocodeCandidates: "$key" (max=$maxResults)');
+    try {
+      final jsResult = await _geocodeCandidatesJs(key, maxResults).toDart;
+      final dartified = jsResult.dartify();
+      final str = (dartified is String) ? dartified : '';
+      if (str.isEmpty) {
+        throw StateError('geocodeCandidates: JS から空の応答');
+      }
+      final decoded = jsonDecode(str);
+      if (decoded is! Map<String, dynamic>) {
+        throw StateError('geocodeCandidates: 応答が Map ではありません');
+      }
+      final raw = decoded['candidates'];
+      final list = <GeocodeCandidate>[];
+      if (raw is List) {
+        for (final e in raw) {
+          if (e is Map) {
+            list.add(GeocodeCandidate.fromJson(Map<String, dynamic>.from(e)));
+          }
+        }
+      }
+      final result = GeocodeCandidatesResult(address: key, candidates: list);
+      _candidateCache[key] = result;
+      debugPrint('[MapsJsService] geocodeCandidates result: ${list.length}件'
+          '${list.isNotEmpty ? ' first="${list.first.formattedAddress}"' : ''}');
+      return result;
+    } catch (e) {
+      debugPrint('[MapsJsService] geocodeCandidates error: $e');
       rethrow;
     }
   }

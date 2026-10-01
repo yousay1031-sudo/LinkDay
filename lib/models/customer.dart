@@ -65,6 +65,19 @@ class Customer extends HiveObject {
   @HiveField(18)
   bool isActive; // 在籍中フラグ（デフォルト true）
 
+  // ── Day 8: 送迎場所ジオコーディング ─────────────────────────────
+  // transportLocations[i] に対応。長さは transportLocations と同期させる。
+  // Hive には primitive のみ保存（record 型はシリアライズ不可のため分割）。
+
+  @HiveField(19)
+  List<double?> transportLocationLats; // 採用済み緯度（未解決は null）
+
+  @HiveField(20)
+  List<double?> transportLocationLngs; // 採用済み経度（未解決は null）
+
+  @HiveField(21)
+  List<String> transportLocationStatus; // 'unresolved' / 'resolved' / 'manual' / 'failed'
+
   Customer({
     String? id,
     required this.name,
@@ -85,11 +98,86 @@ class Customer extends HiveObject {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.isActive = true,
+    List<double?>? transportLocationLats,
+    List<double?>? transportLocationLngs,
+    List<String>? transportLocationStatus,
   })  : id = id ?? const Uuid().v4(),
         regularDays = regularDays ?? [],
         transportLocations = transportLocations ?? [],
         createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+        updatedAt = updatedAt ?? DateTime.now(),
+        transportLocationLats = _alignNullable(
+            transportLocationLats, (transportLocations ?? []).length),
+        transportLocationLngs = _alignNullable(
+            transportLocationLngs, (transportLocations ?? []).length),
+        transportLocationStatus = _alignStatus(
+            transportLocationStatus, (transportLocations ?? []).length);
+
+  // ── Day 8: 座標ステータス定数 ──
+  static const String locUnresolved = 'unresolved';
+  static const String locResolved = 'resolved'; // 自動採用（候補1件）
+  static const String locManual = 'manual'; // ユーザー選択/微調整
+  static const String locFailed = 'failed';
+
+  /// 長さを transportLocations に合わせる（旧データは null 埋め）
+  static List<double?> _alignNullable(List<double?>? src, int n) {
+    final out = List<double?>.filled(n, null, growable: true);
+    if (src != null) {
+      for (int i = 0; i < n && i < src.length; i++) {
+        out[i] = src[i];
+      }
+    }
+    return out;
+  }
+
+  static List<String> _alignStatus(List<String>? src, int n) {
+    final out = List<String>.filled(n, locUnresolved, growable: true);
+    if (src != null) {
+      for (int i = 0; i < n && i < src.length; i++) {
+        out[i] = src[i];
+      }
+    }
+    return out;
+  }
+
+  /// 送迎場所 i の採用済み座標（未解決なら null）
+  ({double lat, double lng})? transportCoord(int i) {
+    if (i < 0 || i >= transportLocationLats.length || i >= transportLocationLngs.length) {
+      return null;
+    }
+    final lat = transportLocationLats[i];
+    final lng = transportLocationLngs[i];
+    if (lat == null || lng == null) return null;
+    return (lat: lat, lng: lng);
+  }
+
+  /// 送迎場所 i の解決状態
+  String transportStatus(int i) =>
+      (i >= 0 && i < transportLocationStatus.length)
+          ? transportLocationStatus[i]
+          : locUnresolved;
+
+  /// 送迎場所 i が座標解決済み（resolved / manual かつ座標あり）か
+  bool isTransportResolved(int i) {
+    final st = transportStatus(i);
+    return (st == locResolved || st == locManual) && transportCoord(i) != null;
+  }
+
+  /// 送迎場所 i の座標を設定する（status 付き）
+  void setTransportCoord(int i, double? lat, double? lng, String status) {
+    while (transportLocationLats.length <= i) {
+      transportLocationLats.add(null);
+    }
+    while (transportLocationLngs.length <= i) {
+      transportLocationLngs.add(null);
+    }
+    while (transportLocationStatus.length <= i) {
+      transportLocationStatus.add(locUnresolved);
+    }
+    transportLocationLats[i] = lat;
+    transportLocationLngs[i] = lng;
+    transportLocationStatus[i] = status;
+  }
 
   /// 月間残日数を返す
   int get remainingDays => monthlyAvailableDays - currentMonthUsedDays;
@@ -137,6 +225,9 @@ class Customer extends HiveObject {
     List<String>? transportLocations,
     String? notes,
     bool? isActive,
+    List<double?>? transportLocationLats,
+    List<double?>? transportLocationLngs,
+    List<String>? transportLocationStatus,
   }) {
     return Customer(
       id: id,
@@ -158,6 +249,12 @@ class Customer extends HiveObject {
       createdAt: createdAt,
       updatedAt: DateTime.now(),
       isActive: isActive ?? this.isActive,
+      transportLocationLats:
+          transportLocationLats ?? List<double?>.from(this.transportLocationLats),
+      transportLocationLngs:
+          transportLocationLngs ?? List<double?>.from(this.transportLocationLngs),
+      transportLocationStatus:
+          transportLocationStatus ?? List<String>.from(this.transportLocationStatus),
     );
   }
 }

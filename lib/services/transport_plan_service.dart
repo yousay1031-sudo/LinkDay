@@ -123,32 +123,38 @@ class TransportPlanService {
       return '';
     }).toList();
 
-    // APIキーがある場合は JS Interop 経由で Geocoding してクラスタリング
-    List<({double lat, double lng})?> latLngs;
-    if (apiKey != null && apiKey.isNotEmpty) {
+    // ── Day 8: 採用済み座標を優先し、未解決分のみ geocode する ──
+    // coords[0] が resolved/manual → API を呼ばず採用済み座標を使用
+    // 未解決 → 従来通り geocodeAddress(transportLocations[0])
+    final latLngs = List<({double lat, double lng})?>.filled(customers.length, null);
+    final toGeocodeIdx = <int>[];
+    int resolvedCount = 0;
+    for (int i = 0; i < customers.length; i++) {
+      final c = customers[i];
+      final coord = c.transportCoord(0);
+      if (c.isTransportResolved(0) && coord != null) {
+        latLngs[i] = coord;
+        resolvedCount++;
+      } else if (addresses[i].isNotEmpty) {
+        toGeocodeIdx.add(i);
+      }
+    }
+    debugPrint('[TransportPlanService] stop coord source: '
+        'resolved($resolvedCount) / geocode(${toGeocodeIdx.length}) / '
+        'none(${customers.length - resolvedCount - toGeocodeIdx.length})');
+
+    if (apiKey != null && apiKey.isNotEmpty && toGeocodeIdx.isNotEmpty) {
       try {
         final jsResults = await MapsJsService.instance.geocodeBatch(
-          addresses.where((a) => a.isNotEmpty).toList(),
+          toGeocodeIdx.map((i) => addresses[i]).toList(),
         );
-        // GeoResult → record 型に変換、住所が空の顧客用に null を補完
-        final fullLatLngs = <({double lat, double lng})?>[];
-        int geocodeIndex = 0;
-        for (final addr in addresses) {
-          if (addr.isEmpty) {
-            fullLatLngs.add(null);
-          } else {
-            final r = geocodeIndex < jsResults.length ? jsResults[geocodeIndex] : null;
-            fullLatLngs.add(r != null ? (lat: r.lat, lng: r.lng) : null);
-            geocodeIndex++;
-          }
+        for (int k = 0; k < toGeocodeIdx.length; k++) {
+          final r = k < jsResults.length ? jsResults[k] : null;
+          if (r != null) latLngs[toGeocodeIdx[k]] = (lat: r.lat, lng: r.lng);
         }
-        latLngs = fullLatLngs;
       } catch (e) {
         debugPrint('[TransportPlanService] geocode batch (JS) failed: $e');
-        latLngs = List.filled(customers.length, null);
       }
-    } else {
-      latLngs = List.filled(customers.length, null);
     }
 
     // 事業所座標

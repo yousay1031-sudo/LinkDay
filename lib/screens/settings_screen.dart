@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/app_settings.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/draggable_marker_map.dart';
 
 // ════════════════════════════════════════════════════════════════
 // SettingsScreen
@@ -41,8 +42,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// geocode 後に表示する事業所座標（マーカー位置・地図中心）
   double? _previewLat;
   double? _previewLng;
-  /// 地図コントローラー
-  GoogleMapController? _mapController;
   /// 現在のマーカー位置（ドラッグ後に更新）
   LatLng? _markerLatLng;
   bool _savingPosition = false;
@@ -95,7 +94,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (final c in _vehicleCapCtrls) {
       c.dispose();
     }
-    _mapController?.dispose();
     super.dispose();
   }
 
@@ -287,10 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _markerLatLng = latLng;
       });
 
-      // 地図が既に起動済みの場合はカメラを移動
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(latLng, 16),
-      );
+      // カメラ移動は DraggableMarkerMap.didUpdateWidget が initialPosition 変化で行う
 
       _showSnack(
         '座標取得成功: ${result.lat.toStringAsFixed(7)}, ${result.lng.toStringAsFixed(7)}\n'
@@ -535,120 +530,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final center = LatLng(lat, lng);
     final marker = _markerLatLng ?? center;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 座標表示ヘッダー
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppColors.success.withValues(alpha: 0.08),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(10),
-              topRight: Radius.circular(10),
-            ),
-            border: Border.all(
-                color: AppColors.success.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.my_location, size: 16,
-                  color: AppColors.success),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '緯度: ${marker.latitude.toStringAsFixed(7)}',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.onSurface,
-                          fontFamily: 'monospace'),
-                    ),
-                    Text(
-                      '経度: ${marker.longitude.toStringAsFixed(7)}',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.onSurface,
-                          fontFamily: 'monospace'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'マーカーをドラッグして\n位置を微調整できます',
-                style: TextStyle(
-                    fontSize: 11, color: AppColors.onSurfaceVariant),
-                textAlign: TextAlign.right,
-              ),
-            ],
-          ),
-        ),
-        // Google マップ
-        ClipRRect(
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(10),
-            bottomRight: Radius.circular(10),
-          ),
-          child: SizedBox(
-            height: 260,
-            child: GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: center,
-                zoom: 16,
-              ),
-              markers: {
-                Marker(
-                  markerId: const MarkerId('facility_preview'),
-                  position: marker,
-                  draggable: true,
-                  icon: BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueOrange),
-                  infoWindow: InfoWindow(
-                    title: _facilityNameCtrl.text.isNotEmpty
-                        ? _facilityNameCtrl.text
-                        : '事業所',
-                    snippet: _facilityAddressCtrl.text.trim(),
-                  ),
-                  onDragEnd: _onMarkerDragged,
-                ),
-              },
-              onMapCreated: (controller) {
-                _mapController = controller;
-              },
-              myLocationEnabled: false,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: true,
-              mapToolbarEnabled: false,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        // 「この位置を事業所に設定」ボタン
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _savingPosition ? null : _saveMarkerPosition,
-            icon: _savingPosition
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.place, size: 18),
-            label: Text(
-              _savingPosition ? '保存中...' : 'この位置を事業所に設定',
-              style: const TextStyle(fontSize: 14),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-          ),
-        ),
-      ],
+    // 共通ウィジェット（送迎場所の微調整 UI と共有）
+    return DraggableMarkerMap(
+      initialPosition: marker,
+      markerTitle: _facilityNameCtrl.text.isNotEmpty ? _facilityNameCtrl.text : '事業所',
+      markerSnippet: _facilityAddressCtrl.text.trim(),
+      hue: BitmapDescriptor.hueOrange,
+      onPositionChanged: _onMarkerDragged,
+      actionLabel: 'この位置を事業所に設定',
+      actionIcon: Icons.place,
+      actionBusy: _savingPosition,
+      onAction: _saveMarkerPosition,
     );
   }
 

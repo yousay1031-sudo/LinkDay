@@ -121,6 +121,68 @@
       });
     };
 
+    // ─── JS Interop: Geocoder 候補一覧（Day 8） ──────────────────
+    // geocodeCandidates(address, maxResults) → Promise<string(JSON)>
+    //   JSON: { status, candidates: [{formattedAddress, lat, lng, placeId, types, partialMatch}] }
+    //
+    // 帯広市中心 (42.91, 143.20) ± 0.3° の矩形 bounds でバイアスをかけ、
+    // componentRestrictions.country='JP' で国外ヒットを除外する。
+    // ※ bounds は「優先」であり厳密なフィルタではないため、
+    //    Dart 側で bounds 外ヒットには「帯広市外の可能性」警告を付ける。
+    window.OBIHIRO_BOUNDS = { south: 42.61, west: 142.90, north: 43.21, east: 143.50 };
+    window.geocodeCandidates = function(address, maxResults) {
+      return new Promise(function(resolve, reject) {
+        if (!window.google || !window.google.maps) {
+          reject(new Error('Google Maps がまだロードされていません'));
+          return;
+        }
+        var limit = (typeof maxResults === 'number' && maxResults > 0) ? maxResults : 5;
+        var geocoder = new google.maps.Geocoder();
+        var b = window.OBIHIRO_BOUNDS;
+        var bounds = new google.maps.LatLngBounds(
+          new google.maps.LatLng(b.south, b.west),
+          new google.maps.LatLng(b.north, b.east));
+        console.log('[Geocoder] candidates request: "' + address + '" (max=' + limit + ')');
+        geocoder.geocode(
+          {
+            address: address,
+            region: 'JP',
+            language: 'ja',
+            bounds: bounds,
+            componentRestrictions: { country: 'JP' }
+          },
+          function(results, status) {
+            if (status === 'ZERO_RESULTS') {
+              console.log('[Geocoder] candidates: ZERO_RESULTS');
+              resolve(JSON.stringify({ status: 'ZERO_RESULTS', candidates: [] }));
+              return;
+            }
+            if (status !== 'OK' || !results) {
+              console.warn('[Geocoder] candidates failed:', status);
+              reject(new Error('Geocoder エラー: ' + status));
+              return;
+            }
+            var out = [];
+            for (var i = 0; i < results.length && out.length < limit; i++) {
+              var r = results[i];
+              if (!r || !r.geometry || !r.geometry.location) continue;
+              var loc = r.geometry.location;
+              out.push({
+                formattedAddress: r.formatted_address || '',
+                lat: loc.lat(),
+                lng: loc.lng(),
+                placeId: r.place_id || null,
+                types: Array.isArray(r.types) ? r.types : [],
+                partialMatch: r.partial_match === true
+              });
+            }
+            console.log('[Geocoder] candidates: ' + out.length + '件 (raw=' + results.length + ')');
+            resolve(JSON.stringify({ status: 'OK', candidates: out }));
+          }
+        );
+      });
+    };
+
     // ─── JS Interop: Routes API (google.maps.routes.Route.computeRoutes) ──
     //
     // 【移行履歴】

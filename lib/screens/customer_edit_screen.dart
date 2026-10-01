@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 import '../models/customer.dart';
 import '../services/customer_service.dart';
+import '../services/maps_js_service.dart';
+import '../services/transport_location_resolver.dart';
 import '../theme/app_theme.dart';
 import '../utils/kana_util.dart';
+import '../widgets/geocode_candidate_sheet.dart';
 
 class CustomerEditScreen extends StatefulWidget {
   final Customer? customer;
@@ -20,6 +25,18 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool get _isEditing => widget.customer != null;
+
+  // ── Day 8: 送迎場所 座標バッファ（保存時に Customer に反映）──
+  // index 0..2 = 送迎場所1〜3。テキストが変更されたら該当 slot を未解決に戻す。
+  final List<double?> _locLats = [null, null, null];
+  final List<double?> _locLngs = [null, null, null];
+  final List<String> _locStatus = [
+    Customer.locUnresolved,
+    Customer.locUnresolved,
+    Customer.locUnresolved,
+  ];
+  final List<String> _locOriginalText = ['', '', ''];
+  final List<bool> _locBusy = [false, false, false];
 
   // ── コントローラー ──────────────────────────────────────────────────
   late final TextEditingController _nameCtrl;
@@ -67,6 +84,21 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         text: c != null && c.transportLocations.length > 2
             ? c.transportLocations[2]
             : '');
+
+    // Day 8: 採用済み座標を読み込み
+    if (c != null) {
+      for (int i = 0; i < 3 && i < c.transportLocations.length; i++) {
+        final coord = c.transportCoord(i);
+        _locLats[i] = coord?.lat;
+        _locLngs[i] = coord?.lng;
+        _locStatus[i] = c.transportStatus(i);
+        _locOriginalText[i] = c.transportLocations[i];
+      }
+    }
+    // テキスト変更 → 座標を無効化（別の場所になるため）
+    for (int i = 0; i < 3; i++) {
+      _transportCtrl(i).addListener(() => _onLocationTextChanged(i));
+    }
     _birthday = c?.birthday;
     _certExpiry = c?.recipientCertExpiry;
     _gender = c?.gender;
@@ -133,6 +165,135 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     }
   }
 
+  // ── Day 8: 送迎場所 座標操作 ───────────────────────────────────────
+
+  TextEditingController _transportCtrl(int i) => switch (i) {
+        0 => _transport1Ctrl,
+        1 => _transport2Ctrl,
+        _ => _transport3Ctrl,
+      };
+
+  void _onLocationTextChanged(int i) {
+    if (!mounted) return;
+    final now = _transportCtrl(i).text.trim();
+    setState(() {
+      if (now != _locOriginalText[i] && _locStatus[i] != Customer.locUnresolved) {
+        // 別の場所に書き換えられた → 座標を無効化
+        _locLats[i] = null;
+        _locLngs[i] = null;
+        _locStatus[i] = Customer.locUnresolved;
+      } else if (now == _locOriginalText[i] && widget.customer != null) {
+        // 元に戻した → 元の座標を復元
+        final coord = widget.customer!.transportCoord(i);
+        if (coord != null && _locLats[i] == null) {
+          _locLats[i] = coord.lat;
+          _locLngs[i] = coord.lng;
+          _locStatus[i] = widget.customer!.transportStatus(i);
+        }
+      }
+      // それ以外も再 build（チップ行の表示/非表示切替のため）
+    });
+  }
+
+  ({double lat, double lng})? _locCoord(int i) {
+    final lat = _locLats[i];
+    final lng = _locLngs[i];
+    return (lat != null && lng != null) ? (lat: lat, lng: lng) : null;
+  }
+
+  void _snack(String msg, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+  }
+
+  /// 「候補を取得」
+  Future<void> _fetchCandidates(int i) async {
+    final address = _transportCtrl(i).text.trim();
+    if (!TransportLocationResolver.isResolvable(address)) {
+      _snack('送迎場所${i + 1} が未入力です', AppColors.warning);
+      return;
+    }
+    setState(() => _locBusy[i] = true);
+    try {
+      final result = await MapsJsService.instance.geocodeCandidates(address);
+      if (!mounted) return;
+      if (result.isEmpty) {
+        setState(() {
+          _locLats[i] = null;
+          _locLngs[i] = null;
+          _locStatus[i] = Customer.locFailed;
+        });
+        _snack('「$address」に該当する地点が見つかりませんでした', AppColors.error);
+        return;
+      }
+      final picked = await showGeocodeCandidateSheet(
+        context,
+        address: address,
+        candidates: result.candidates,
+        title: '送迎場所${i + 1} の候補',
+        autoAdopted: result.isSingle,
+      );
+      if (picked == null) {
+        // キャンセル: 1 件のみなら自動採用（resolved）扱いで保持
+        if (result.isSingle && _locCoord(i) == null) {
+          final c = result.candidates.first;
+          setState(() {
+            _locLats[i] = c.lat;
+            _locLngs[i] = c.lng;
+            _locStatus[i] = Customer.locResolved;
+          });
+        }
+        return;
+      }
+      setState(() {
+        _locLats[i] = picked.lat;
+        _locLngs[i] = picked.lng;
+        _locStatus[i] = Customer.locManual;
+      });
+      _snack('送迎場所${i + 1}: ${picked.formattedAddress} を採用（保存で確定）', AppColors.success);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _locLats[i] = null;
+        _locLngs[i] = null;
+        _locStatus[i] = Customer.locFailed;
+      });
+      _snack('候補取得に失敗: $e', AppColors.error);
+    } finally {
+      if (mounted) setState(() => _locBusy[i] = false);
+    }
+  }
+
+  /// 「地図で微調整」
+  Future<void> _adjustOnMap(int i) async {
+    final coord = _locCoord(i);
+    // 座標がなければ事業所座標（または帯広中心）から開始
+    final start = coord != null
+        ? LatLng(coord.lat, coord.lng)
+        : const LatLng(42.9238, 143.1966);
+    final picked = await showAdjustCoordDialog(
+      context,
+      initial: start,
+      title: '送迎場所${i + 1}',
+      snippet: _transportCtrl(i).text.trim(),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _locLats[i] = picked.latitude;
+      _locLngs[i] = picked.longitude;
+      _locStatus[i] = Customer.locManual;
+    });
+  }
+
+  void _clearCoord(int i) {
+    setState(() {
+      _locLats[i] = null;
+      _locLngs[i] = null;
+      _locStatus[i] = Customer.locUnresolved;
+    });
+  }
+
   // ── 保存 ────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
@@ -149,11 +310,19 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final transportLocations = [
-        _transport1Ctrl.text.trim(),
-        _transport2Ctrl.text.trim(),
-        _transport3Ctrl.text.trim(),
-      ].where((s) => s.isNotEmpty).toList();
+      // Day 8: 空欄を詰めつつ座標・ステータスも同じ順序で揃える
+      final transportLocations = <String>[];
+      final locLats = <double?>[];
+      final locLngs = <double?>[];
+      final locStatus = <String>[];
+      for (int i = 0; i < 3; i++) {
+        final t = _transportCtrl(i).text.trim();
+        if (t.isEmpty) continue;
+        transportLocations.add(t);
+        locLats.add(_locLats[i]);
+        locLngs.add(_locLngs[i]);
+        locStatus.add(_locStatus[i]);
+      }
 
       if (_isEditing) {
         final updated = Customer(
@@ -183,6 +352,9 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
           createdAt: widget.customer!.createdAt,
           isActive: widget.customer!.isActive,
+          transportLocationLats: locLats,
+          transportLocationLngs: locLngs,
+          transportLocationStatus: locStatus,
         );
         await CustomerService.instance.updateCustomer(updated);
       } else {
@@ -210,6 +382,9 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           regularDays: List.from(_regularDays),
           transportLocations: transportLocations,
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+          transportLocationLats: locLats,
+          transportLocationLngs: locLngs,
+          transportLocationStatus: locStatus,
         );
         await CustomerService.instance.addCustomer(customer);
       }
@@ -677,38 +852,100 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   // ── セクション5: 送迎場所 ─────────────────────────────────────────────
 
   Widget _buildTransportInfo() {
+    const hints = ['例: 〇〇小学校', '例: ○○公民館', '例: 自宅'];
+    const icons = [Icons.directions_car, Icons.directions_car, Icons.home_outlined];
     return Column(
       children: [
-        TextFormField(
-          controller: _transport1Ctrl,
-          decoration: const InputDecoration(
-            labelText: '送迎場所1',
-            hintText: '例: 〇〇小学校',
-            prefixIcon: Icon(Icons.directions_car, size: 18),
+        for (int i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(height: 14),
+          TextFormField(
+            controller: _transportCtrl(i),
+            decoration: InputDecoration(
+              labelText: '送迎場所${i + 1}',
+              hintText: hints[i],
+              prefixIcon: Icon(icons[i], size: 18),
+            ),
+            textInputAction: TextInputAction.next,
           ),
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _transport2Ctrl,
-          decoration: const InputDecoration(
-            labelText: '送迎場所2',
-            hintText: '例: ○○公民館',
-            prefixIcon: Icon(Icons.directions_car, size: 18),
-          ),
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _transport3Ctrl,
-          decoration: const InputDecoration(
-            labelText: '送迎場所3',
-            hintText: '例: 自宅',
-            prefixIcon: Icon(Icons.home_outlined, size: 18),
-          ),
-          textInputAction: TextInputAction.next,
+          const SizedBox(height: 6),
+          _buildLocationCoordRow(i),
+        ],
+        const SizedBox(height: 6),
+        const Text(
+          '※ 座標は送迎ルート最適化で使用します。未解決のままでも保存できます'
+          '（送迎計画実行時に自動ジオコーディングされます）。',
+          style: TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
         ),
       ],
+    );
+  }
+
+  /// 送迎場所 i の状態チップ + 操作ボタン行
+  Widget _buildLocationCoordRow(int i) {
+    final text = _transportCtrl(i).text.trim();
+    if (!TransportLocationResolver.isResolvable(text)) {
+      return const SizedBox.shrink();
+    }
+    final coord = _locCoord(i);
+    final busy = _locBusy[i];
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          TransportLocationStatusChip(status: _locStatus[i], coord: coord),
+          if (coord != null)
+            Text(
+              '${coord.lat.toStringAsFixed(5)}, ${coord.lng.toStringAsFixed(5)}',
+              style: const TextStyle(
+                  fontSize: 10.5, color: AppColors.onSurfaceVariant, fontFamily: 'monospace'),
+            ),
+          _smallAction(
+            icon: Icons.search,
+            label: _locStatus[i] == Customer.locFailed ? 'リトライ' : '候補を取得',
+            busy: busy,
+            onTap: busy ? null : () => _fetchCandidates(i),
+          ),
+          _smallAction(
+            icon: Icons.edit_location_alt_outlined,
+            label: '地図で微調整',
+            onTap: busy ? null : () => _adjustOnMap(i),
+          ),
+          if (coord != null || _locStatus[i] != Customer.locUnresolved)
+            _smallAction(
+              icon: Icons.clear,
+              label: 'クリア',
+              color: AppColors.onSurfaceVariant,
+              onTap: busy ? null : () => _clearCoord(i),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _smallAction({
+    required IconData icon,
+    required String label,
+    VoidCallback? onTap,
+    bool busy = false,
+    Color color = AppColors.primary,
+  }) {
+    return TextButton.icon(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: color,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: const Size(0, 28),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: const TextStyle(fontSize: 11.5),
+      ),
+      icon: busy
+          ? const SizedBox(
+              width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(icon, size: 14),
+      label: Text(label),
     );
   }
 
