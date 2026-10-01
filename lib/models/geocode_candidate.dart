@@ -29,6 +29,101 @@ class GeocodeCandidate {
   bool get isOutsideObihiroBounds =>
       lat < boundsSouth || lat > boundsNorth || lng < boundsWest || lng > boundsEast;
 
+  // ── Day 8 修正: 自動採用の厳格化で使う粒度判定 ────────────────
+  //
+  // Geocoder は bounds を「バイアス」として扱うだけなので、短名クエリでは
+  // 道外・県外や「日本」（国レベル重心）が 1 件目に来ることがある。
+  // 自動採用の可否は以下 3 観点で判定する（transport_location_resolver 参照）:
+  //   1. bounds 外か（isOutsideObihiroBounds）
+  //   2. 国・行政区域レベルの粗い粒度か（isCountryLevel / hasPointGranularity）
+  //   3. 部分一致か（partialMatch）
+
+  /// 自動採用を許容する「地点レベル」の types
+  ///
+  /// 仕様: premise / park / transit_station / school / establishment /
+  ///       street_address / route のいずれか（および同等の下位種別）を含むこと。
+  static const Set<String> pointGranularityTypes = {
+    // 建物・番地・通り
+    'premise',
+    'subpremise',
+    'street_address',
+    'route',
+    'intersection',
+    // 施設系
+    'establishment',
+    'point_of_interest',
+    'park',
+    'stadium',
+    'hospital',
+    'shopping_mall',
+    'department_store',
+    'store',
+    // 駅・停留所
+    'transit_station',
+    'train_station',
+    'bus_station',
+    'subway_station',
+    // 学校
+    'school',
+    'primary_school',
+    'secondary_school',
+    'university',
+  };
+
+  /// 行政区域・国レベル（＝粒度不足）の types
+  static const Set<String> coarseTypes = {
+    'country',
+    'administrative_area_level_1',
+    'administrative_area_level_2',
+    'administrative_area_level_3',
+    'locality',
+    'sublocality',
+    'sublocality_level_1',
+    'sublocality_level_2',
+    'sublocality_level_3',
+    'sublocality_level_4',
+    'neighborhood',
+    'postal_code',
+    'political',
+  };
+
+  /// 代表 type（ログ表示用。types が空なら 'unknown'）
+  String get primaryType => types.isNotEmpty ? types.first : 'unknown';
+
+  /// 粒度不足の原因となっている代表 type（ログ用: 例 'locality'）
+  String get coarseType {
+    for (final t in types) {
+      if (coarseTypes.contains(t) && t != 'political') return t;
+    }
+    return primaryType;
+  }
+
+  /// 地点（建物・番地・施設・駅・学校・公園）レベルの粒度を持つか
+  bool get hasPointGranularity =>
+      types.any((t) => pointGranularityTypes.contains(t));
+
+  /// 「日本」だけ等の国レベル結果か（絶対に保存してはいけない粒度）
+  bool get isCountryLevel {
+    if (types.contains('country')) return true;
+    final a = formattedAddress.trim();
+    return a == '日本' || a == 'Japan' || a == '日本国';
+  }
+
+  /// 行政区域（市町村・県）レベルのみで地点粒度を持たないか
+  bool get isAdminAreaOnly => !hasPointGranularity;
+
+  /// 自動採用候補としての優先スコア（大きいほど良い）
+  ///
+  /// 複数候補を提示する際、帯広市内かつ地点粒度の候補を先頭に並べるために使う。
+  int get preferenceScore {
+    int s = 0;
+    if (!isOutsideObihiroBounds) s += 8;
+    if (hasPointGranularity) s += 4;
+    if (!isCountryLevel) s += 2;
+    if (!partialMatch) s += 1;
+    return s;
+  }
+
   /// 種別の日本語ラベル（主要なもののみ。該当なしは先頭 type をそのまま）
   String get typeLabel {
     const map = <String, String>{
@@ -121,4 +216,11 @@ class GeocodeCandidatesResult {
   bool get isEmpty => candidates.isEmpty;
   bool get isSingle => candidates.length == 1;
   bool get isMultiple => candidates.length > 1;
+
+  /// 帯広市内・地点粒度の候補を優先した並び（UI の選択リスト用）
+  List<GeocodeCandidate> get sortedByPreference {
+    final list = List<GeocodeCandidate>.from(candidates);
+    list.sort((a, b) => b.preferenceScore.compareTo(a.preferenceScore));
+    return list;
+  }
 }

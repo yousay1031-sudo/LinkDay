@@ -39,13 +39,15 @@ class CustomerAdapter extends TypeAdapter<Customer> {
       transportLocationLats: (fields[19] as List?)?.cast<double?>(),
       transportLocationLngs: (fields[20] as List?)?.cast<double?>(),
       transportLocationStatus: (fields[21] as List?)?.cast<String>(),
+      transportLocationFormatted: (fields[22] as List?)?.cast<String?>(),
+      transportLocationTypes: (fields[23] as List?)?.cast<String?>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Customer obj) {
     writer
-      ..writeByte(22)
+      ..writeByte(24)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -89,7 +91,11 @@ class CustomerAdapter extends TypeAdapter<Customer> {
       ..writeByte(20)
       ..write(obj.transportLocationLngs)
       ..writeByte(21)
-      ..write(obj.transportLocationStatus);
+      ..write(obj.transportLocationStatus)
+      ..writeByte(22)
+      ..write(obj.transportLocationFormatted)
+      ..writeByte(23)
+      ..write(obj.transportLocationTypes);
   }
 
   @override

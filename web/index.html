@@ -128,7 +128,11 @@
     // 帯広市中心 (42.91, 143.20) ± 0.3° の矩形 bounds でバイアスをかけ、
     // componentRestrictions.country='JP' で国外ヒットを除外する。
     // ※ bounds は「優先」であり厳密なフィルタではないため、
-    //    Dart 側で bounds 外ヒットには「帯広市外の可能性」警告を付ける。
+    //    短名クエリ（例「南公園」）では道外・県外や「日本」（国レベル重心）が
+    //    1 件目に来ることがある。そのため Dart 側（transport_location_resolver）で:
+    //      1. クエリを「北海道帯広市 {入力}」に自動補完し
+    //      2. bounds 外・粒度不足・部分一致は自動採用せず選択待ちに回す
+    //    という二段構えで誤採用を防止している。
     window.OBIHIRO_BOUNDS = { south: 42.61, west: 142.90, north: 43.21, east: 143.50 };
     window.geocodeCandidates = function(address, maxResults) {
       return new Promise(function(resolve, reject) {
@@ -136,7 +140,8 @@
           reject(new Error('Google Maps がまだロードされていません'));
           return;
         }
-        var limit = (typeof maxResults === 'number' && maxResults > 0) ? maxResults : 5;
+        // 誤ヒットが 1 件目に来ても正しい候補を拾えるよう、既定の取得数を広げる
+        var limit = (typeof maxResults === 'number' && maxResults > 0) ? maxResults : 8;
         var geocoder = new google.maps.Geocoder();
         var b = window.OBIHIRO_BOUNDS;
         var bounds = new google.maps.LatLngBounds(

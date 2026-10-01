@@ -83,12 +83,17 @@ class TransportLocationStatusChip extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════
 
 /// 候補一覧 → 選択 → 「この地点を採用」。戻り値は採用候補（キャンセルは null）
+///
+/// [blockReasonText] が渡されると「自動採用不可（要確認）」バナーを表示する。
+/// [query] が渡され、表示文字列と異なる場合は補完後クエリを表示する。
 Future<GeocodeCandidate?> showGeocodeCandidateSheet(
   BuildContext context, {
   required String address,
   required List<GeocodeCandidate> candidates,
   String? title,
   bool autoAdopted = false,
+  String? blockReasonText,
+  String? query,
 }) {
   return showModalBottomSheet<GeocodeCandidate>(
     context: context,
@@ -102,6 +107,8 @@ Future<GeocodeCandidate?> showGeocodeCandidateSheet(
       candidates: candidates,
       title: title,
       autoAdopted: autoAdopted,
+      blockReasonText: blockReasonText,
+      query: query,
     ),
   );
 }
@@ -111,11 +118,15 @@ class _CandidateSheet extends StatefulWidget {
   final List<GeocodeCandidate> candidates;
   final String? title;
   final bool autoAdopted;
+  final String? blockReasonText;
+  final String? query;
   const _CandidateSheet({
     required this.address,
     required this.candidates,
     this.title,
     required this.autoAdopted,
+    this.blockReasonText,
+    this.query,
   });
 
   @override
@@ -156,6 +167,10 @@ class _CandidateSheetState extends State<_CandidateSheet> {
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                       Text('「${widget.address}」 ${cands.length} 件',
                           style: const TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant)),
+                      if (widget.query != null && widget.query != widget.address)
+                        Text('検索クエリ: 「${widget.query}」',
+                            style: const TextStyle(
+                                fontSize: 10.5, color: AppColors.onSurfaceVariant)),
                     ],
                   ),
                 ),
@@ -173,6 +188,30 @@ class _CandidateSheetState extends State<_CandidateSheet> {
               ],
             ),
           ),
+          if (widget.blockReasonText != null)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      size: 15, color: AppColors.warning),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '自動採用不可（要確認）: ${widget.blockReasonText}。'
+                      '帯広市内の正しい地点を選んで採用してください。',
+                      style: const TextStyle(fontSize: 11, color: AppColors.warning),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (cands.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -222,6 +261,10 @@ class _CandidateSheetState extends State<_CandidateSheet> {
                                     if (c.partialMatch) _miniChip('部分一致', AppColors.warning),
                                     if (c.isOutsideObihiroBounds)
                                       _miniChip('帯広市外の可能性', AppColors.warning),
+                                    if (c.isCountryLevel)
+                                      _miniChip('国レベル（採用不可）', AppColors.error)
+                                    else if (!c.hasPointGranularity)
+                                      _miniChip('粒度不足', AppColors.warning),
                                     _miniChip(
                                         '${c.lat.toStringAsFixed(5)}, ${c.lng.toStringAsFixed(5)}',
                                         AppColors.onSurfaceVariant),
@@ -283,9 +326,14 @@ class _CandidateSheetState extends State<_CandidateSheet> {
                   Expanded(
                     flex: 2,
                     child: FilledButton.icon(
-                      onPressed: sel == null ? null : () => Navigator.pop(context, sel),
+                      // 「日本」等国レベル座標はどの経路でも保存させない
+                      onPressed: (sel == null || sel.isCountryLevel)
+                          ? null
+                          : () => Navigator.pop(context, sel),
                       icon: const Icon(Icons.check),
-                      label: const Text('この地点を採用'),
+                      label: Text(sel != null && sel.isCountryLevel
+                          ? '国レベルは採用不可'
+                          : 'この地点を採用'),
                     ),
                   ),
                 ],

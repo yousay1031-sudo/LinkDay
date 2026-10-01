@@ -102,14 +102,42 @@ class CustomerService {
 
   // ── 書き込み ────────────────────────────────────────────────────────
 
+  /// 国レベル座標（「日本」等）の送迎場所座標を保存直前に破棄する
+  ///
+  /// Day 8 修正（受け入れ基準5）: どの経路（一括解決 / 個別採用 / 編集画面 /
+  /// インポート）を通っても「日本」レベルの座標が Hive に保存されないよう、
+  /// 永続化層で最終ガードする。該当時は unresolved に戻す。
+  static int sanitizeCoords(Customer customer) {
+    int dropped = 0;
+    for (int i = 0; i < customer.transportLocations.length; i++) {
+      final coord = customer.transportCoord(i);
+      if (coord == null) continue;
+      final formatted = (customer.transportFormatted(i) ?? '').trim();
+      final types = customer.transportTypes(i);
+      final isCountry = types.contains('country') ||
+          formatted == '日本' ||
+          formatted == '日本国' ||
+          formatted == 'Japan';
+      if (!isCountry) continue;
+      debugPrint('[CustomerService] 国レベル座標を破棄: ${customer.name}'
+          '[$i] "${customer.transportLocations[i]}" → "$formatted" '
+          '(${coord.lat.toStringAsFixed(5)}, ${coord.lng.toStringAsFixed(5)})');
+      customer.setTransportCoord(i, null, null, Customer.locUnresolved);
+      dropped++;
+    }
+    return dropped;
+  }
+
   /// 顧客を新規追加する
   Future<void> addCustomer(Customer customer) async {
+    sanitizeCoords(customer);
     await _customers.put(customer.id, customer);
     debugPrint('[CustomerService] Added: ${customer.name} (${customer.id})');
   }
 
   /// 顧客情報を更新する
   Future<void> updateCustomer(Customer customer) async {
+    sanitizeCoords(customer);
     final updated = customer.copyWith(); // updatedAt を現在時刻に更新
     await _customers.put(updated.id, updated);
     debugPrint('[CustomerService] Updated: ${updated.name} (${updated.id})');

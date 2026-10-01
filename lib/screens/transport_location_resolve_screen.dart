@@ -10,12 +10,23 @@ import '../services/transport_location_resolver.dart';
 import '../theme/app_theme.dart';
 import '../widgets/geocode_candidate_sheet.dart';
 
+/// 解決状況サマリーの record 型
+typedef _Status = ({
+  int total,
+  int resolved,
+  int manual,
+  int failed,
+  int unresolved,
+  int suspect,
+});
+
 /// 送迎場所の位置確認（一括ジオコーディング）画面 — Day 8
 ///
 /// - 全児童 × 送迎場所1〜3 の解決状況マトリクス
 /// - フィルタ: すべて / 未解決のみ / 失敗のみ
 /// - 「未解決を一括ジオコーディング」: 200ms 間隔で順次実行
-/// - 複数候補キューの解決 UI（候補リスト + ミニ地図）
+/// - 複数候補 / 自動採用不可キューの解決 UI（候補リスト + ミニ地図）
+/// - 「帯広市外・粒度不足の採用を解除」（誤採用データの一括リセット）
 class TransportLocationResolveScreen extends StatefulWidget {
   const TransportLocationResolveScreen({super.key});
 
@@ -57,7 +68,7 @@ class _TransportLocationResolveScreenState
     final st = TransportLocationResolver.countStatus(list);
     debugPrint('[ResolveScreen] loaded: customers=${list.length}, '
         'locations=${st.total}, resolved=${st.resolved}, manual=${st.manual}, '
-        'failed=${st.failed}, unresolved=${st.unresolved}');
+        'failed=${st.failed}, unresolved=${st.unresolved}, suspect=${st.suspect}');
   }
 
   void _snack(String msg, {Color color = AppColors.success}) {
@@ -101,7 +112,11 @@ class _TransportLocationResolveScreenState
       });
       _load();
       if (_queue.isNotEmpty) {
-        _snack('${_queue.length} 件は複数候補のため選択が必要です', color: AppColors.warning);
+        final blocked = summary.blocked;
+        _snack(
+            '${_queue.length} 件は確認が必要です'
+            '${blocked > 0 ? '（うち自動採用不可 $blocked 件）' : ''}',
+            color: AppColors.warning);
       } else {
         _snack('一括ジオコーディングが完了しました');
       }
@@ -120,8 +135,8 @@ class _TransportLocationResolveScreenState
       _snack('APIキーが設定されていません', color: AppColors.error);
       return;
     }
-    final (outcome, result) = await TransportLocationResolver.instance
-        .resolveOne(c, i, fetch: _fetch, force: force);
+    final (outcome, result, judgement) = await TransportLocationResolver.instance
+        .resolveOneDetailed(c, i, fetch: _fetch, force: force);
     if (!mounted) return;
     switch (outcome) {
       case ResolveOutcome.autoAdopted:
@@ -129,7 +144,14 @@ class _TransportLocationResolveScreenState
         _snack('${c.name} 送迎場所${i + 1}: 自動採用しました');
         _load();
       case ResolveOutcome.pendingSelection:
-        await _pickForCustomer(c, i, result!.candidates);
+        if (judgement != null && !judgement.allowed) {
+          _snack('${c.name} 送迎場所${i + 1}: 自動採用不可（${judgement.reasonText}）。'
+              '候補を確認してください。', color: AppColors.warning);
+        }
+        await _pickForCustomer(c, i, result!.sortedByPreference,
+            blockReasons: judgement?.allowed == false
+                ? judgement!.reasons
+                : const <AutoAdoptBlockReason>[]);
       case ResolveOutcome.failed:
         _changed = true;
         _snack('${c.name} 送迎場所${i + 1}: 該当なし / 取得失敗', color: AppColors.error);
@@ -142,15 +164,30 @@ class _TransportLocationResolveScreenState
     }
   }
 
-  Future<void> _pickForCustomer(Customer c, int i, List<GeocodeCandidate> cands) async {
+  Future<void> _pickForCustomer(
+    Customer c,
+    int i,
+    List<GeocodeCandidate> cands, {
+    List<AutoAdoptBlockReason> blockReasons = const [],
+  }) async {
     final picked = await showGeocodeCandidateSheet(
       context,
       address: c.transportLocations[i],
       candidates: cands,
       title: '${c.name}  送迎場所${i + 1}',
+      blockReasonText: blockReasons.isEmpty
+          ? null
+          : blockReasons.map((r) => r.shortLabel).join(' / '),
+      query: TransportLocationResolver.buildGeocodeQuery(c.transportLocations[i]),
     );
     if (picked == null || !mounted) return;
-    await TransportLocationResolver.instance.adoptCandidate(c, i, picked);
+    final ok = await TransportLocationResolver.instance.adoptCandidate(c, i, picked);
+    if (!mounted) return;
+    if (!ok) {
+      _snack('「${picked.formattedAddress}」は国レベルの座標のため採用できません',
+          color: AppColors.error);
+      return;
+    }
     _changed = true;
     _queue.removeWhere((q) => q.customer.id == c.id && q.index == i);
     _load();
@@ -177,6 +214,102 @@ class _TransportLocationResolveScreenState
     _load();
   }
 
+  // ── 修正3: 誤採用（帯広市外・粒度不足）の一括解除 ───────────────
+
+  Future<void> _resetSuspect() async {
+    final suspects = TransportLocationResolver.findSuspectAdoptions(_customers);
+    if (suspects.isEmpty) {
+      _snack('帯広市外・粒度不足の採用はありません');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.restore, color: AppColors.warning),
+            SizedBox(width: 8),
+            Expanded(child: Text('誤採用の解除', style: TextStyle(fontSize: 16))),
+          ],
+        ),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('以下 ${suspects.length} 件の自動採用座標を解除し、未解決に戻します。',
+                  style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 4),
+              const Text('※ 手動採用（ユーザーが選択した座標）は対象外です。',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.onSurfaceVariant)),
+              const SizedBox(height: 10),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final s in suspects)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.warning_amber_rounded,
+                                  size: 14, color: AppColors.warning),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                        '${s.customer.name} 送迎場所${s.index + 1}'
+                                        '「${s.address}」',
+                                        style: const TextStyle(fontSize: 12)),
+                                    Text(
+                                        '${s.formatted ?? '根拠不明'}  '
+                                        '(${s.lat.toStringAsFixed(4)}, '
+                                        '${s.lng.toStringAsFixed(4)})  — ${s.reasonText}',
+                                        style: const TextStyle(
+                                            fontSize: 10.5,
+                                            color: AppColors.onSurfaceVariant)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.restore, size: 16),
+            label: Text('${suspects.length} 件を解除'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.warning),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final n = await TransportLocationResolver.instance.resetSuspectAdoptions(_customers);
+    if (!mounted) return;
+    _changed = true;
+    _queue.clear();
+    setState(() => _summary = null);
+    _load();
+    _snack('$n 件を未解決に戻しました。再度ジオコーディングしてください。',
+        color: AppColors.warning);
+  }
+
   // ── キュー処理 ───────────────────────────────────────────────
 
   Future<void> _processQueue() async {
@@ -191,8 +324,12 @@ class _TransportLocationResolveScreenState
       if (!mounted || action == null || action.kind == _QueueKind.close) break;
       switch (action.kind) {
         case _QueueKind.adopt:
-          await TransportLocationResolver.instance
+          final ok = await TransportLocationResolver.instance
               .adoptCandidate(item.customer, item.index, action.candidate!);
+          if (!ok) {
+            _snack('国レベルの座標（「日本」）は採用できません', color: AppColors.error);
+            break;
+          }
           _changed = true;
           _queue.removeAt(0);
         case _QueueKind.skip:
@@ -241,6 +378,16 @@ class _TransportLocationResolveScreenState
           title: const Text('送迎場所の位置確認'),
           actions: [
             IconButton(
+              tooltip: '帯広市外・粒度不足の採用を解除',
+              icon: Badge(
+                isLabelVisible: st.suspect > 0,
+                label: Text('${st.suspect}'),
+                backgroundColor: AppColors.warning,
+                child: const Icon(Icons.restore),
+              ),
+              onPressed: _running ? null : _resetSuspect,
+            ),
+            IconButton(
               tooltip: '再読込',
               icon: const Icon(Icons.refresh),
               onPressed: _running ? null : _load,
@@ -271,7 +418,7 @@ class _TransportLocationResolveScreenState
     );
   }
 
-  Widget _buildHeader(({int total, int resolved, int manual, int failed, int unresolved}) st) {
+  Widget _buildHeader(_Status st) {
     final done = st.resolved + st.manual;
     final ratio = st.total == 0 ? 0.0 : done / st.total;
     return Container(
@@ -316,6 +463,51 @@ class _TransportLocationResolveScreenState
               _stat('未解決', st.unresolved, AppColors.onSurfaceVariant),
             ],
           ),
+          if (st.suspect > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          size: 16, color: AppColors.warning),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '帯広市外・粒度不足の自動採用が ${st.suspect} 件あります。'
+                          '解除して再解決することを推奨します。',
+                          style: const TextStyle(fontSize: 11.5, color: AppColors.warning),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: _running ? null : _resetSuspect,
+                      icon: const Icon(Icons.restore, size: 15),
+                      label: Text('帯広市外・粒度不足の採用を解除（${st.suspect}件）',
+                          style: const TextStyle(fontSize: 11.5)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.warning,
+                        side: BorderSide(color: AppColors.warning.withValues(alpha: 0.6)),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (!_hasApiKey) ...[
             const SizedBox(height: 10),
             Container(
@@ -418,8 +610,10 @@ class _TransportLocationResolveScreenState
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '完了: 自動採用 ${s.autoAdopted} / 選択待ち ${s.pending} / 失敗 ${s.failed} / '
-                  '解決済みスキップ ${s.alreadyResolved}  （API 呼出 ${s.apiCalls} 回）',
+                  '完了: 自動採用 ${s.autoAdopted} / 確認待ち ${s.pending}'
+                  '${s.blocked > 0 ? '（自動採用不可 ${s.blocked}）' : ''} / '
+                  '失敗 ${s.failed} / 解決済みスキップ ${s.alreadyResolved}'
+                  '  （API 呼出 ${s.apiCalls} 回）',
                   style: const TextStyle(fontSize: 12.5),
                 ),
               ),
@@ -437,7 +631,7 @@ class _TransportLocationResolveScreenState
               child: FilledButton.icon(
                 onPressed: _processQueue,
                 icon: const Icon(Icons.rule, size: 16),
-                label: Text('複数候補を解決する（${_queue.length} 件）'),
+                label: Text('要確認の候補を解決する（${_queue.length} 件）'),
                 style: FilledButton.styleFrom(backgroundColor: AppColors.warning),
               ),
             ),
@@ -447,7 +641,7 @@ class _TransportLocationResolveScreenState
     );
   }
 
-  Widget _buildFilterBar(({int total, int resolved, int manual, int failed, int unresolved}) st) {
+  Widget _buildFilterBar(_Status st) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
       child: Row(
@@ -652,7 +846,7 @@ class _TransportLocationResolveScreenState
     );
   }
 
-  Widget? _buildFab(({int total, int resolved, int manual, int failed, int unresolved}) st) {
+  Widget? _buildFab(_Status st) {
     if (_running) return null;
     final targets = st.unresolved + st.failed;
     if (_queue.isNotEmpty) {
@@ -660,7 +854,7 @@ class _TransportLocationResolveScreenState
         onPressed: _processQueue,
         backgroundColor: AppColors.warning,
         icon: const Icon(Icons.rule),
-        label: Text('複数候補を解決（${_queue.length}）'),
+        label: Text('要確認を解決（${_queue.length}）'),
       );
     }
     return FloatingActionButton.extended(
@@ -736,10 +930,15 @@ class _QueueResolveDialogState extends State<_QueueResolveDialog> {
                       Text(
                         '${c.typeLabel}'
                         '${c.partialMatch ? ' · 部分一致' : ''}'
-                        '${c.isOutsideObihiroBounds ? ' · 帯広市外の可能性' : ''}',
+                        '${c.isOutsideObihiroBounds ? ' · 帯広市外の可能性' : ''}'
+                        '${c.isCountryLevel ? ' · 国レベル（採用不可）' : c.hasPointGranularity ? '' : ' · 粒度不足'}',
                         style: TextStyle(
                             fontSize: 10.5,
-                            color: c.isOutsideObihiroBounds ? AppColors.warning : AppColors.onSurfaceVariant),
+                            color: (c.isOutsideObihiroBounds ||
+                                    c.isCountryLevel ||
+                                    !c.hasPointGranularity)
+                                ? AppColors.warning
+                                : AppColors.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -787,6 +986,16 @@ class _QueueResolveDialogState extends State<_QueueResolveDialog> {
                     style: const TextStyle(fontSize: 15)),
                 Text('「${it.address}」 ${cands.length} 件  （残り ${widget.remaining} 件）',
                     style: const TextStyle(fontSize: 11.5, color: AppColors.onSurfaceVariant)),
+                if (it.query != it.address)
+                  Text('検索クエリ: 「${it.query}」',
+                      style: const TextStyle(
+                          fontSize: 10.5, color: AppColors.onSurfaceVariant)),
+                if (it.isBlockedAutoAdopt)
+                  Text('自動採用不可（要確認）: ${it.blockReasonText}',
+                      style: const TextStyle(
+                          fontSize: 10.5,
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -825,7 +1034,9 @@ class _QueueResolveDialogState extends State<_QueueResolveDialog> {
           child: Text(widget.remaining > 1 ? 'スキップして次へ' : 'スキップ'),
         ),
         FilledButton.icon(
-          onPressed: sel == null
+          // 受け入れ基準5: 「日本」レベルの座標はどの経路でも保存させない
+          onPressed: (sel == null ||
+                  !TransportLocationResolver.isStorableCandidate(sel))
               ? null
               : () => Navigator.pop(context, _QueueAction(_QueueKind.adopt, sel)),
           icon: const Icon(Icons.check, size: 16),

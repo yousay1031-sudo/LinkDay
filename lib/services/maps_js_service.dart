@@ -163,7 +163,8 @@ class MapsJsService {
   /// 0 件は空リスト（例外にしない）。API エラーのみ throw。
   Future<GeocodeCandidatesResult> geocodeCandidates(
     String address, {
-    int maxResults = 5,
+    // Day 8 修正: 誤ヒットが 1 件目に来ても正しい候補を拾えるよう取得数を広げる
+    int maxResults = 8,
     bool useCache = true,
   }) async {
     final key = address.trim();

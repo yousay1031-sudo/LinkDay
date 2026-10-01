@@ -78,6 +78,17 @@ class Customer extends HiveObject {
   @HiveField(21)
   List<String> transportLocationStatus; // 'unresolved' / 'resolved' / 'manual' / 'failed'
 
+  // ── Day 8 修正: 採用根拠メタデータ ───────────────────────────────
+  // 誤ジオコード（「日本」・市全域重心・県外ヒット）の検出と一括解除のため、
+  // 採用した候補の formattedAddress と types を保持する。
+  // 旧データ（未保存）は null → 「根拠不明の自動採用」として扱う。
+
+  @HiveField(22)
+  List<String?> transportLocationFormatted; // 採用候補の formattedAddress
+
+  @HiveField(23)
+  List<String?> transportLocationTypes; // 採用候補の types（カンマ区切り）
+
   Customer({
     String? id,
     required this.name,
@@ -101,6 +112,8 @@ class Customer extends HiveObject {
     List<double?>? transportLocationLats,
     List<double?>? transportLocationLngs,
     List<String>? transportLocationStatus,
+    List<String?>? transportLocationFormatted,
+    List<String?>? transportLocationTypes,
   })  : id = id ?? const Uuid().v4(),
         regularDays = regularDays ?? [],
         transportLocations = transportLocations ?? [],
@@ -111,7 +124,11 @@ class Customer extends HiveObject {
         transportLocationLngs = _alignNullable(
             transportLocationLngs, (transportLocations ?? []).length),
         transportLocationStatus = _alignStatus(
-            transportLocationStatus, (transportLocations ?? []).length);
+            transportLocationStatus, (transportLocations ?? []).length),
+        transportLocationFormatted = _alignStrings(
+            transportLocationFormatted, (transportLocations ?? []).length),
+        transportLocationTypes = _alignStrings(
+            transportLocationTypes, (transportLocations ?? []).length);
 
   // ── Day 8: 座標ステータス定数 ──
   static const String locUnresolved = 'unresolved';
@@ -122,6 +139,16 @@ class Customer extends HiveObject {
   /// 長さを transportLocations に合わせる（旧データは null 埋め）
   static List<double?> _alignNullable(List<double?>? src, int n) {
     final out = List<double?>.filled(n, null, growable: true);
+    if (src != null) {
+      for (int i = 0; i < n && i < src.length; i++) {
+        out[i] = src[i];
+      }
+    }
+    return out;
+  }
+
+  static List<String?> _alignStrings(List<String?>? src, int n) {
+    final out = List<String?>.filled(n, null, growable: true);
     if (src != null) {
       for (int i = 0; i < n && i < src.length; i++) {
         out[i] = src[i];
@@ -163,8 +190,36 @@ class Customer extends HiveObject {
     return (st == locResolved || st == locManual) && transportCoord(i) != null;
   }
 
+  /// 送迎場所 i の採用根拠（formattedAddress）。未記録なら null
+  String? transportFormatted(int i) =>
+      (i >= 0 && i < transportLocationFormatted.length)
+          ? transportLocationFormatted[i]
+          : null;
+
+  /// 送迎場所 i の採用根拠 types（未記録なら空）
+  List<String> transportTypes(int i) {
+    final raw = (i >= 0 && i < transportLocationTypes.length)
+        ? transportLocationTypes[i]
+        : null;
+    if (raw == null || raw.trim().isEmpty) return const [];
+    return raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  }
+
+  /// 採用根拠メタデータが記録されているか（旧データは false）
+  bool hasTransportMeta(int i) =>
+      (transportFormatted(i) ?? '').trim().isNotEmpty || transportTypes(i).isNotEmpty;
+
   /// 送迎場所 i の座標を設定する（status 付き）
-  void setTransportCoord(int i, double? lat, double? lng, String status) {
+  ///
+  /// [formatted] / [types] は採用した候補の根拠。地図微調整や解除では null を渡す。
+  void setTransportCoord(
+    int i,
+    double? lat,
+    double? lng,
+    String status, {
+    String? formatted,
+    List<String>? types,
+  }) {
     while (transportLocationLats.length <= i) {
       transportLocationLats.add(null);
     }
@@ -174,9 +229,17 @@ class Customer extends HiveObject {
     while (transportLocationStatus.length <= i) {
       transportLocationStatus.add(locUnresolved);
     }
+    while (transportLocationFormatted.length <= i) {
+      transportLocationFormatted.add(null);
+    }
+    while (transportLocationTypes.length <= i) {
+      transportLocationTypes.add(null);
+    }
     transportLocationLats[i] = lat;
     transportLocationLngs[i] = lng;
     transportLocationStatus[i] = status;
+    transportLocationFormatted[i] = formatted;
+    transportLocationTypes[i] = (types == null || types.isEmpty) ? null : types.join(',');
   }
 
   /// 月間残日数を返す
@@ -228,6 +291,8 @@ class Customer extends HiveObject {
     List<double?>? transportLocationLats,
     List<double?>? transportLocationLngs,
     List<String>? transportLocationStatus,
+    List<String?>? transportLocationFormatted,
+    List<String?>? transportLocationTypes,
   }) {
     return Customer(
       id: id,
@@ -255,6 +320,10 @@ class Customer extends HiveObject {
           transportLocationLngs ?? List<double?>.from(this.transportLocationLngs),
       transportLocationStatus:
           transportLocationStatus ?? List<String>.from(this.transportLocationStatus),
+      transportLocationFormatted: transportLocationFormatted ??
+          List<String?>.from(this.transportLocationFormatted),
+      transportLocationTypes:
+          transportLocationTypes ?? List<String?>.from(this.transportLocationTypes),
     );
   }
 }

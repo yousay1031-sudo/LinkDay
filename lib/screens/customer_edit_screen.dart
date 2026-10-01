@@ -37,6 +37,9 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   ];
   final List<String> _locOriginalText = ['', '', ''];
   final List<bool> _locBusy = [false, false, false];
+  // Day 8 修正: 採用根拠（formattedAddress / types）。誤採用検出に使う。
+  final List<String?> _locFormatted = [null, null, null];
+  final List<String?> _locTypes = [null, null, null];
 
   // ── コントローラー ──────────────────────────────────────────────────
   late final TextEditingController _nameCtrl;
@@ -92,6 +95,9 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         _locLats[i] = coord?.lat;
         _locLngs[i] = coord?.lng;
         _locStatus[i] = c.transportStatus(i);
+        _locFormatted[i] = c.transportFormatted(i);
+        final t = c.transportTypes(i);
+        _locTypes[i] = t.isEmpty ? null : t.join(',');
         _locOriginalText[i] = c.transportLocations[i];
       }
     }
@@ -182,6 +188,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         _locLats[i] = null;
         _locLngs[i] = null;
         _locStatus[i] = Customer.locUnresolved;
+        _locFormatted[i] = null;
+        _locTypes[i] = null;
       } else if (now == _locOriginalText[i] && widget.customer != null) {
         // 元に戻した → 元の座標を復元
         final coord = widget.customer!.transportCoord(i);
@@ -189,6 +197,9 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           _locLats[i] = coord.lat;
           _locLngs[i] = coord.lng;
           _locStatus[i] = widget.customer!.transportStatus(i);
+          _locFormatted[i] = widget.customer!.transportFormatted(i);
+          final t = widget.customer!.transportTypes(i);
+          _locTypes[i] = t.isEmpty ? null : t.join(',');
         }
       }
       // それ以外も再 build（チップ行の表示/非表示切替のため）
@@ -216,40 +227,69 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     }
     setState(() => _locBusy[i] = true);
     try {
-      final result = await MapsJsService.instance.geocodeCandidates(address);
+      // Day 8 修正2: 短名クエリの自動補完（表示文字列は変更しない）
+      final query = TransportLocationResolver.buildGeocodeQuery(address);
+      if (query != address) {
+        debugPrint('[CustomerEdit] query augment: "$address" → "$query"');
+      }
+      final result = await MapsJsService.instance.geocodeCandidates(query);
       if (!mounted) return;
       if (result.isEmpty) {
         setState(() {
           _locLats[i] = null;
           _locLngs[i] = null;
           _locStatus[i] = Customer.locFailed;
+          _locFormatted[i] = null;
+          _locTypes[i] = null;
         });
         _snack('「$address」に該当する地点が見つかりませんでした', AppColors.error);
         return;
       }
+      // Day 8 修正1: 1 件ヒットでも帯広市外・粒度不足・部分一致なら自動採用しない
+      final judgement = result.isSingle
+          ? TransportLocationResolver.judgeAutoAdopt(result.candidates.first)
+          : null;
+      final blocked = judgement != null && !judgement.allowed;
+      if (blocked) {
+        debugPrint('[Resolver] auto-adopt blocked: "$address" → ${judgement.reasonText}');
+      }
       final picked = await showGeocodeCandidateSheet(
         context,
         address: address,
-        candidates: result.candidates,
+        candidates: result.sortedByPreference,
         title: '送迎場所${i + 1} の候補',
-        autoAdopted: result.isSingle,
+        autoAdopted: result.isSingle && !blocked,
+        blockReasonText: blocked ? judgement.reasonText : null,
+        query: query,
       );
       if (picked == null) {
-        // キャンセル: 1 件のみなら自動採用（resolved）扱いで保持
-        if (result.isSingle && _locCoord(i) == null) {
+        // キャンセル: 自動採用可な 1 件のみ保持。ブロック時は未解決のまま。
+        if (result.isSingle && !blocked && _locCoord(i) == null) {
           final c = result.candidates.first;
           setState(() {
             _locLats[i] = c.lat;
             _locLngs[i] = c.lng;
             _locStatus[i] = Customer.locResolved;
+            _locFormatted[i] = c.formattedAddress;
+            _locTypes[i] = c.types.isEmpty ? null : c.types.join(',');
           });
+        } else if (blocked) {
+          _snack('送迎場所${i + 1}: 自動採用不可（${judgement.reasonText}）。'
+              '候補を選んで採用してください。', AppColors.warning);
         }
+        return;
+      }
+      // 受け入れ基準5: 国レベル座標はどの経路でも保存しない
+      if (!TransportLocationResolver.isStorableCandidate(picked)) {
+        _snack('「${picked.formattedAddress}」は国レベルの座標のため採用できません', AppColors.error);
         return;
       }
       setState(() {
         _locLats[i] = picked.lat;
         _locLngs[i] = picked.lng;
         _locStatus[i] = Customer.locManual;
+        _locFormatted[i] = picked.formattedAddress;
+        _locTypes[i] = picked.types.isEmpty ? null : picked.types.join(',');
       });
       _snack('送迎場所${i + 1}: ${picked.formattedAddress} を採用（保存で確定）', AppColors.success);
     } catch (e) {
@@ -258,6 +298,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         _locLats[i] = null;
         _locLngs[i] = null;
         _locStatus[i] = Customer.locFailed;
+        _locFormatted[i] = null;
+        _locTypes[i] = null;
       });
       _snack('候補取得に失敗: $e', AppColors.error);
     } finally {
@@ -283,6 +325,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       _locLats[i] = picked.latitude;
       _locLngs[i] = picked.longitude;
       _locStatus[i] = Customer.locManual;
+      _locFormatted[i] = '地図で指定';
+      _locTypes[i] = 'premise';
     });
   }
 
@@ -291,6 +335,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       _locLats[i] = null;
       _locLngs[i] = null;
       _locStatus[i] = Customer.locUnresolved;
+      _locFormatted[i] = null;
+      _locTypes[i] = null;
     });
   }
 
@@ -315,6 +361,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       final locLats = <double?>[];
       final locLngs = <double?>[];
       final locStatus = <String>[];
+      final locFormatted = <String?>[];
+      final locTypes = <String?>[];
       for (int i = 0; i < 3; i++) {
         final t = _transportCtrl(i).text.trim();
         if (t.isEmpty) continue;
@@ -322,6 +370,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         locLats.add(_locLats[i]);
         locLngs.add(_locLngs[i]);
         locStatus.add(_locStatus[i]);
+        locFormatted.add(_locFormatted[i]);
+        locTypes.add(_locTypes[i]);
       }
 
       if (_isEditing) {
@@ -355,6 +405,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           transportLocationLats: locLats,
           transportLocationLngs: locLngs,
           transportLocationStatus: locStatus,
+          transportLocationFormatted: locFormatted,
+          transportLocationTypes: locTypes,
         );
         await CustomerService.instance.updateCustomer(updated);
       } else {
@@ -385,6 +437,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           transportLocationLats: locLats,
           transportLocationLngs: locLngs,
           transportLocationStatus: locStatus,
+          transportLocationFormatted: locFormatted,
+          transportLocationTypes: locTypes,
         );
         await CustomerService.instance.addCustomer(customer);
       }
