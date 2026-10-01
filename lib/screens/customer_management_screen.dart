@@ -6,6 +6,7 @@ import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
 import 'customer_edit_screen.dart';
 import 'customer_import_screen.dart';
+import 'transport_location_resolve_screen.dart';
 
 class CustomerManagementScreen extends StatefulWidget {
   const CustomerManagementScreen({super.key});
@@ -86,6 +87,16 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     }
   }
 
+  Future<void> _navigateToResolve() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const TransportLocationResolveScreen()),
+    );
+    if (changed == true) {
+      _loadCustomers();
+    }
+  }
+
   Future<void> _navigateToImport() async {
     final result = await Navigator.push<bool>(
       context,
@@ -149,6 +160,11 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           icon: const Icon(Icons.upload_file),
           tooltip: 'Excel一括インポート',
           onPressed: _navigateToImport,
+        ),
+        IconButton(
+          icon: const Icon(Icons.travel_explore),
+          tooltip: '送迎場所の位置確認',
+          onPressed: _navigateToResolve,
         ),
         IconButton(
           icon: const Icon(Icons.person_add),

@@ -180,7 +180,8 @@ class _TransportLocationResolveScreenState
   // ── キュー処理 ───────────────────────────────────────────────
 
   Future<void> _processQueue() async {
-    while (_queue.isNotEmpty && mounted) {
+    while (_queue.isNotEmpty) {
+      if (!mounted) return;
       final item = _queue.first;
       final action = await showDialog<_QueueAction>(
         context: context,
