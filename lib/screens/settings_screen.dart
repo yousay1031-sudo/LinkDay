@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/app_settings.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 
@@ -49,7 +50,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[SettingsScreen] initState start');
+    // 初回 build で _vehicleNameCtrls[i] が範囲外にならないよう、
+    // 同期で取得できる設定値はここで即時反映する。
+    // （従来は postFrameCallback で遅延していたため、初回 build で
+    //   車両コントローラが空のまま TextFormField を構築し NullError になっていた）
+    final settings = SettingsService.instance.getSettings();
+    _applySettingsSync(settings);
+    debugPrint('[SettingsScreen] initState end: vehicleCount=$_vehicleCount, '
+        'nameCtrls=${_vehicleNameCtrls.length}, capCtrls=${_vehicleCapCtrls.length}');
+    // API キーは非同期読み込みのため後続フレームで反映
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSettings());
+  }
+
+  /// 同期取得できる設定値をコントローラ・状態に反映する（setState なし）
+  void _applySettingsSync(AppSettings settings) {
+    _facilityNameCtrl.text = settings.facilityName;
+    _facilityAddressCtrl.text = settings.facilityAddress;
+    _maxStudentsCtrl.text = settings.maxStudentsPerDay.toString();
+    _vehicleCount = settings.vehicleCount.clamp(1, 5);
+    _pickupStart = _parseTime(settings.defaultPickupStart);
+    _dropoffEnd = _parseTime(settings.defaultDropoffEnd);
+    _rebuildVehicleControllers(settings.vehicleNames, settings.vehicleCapacities);
+
+    // 既存の geocode 済み座標があれば地図プレビューを初期表示
+    final lat = settings.facilityLat;
+    final lng = settings.facilityLng;
+    if (lat != null && lng != null) {
+      _previewLat = lat;
+      _previewLng = lng;
+      _markerLatLng = LatLng(lat, lng);
+    }
   }
 
   @override
@@ -71,25 +102,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     final settings = SettingsService.instance.getSettings();
     final jsKey = await SettingsService.instance.loadJsApiKey();
+    if (!mounted) return;
+
+    debugPrint('[SettingsScreen] _loadSettings: apiKey=${jsKey == null || jsKey.isEmpty ? "未設定" : "設定済み"}, '
+        'facilityLatLng=${settings.hasGeocode ? "あり" : "未設定"}, '
+        'vehicleCount=${settings.vehicleCount}');
 
     setState(() {
-      _facilityNameCtrl.text = settings.facilityName;
-      _facilityAddressCtrl.text = settings.facilityAddress;
-      _maxStudentsCtrl.text = settings.maxStudentsPerDay.toString();
+      _applySettingsSync(settings);
       _jsApiKeyCtrl.text = jsKey ?? '';
       _jsApiKeyStatus =
           (jsKey != null && jsKey.isNotEmpty) ? ApiKeyStatus.valid : ApiKeyStatus.notSet;
-      _vehicleCount = settings.vehicleCount;
-      _pickupStart = _parseTime(settings.defaultPickupStart);
-      _dropoffEnd = _parseTime(settings.defaultDropoffEnd);
-      _rebuildVehicleControllers(settings.vehicleNames, settings.vehicleCapacities);
-
-      // 既存の geocode 済み座標があれば地図プレビューを初期表示
-      if (settings.facilityLat != null && settings.facilityLng != null) {
-        _previewLat = settings.facilityLat;
-        _previewLng = settings.facilityLng;
-        _markerLatLng = LatLng(settings.facilityLat!, settings.facilityLng!);
-      }
     });
   }
 
@@ -116,7 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── 保存処理 ─────────────────────────────────────────────────
 
   Future<void> _saveFacility() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!(_formKey.currentState?.validate() ?? false)) return;
     final newAddress = _facilityAddressCtrl.text.trim();
     final prevSettings = SettingsService.instance.getSettings();
     final addressChanged = prevSettings.facilityAddress != newAddress;
@@ -352,7 +375,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       helpText: helpText,
       builder: (ctx, child) => MediaQuery(
         data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
+        child: child ?? const SizedBox.shrink(),
       ),
     );
     if (picked != null && mounted) {
@@ -506,7 +529,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// 事業所位置の地図プレビューウィジェット
   Widget _buildLocationMapPreview() {
-    final center = LatLng(_previewLat!, _previewLng!);
+    final lat = _previewLat;
+    final lng = _previewLng;
+    if (lat == null || lng == null) return const SizedBox.shrink();
+    final center = LatLng(lat, lng);
     final marker = _markerLatLng ?? center;
 
     return Column(
@@ -659,7 +685,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          ...List.generate(_vehicleCount, (i) {
+          // ガード: コントローラ数と _vehicleCount が一致しない瞬間があっても
+          // 範囲外アクセスしないよう、実在するコントローラ数で生成する
+          ...List.generate(
+              _vehicleCount < _vehicleNameCtrls.length
+                  ? _vehicleCount
+                  : (_vehicleNameCtrls.length < _vehicleCapCtrls.length
+                      ? _vehicleNameCtrls.length
+                      : _vehicleCapCtrls.length), (i) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(

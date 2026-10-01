@@ -136,7 +136,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   // ── 保存 ────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) {
+    if (!(_formKey.currentState?.validate() ?? false)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('入力内容を確認してください'),

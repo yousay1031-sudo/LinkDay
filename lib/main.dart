@@ -19,6 +19,7 @@ import 'widgets/auth_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('[Startup] app bootstrap begin');
 
   // ── 1. Hive 初期化（Web: IndexedDB / Mobile: ファイルシステム）
   await Hive.initFlutter();
@@ -60,6 +61,12 @@ Future<void> main() async {
 
   // ── 9. 日本語ロケールデータ初期化（PDF出力の LocaleDataException 対策）
   await initializeDateFormatting('ja_JP', null);
+
+  final s = SettingsService.instance.getSettings();
+  debugPrint('[Startup] settings: vehicleCount=${s.vehicleCount}, '
+      'vehicleNames=${s.vehicleNames.length}, '
+      'facilityLatLng=${s.hasGeocode ? "あり" : "未設定"}');
+  debugPrint('[Startup] app bootstrap end');
 
   runApp(const LinkDayApp());
 }

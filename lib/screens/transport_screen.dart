@@ -41,9 +41,12 @@ class _TransportScreenState extends State<TransportScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint('[TransportScreen] initState start: '
+        'initial selected date=$_dateKey');
     _tabController = TabController(length: 2, vsync: this);
     _loadSettings();
     _loadAll();
+    debugPrint('[TransportScreen] initState end');
   }
 
   @override
@@ -84,6 +87,8 @@ class _TransportScreenState extends State<TransportScreen>
       final pickup = TransportPlanService.instance.getPickupRoutes(_dateKey);
       final dropoff = TransportPlanService.instance.getDropoffRoutes(_dateKey);
 
+      debugPrint('[TransportScreen] _loadAll: customers=${customers.length}, '
+          'pickupRoutes=${pickup.length}, dropoffRoutes=${dropoff.length}');
       if (mounted) {
         setState(() {
           _scheduledCustomers = customers;
@@ -222,7 +227,7 @@ class _TransportScreenState extends State<TransportScreen>
       return;
     }
 
-    if (useApi && (_jsApiKey == null || _jsApiKey!.isEmpty)) {
+    if (useApi && (_jsApiKey ?? '').isEmpty) {
       _showSnack('APIキーが設定されていません。設定画面で登録してください。',
           isError: true);
       return;
@@ -307,7 +312,7 @@ class _TransportScreenState extends State<TransportScreen>
   // ── ルート最適化 ────────────────────────────────────────────
 
   Future<void> _optimizeRoute(TransportVehicleRoute route) async {
-    if (_jsApiKey == null || _jsApiKey!.isEmpty) {
+    if ((_jsApiKey ?? '').isEmpty) {
       _showSnack('APIキーが設定されていません。設定画面で登録してください。',
           isError: true);
       return;
@@ -326,7 +331,7 @@ class _TransportScreenState extends State<TransportScreen>
         : _facilityAddress;
 
     debugPrint('[TransportScreen] facilityLatLng='
-        '${facilityLat != null ? "${facilityLat.toStringAsFixed(7)},${facilityLng!.toStringAsFixed(7)}" : "null"}');
+        '${(facilityLat != null && facilityLng != null) ? "${facilityLat.toStringAsFixed(7)},${facilityLng.toStringAsFixed(7)}" : "null"}');
 
     // facilityLat/Lng 未設定の場合は警告して処理を続行（距離計算スキップ）
     if (facilityLat == null || facilityLng == null) {
@@ -749,7 +754,7 @@ class _TransportScreenState extends State<TransportScreen>
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _errorMessage!,
+              _errorMessage ?? '',
               style: const TextStyle(color: AppColors.error, fontSize: 13),
             ),
           ),
@@ -898,7 +903,7 @@ class _TransportScreenState extends State<TransportScreen>
 
   Future<void> _optimizeAllRoutes(
       List<TransportVehicleRoute> routes) async {
-    if (_jsApiKey == null || _jsApiKey!.isEmpty) {
+    if ((_jsApiKey ?? '').isEmpty) {
       _showSnack('APIキーが設定されていません', isError: true);
       return;
     }
@@ -912,7 +917,7 @@ class _TransportScreenState extends State<TransportScreen>
         : _facilityAddress;
 
     debugPrint('[TransportScreen] _optimizeAllRoutes facilityLatLng='
-        '${facilityLat != null ? "${facilityLat.toStringAsFixed(7)},${facilityLng!.toStringAsFixed(7)}" : "null"}');
+        '${(facilityLat != null && facilityLng != null) ? "${facilityLat.toStringAsFixed(7)},${facilityLng.toStringAsFixed(7)}" : "null"}');
 
     if (facilityLat == null || facilityLng == null) {
       _showSnack(

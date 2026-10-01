@@ -41,7 +41,7 @@ class AttendanceTimeChip extends StatelessWidget {
       cancelText: 'キャンセル',
       builder: (ctx, child) => MediaQuery(
         data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
+        child: child ?? const SizedBox.shrink(),
       ),
     );
 

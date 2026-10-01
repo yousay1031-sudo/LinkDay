@@ -28,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   // ─────────────────────────────────────────────
 
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isLoading = true);
 
@@ -369,7 +369,7 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
   bool _isSending = false;
 
   Future<void> _sendResetEmail() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isSending = true);
 

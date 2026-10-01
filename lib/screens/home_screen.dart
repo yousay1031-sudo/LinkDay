@@ -47,6 +47,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final expiring = CustomerService.instance.getExpiringCertCustomers();
     final unprocessed =
         AttendanceService.instance.getUnprocessedCount(DateTime.now());
+    debugPrint('[HomeScreen] _loadCounts: expiring=${expiring.length}, '
+        'unprocessed=$unprocessed');
+    if (!mounted) return;
     setState(() {
       _expiringCount = expiring.length;
       _attendanceUnprocessedCount = unprocessed;

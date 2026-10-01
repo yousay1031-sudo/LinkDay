@@ -58,11 +58,13 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     try {
       // 毎回最新の設定から事業所座標を取得
       final settings = SettingsService.instance.getSettings();
-      if (settings.facilityLat != null && settings.facilityLng != null) {
-        _facilityLatLng = LatLng(settings.facilityLat!, settings.facilityLng!);
+      final fLat = settings.facilityLat;
+      final fLng = settings.facilityLng;
+      if (fLat != null && fLng != null) {
+        _facilityLatLng = LatLng(fLat, fLng);
         debugPrint('[TransportMapScreen] facilityLatLng (from settings): '
-            '${settings.facilityLat!.toStringAsFixed(7)}, '
-            '${settings.facilityLng!.toStringAsFixed(7)}');
+            '${fLat.toStringAsFixed(7)}, '
+            '${fLng.toStringAsFixed(7)}');
       } else {
         // 未設定 → デフォルト座標（北海道帯広市中心）
         _facilityLatLng = const LatLng(42.924, 143.196);
@@ -243,19 +245,23 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
 
   /// 全マーカーが見えるようにカメラを調整
   void _fitBounds() {
-    if (_mapController == null) return;
+    final controller = _mapController;
+    if (controller == null) return;
 
     final allPoints = <LatLng>[];
-    if (_facilityLatLng != null) allPoints.add(_facilityLatLng!);
+    final facility = _facilityLatLng;
+    if (facility != null) allPoints.add(facility);
     for (final s in widget.route.stops) {
-      if (s.lat != null && s.lng != null) {
-        allPoints.add(LatLng(s.lat!, s.lng!));
+      final lat = s.lat;
+      final lng = s.lng;
+      if (lat != null && lng != null) {
+        allPoints.add(LatLng(lat, lng));
       }
     }
     if (allPoints.isEmpty) return;
 
     if (allPoints.length == 1) {
-      _mapController!.animateCamera(
+      controller.animateCamera(
         CameraUpdate.newLatLngZoom(allPoints.first, 14),
       );
       return;
@@ -273,7 +279,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
 
-    _mapController!.animateCamera(
+    controller.animateCamera(
       CameraUpdate.newLatLngBounds(
         LatLngBounds(
           southwest: LatLng(minLat - 0.005, minLng - 0.005),

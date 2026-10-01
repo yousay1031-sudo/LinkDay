@@ -50,6 +50,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   void _loadRecords() {
     final records =
         AttendanceService.instance.getRecordsByDate(_selectedDate);
+    debugPrint('[AttendanceScreen] records loaded: ${records.length}');
+    if (!mounted) return;
     setState(() {
       _records = records;
       _isLoading = false;

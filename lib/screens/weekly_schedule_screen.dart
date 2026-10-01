@@ -358,7 +358,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
       helpText: '開始時刻を選択',
       builder: (ctx, child) => MediaQuery(
         data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
+        child: child ?? const SizedBox.shrink(),
       ),
     );
     if (!mounted || startTime == null) return;
@@ -371,7 +371,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
       helpText: '終了時刻を選択',
       builder: (ctx, child) => MediaQuery(
         data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
+        child: child ?? const SizedBox.shrink(),
       ),
     );
     if (!mounted) return;
