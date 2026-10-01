@@ -127,6 +127,59 @@ class ResolveSummary {
   int get apiCalls => autoAdopted + pending + failed;
 }
 
+// ════════════════════════════════════════════════════════════════
+// Day 8 追加改修: 地図から直接ピン指定（最終手段）
+// ════════════════════════════════════════════════════════════════
+
+/// 地図ピン指定の初期位置の決定根拠
+enum PinInitialSource {
+  ownCoord, // 当該送迎場所の採用済み座標
+  siblingCoord, // 同一児童の他の送迎場所の採用済み座標
+  facility, // 事業所座標（Settings）
+  obihiroCenter, // 帯広市中心フォールバック
+}
+
+extension PinInitialSourceLabel on PinInitialSource {
+  /// UI・ログ表示用の日本語ラベル
+  String get label => switch (this) {
+        PinInitialSource.ownCoord => 'この場所の採用済み座標',
+        PinInitialSource.siblingCoord => '同じ児童の他の送迎場所',
+        PinInitialSource.facility => '事業所の位置',
+        PinInitialSource.obihiroCenter => '帯広市中心',
+      };
+}
+
+/// 「地図から直接指定」の初期カメラ位置
+class MapPinInitial {
+  final double lat;
+  final double lng;
+  final double zoom;
+  final PinInitialSource source;
+
+  /// source == siblingCoord のとき、参照した送迎場所の index
+  final int? sourceIndex;
+
+  const MapPinInitial({
+    required this.lat,
+    required this.lng,
+    required this.zoom,
+    required this.source,
+    this.sourceIndex,
+  });
+
+  /// UI 表示用の根拠説明（例: 「同じ児童の他の送迎場所（送迎場所1）を基準に表示」）
+  String get sourceDescription => switch (source) {
+        PinInitialSource.siblingCoord =>
+          '${source.label}（送迎場所${(sourceIndex ?? 0) + 1}）を基準に表示',
+        PinInitialSource.ownCoord => '${source.label}を表示',
+        _ => '${source.label}を基準に表示',
+      };
+
+  @override
+  String toString() => 'MapPinInitial(${lat.toStringAsFixed(6)}, '
+      '${lng.toStringAsFixed(6)}, zoom=$zoom, ${source.name})';
+}
+
 /// 誤採用リセットの対象 1 件
 class SuspectAdoption {
   final Customer customer;
@@ -362,18 +415,112 @@ class TransportLocationResolver {
   }
 
   /// 地図で微調整した座標を採用（status=manual）
+  ///
+  /// [formatted] に逆ジオコーディングで取得した住所を渡せる。
+  /// 取得できなかった場合は「手動指定地点」を既定表示として保存する
+  /// （座標が本体。住所表示は補助情報）。
   Future<void> adoptManualCoord(
     Customer customer,
     int index,
     double lat,
     double lng, {
     bool persist = true,
+    String? formatted,
   }) async {
+    final label = sanitizeManualLabel(formatted);
     customer.setTransportCoord(index, lat, lng, Customer.locManual,
-        formatted: '地図で指定', types: const ['premise']);
+        formatted: label, types: manualPinTypes);
     if (persist) await CustomerService.instance.updateCustomer(customer);
     debugPrint('[Resolver] ${customer.name}[$index] manual coord '
-        '(${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)})');
+        '(${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}) "$label"'
+        '${GeocodeCandidate(formattedAddress: label, lat: lat, lng: lng).isOutsideObihiroBounds ? ' ⚠帯広市外（手動配置は許可）' : ''}');
+  }
+
+  // ── Day 8 追加改修: 地図から直接ピン指定（最終手段） ───────────
+
+  /// 逆ジオコーディング失敗時の住所表示ラベル
+  static const String manualPinLabel = '手動指定地点';
+
+  /// 手動ピン指定の types
+  ///
+  /// `premise`（地点粒度）を付与することで、
+  /// findSuspectAdoptions の粒度不足判定に掛からないようにする。
+  /// さらに status=manual なのでリセット対象からも除外される（二重の保護）。
+  static const List<String> manualPinTypes = ['premise'];
+
+  /// 手動ピンの住所ラベルを安全な値に整える
+  ///
+  /// 逆ジオコーディングが「日本」のような国レベルの住所を返すことがある
+  /// （海上・原野など周辺に住所が無い地点）。この文字列をそのまま
+  /// formatted に保存すると CustomerService.sanitizeCoords が
+  /// 「国レベル座標」と誤認し、ユーザーが意図して置いたピンを破棄してしまう。
+  /// そのため国レベル表記は保存せず [manualPinLabel] に置き換える。
+  static String sanitizeManualLabel(String? formatted) {
+    final t = (formatted ?? '').trim();
+    if (t.isEmpty) return manualPinLabel;
+    if (t == '日本' || t == '日本国' || t == 'Japan') {
+      debugPrint('[Resolver] 逆ジオコード結果が国レベル（"$t"）のため '
+          '"$manualPinLabel" として保存します（座標は維持）');
+      return manualPinLabel;
+    }
+    return t;
+  }
+
+  /// 帯広市中心（初期位置の最終フォールバック）
+  static const double obihiroCenterLat = 42.9077437;
+  static const double obihiroCenterLng = 143.1996431;
+
+  /// 「地図から直接指定」の初期位置を決定する
+  ///
+  /// 優先順:
+  ///   1. 当該送迎場所の採用済み座標（ズーム 16）
+  ///   2. 同一児童の他の送迎場所の採用済み座標（場所1優先、ズーム 15）
+  ///   3. 事業所座標（Settings の facilityLat/Lng、ズーム 15）
+  ///   4. 帯広市中心フォールバック（ズーム 13）
+  ///
+  /// 「日本全図から始まらない」ことを保証するため、必ず帯広周辺を返す。
+  static MapPinInitial resolveInitialPinPosition(
+    Customer customer,
+    int index, {
+    double? facilityLat,
+    double? facilityLng,
+  }) {
+    // 1. 当該場所の採用済み座標
+    final own = customer.transportCoord(index);
+    if (own != null && customer.isTransportResolved(index)) {
+      return MapPinInitial(
+          lat: own.lat, lng: own.lng, zoom: 16, source: PinInitialSource.ownCoord);
+    }
+
+    // 2. 同一児童の他場所の採用済み座標（index 昇順 = 場所1優先）
+    for (int i = 0; i < customer.transportLocations.length; i++) {
+      if (i == index) continue;
+      final other = customer.transportCoord(i);
+      if (other != null && customer.isTransportResolved(i)) {
+        return MapPinInitial(
+            lat: other.lat,
+            lng: other.lng,
+            zoom: 15,
+            source: PinInitialSource.siblingCoord,
+            sourceIndex: i);
+      }
+    }
+
+    // 3. 事業所座標
+    if (facilityLat != null && facilityLng != null) {
+      return MapPinInitial(
+          lat: facilityLat,
+          lng: facilityLng,
+          zoom: 15,
+          source: PinInitialSource.facility);
+    }
+
+    // 4. 帯広市中心フォールバック
+    return const MapPinInitial(
+        lat: obihiroCenterLat,
+        lng: obihiroCenterLng,
+        zoom: 13,
+        source: PinInitialSource.obihiroCenter);
   }
 
   /// 座標解除（status=unresolved）

@@ -741,6 +741,262 @@ void main() {
     });
   });
 
+  // ════════════════════════════════════════════════════════════════
+  // Day 8 追加改修: 地図から直接ピン指定（最終手段）
+  // ════════════════════════════════════════════════════════════════
+
+  group('初期位置決定ロジック（4分岐）', () {
+    /// 帯広エリア bounds 内であること（受け入れ基準2: 日本全図から始まらない）
+    void expectInsideObihiro(MapPinInitial p) {
+      final c = GeocodeCandidate(formattedAddress: '', lat: p.lat, lng: p.lng);
+      expect(c.isOutsideObihiroBounds, isFalse,
+          reason: '初期位置は帯広エリア内であるべき: $p');
+    }
+
+    test('分岐1: 当該場所の採用済み座標を優先（ズーム16）', () {
+      final c = Customer(name: 'A', nameKana: 'ア',
+          transportLocations: ['場所1', '場所2'],
+          transportLocationLats: [42.9100, 42.9500],
+          transportLocationLngs: [143.1800, 143.2500],
+          transportLocationStatus: [Customer.locManual, Customer.locResolved]);
+      final p = TransportLocationResolver.resolveInitialPinPosition(c, 0,
+          facilityLat: 42.9238, facilityLng: 143.1966);
+      expect(p.source, PinInitialSource.ownCoord);
+      expect(p.lat, 42.9100);
+      expect(p.lng, 143.1800);
+      expect(p.zoom, 16);
+      expectInsideObihiro(p);
+    });
+
+    test('分岐2: 自分が未解決なら同一児童の他場所（場所1優先、ズーム15）', () {
+      final c = Customer(name: 'B', nameKana: 'ビ',
+          transportLocations: ['場所1', '場所2', '場所3'],
+          transportLocationLats: [42.9100, 42.9500, null],
+          transportLocationLngs: [143.1800, 143.2500, null],
+          transportLocationStatus: [
+            Customer.locResolved, Customer.locManual, Customer.locFailed,
+          ]);
+      // index 2（failed）→ 場所1（index 0）が選ばれる
+      final p = TransportLocationResolver.resolveInitialPinPosition(c, 2,
+          facilityLat: 42.9238, facilityLng: 143.1966);
+      expect(p.source, PinInitialSource.siblingCoord);
+      expect(p.sourceIndex, 0, reason: '場所1 が優先されるべき');
+      expect(p.lat, 42.9100);
+      expect(p.zoom, 15);
+      expectInsideObihiro(p);
+      expect(p.sourceDescription, contains('送迎場所1'));
+    });
+
+    test('分岐2: 場所1が未解決なら次に解決済みの場所を使う', () {
+      final c = Customer(name: 'B2', nameKana: 'ビ',
+          transportLocations: ['場所1', '場所2', '場所3'],
+          transportLocationLats: [null, 42.9500, null],
+          transportLocationLngs: [null, 143.2500, null],
+          transportLocationStatus: [
+            Customer.locUnresolved, Customer.locManual, Customer.locUnresolved,
+          ]);
+      final p = TransportLocationResolver.resolveInitialPinPosition(c, 0,
+          facilityLat: 42.9238, facilityLng: 143.1966);
+      expect(p.source, PinInitialSource.siblingCoord);
+      expect(p.sourceIndex, 1);
+      expect(p.lat, 42.9500);
+    });
+
+    test('分岐3: 他場所が無ければ事業所座標（ズーム15）', () {
+      final c = Customer(name: 'C', nameKana: 'シ', transportLocations: ['場所1']);
+      final p = TransportLocationResolver.resolveInitialPinPosition(c, 0,
+          facilityLat: 42.9238, facilityLng: 143.1966);
+      expect(p.source, PinInitialSource.facility);
+      expect(p.lat, 42.9238);
+      expect(p.lng, 143.1966);
+      expect(p.zoom, 15);
+      expectInsideObihiro(p);
+    });
+
+    test('分岐4: 事業所座標も無ければ帯広市中心フォールバック（ズーム13）', () {
+      final c = Customer(name: 'D', nameKana: 'デ', transportLocations: ['場所1']);
+      final p = TransportLocationResolver.resolveInitialPinPosition(c, 0);
+      expect(p.source, PinInitialSource.obihiroCenter);
+      expect(p.lat, 42.9077437);
+      expect(p.lng, 143.1996431);
+      expect(p.zoom, 13);
+      expectInsideObihiro(p);
+    });
+
+    test('分岐4: 事業所座標が片方 null でもフォールバックする', () {
+      final c = Customer(name: 'D2', nameKana: 'デ', transportLocations: ['場所1']);
+      for (final (fLat, fLng) in [(42.9238, null), (null, 143.1966)]) {
+        final p = TransportLocationResolver.resolveInitialPinPosition(c, 0,
+            facilityLat: fLat, facilityLng: fLng);
+        expect(p.source, PinInitialSource.obihiroCenter);
+      }
+    });
+
+    test('failed / unresolved でも必ず帯広エリア内の初期位置が返る（受け入れ基準1・2）', () {
+      // geocode 0 件で failed になった状態（座標なし）
+      final c = Customer(name: 'E', nameKana: 'イ',
+          transportLocations: ['西帯広小学校前'],
+          transportLocationStatus: [Customer.locFailed]);
+      final withFacility = TransportLocationResolver.resolveInitialPinPosition(
+          c, 0, facilityLat: 42.9238, facilityLng: 143.1966);
+      final without = TransportLocationResolver.resolveInitialPinPosition(c, 0);
+      expectInsideObihiro(withFacility);
+      expectInsideObihiro(without);
+      // 日本全図相当のズーム（<10）にならない
+      expect(withFacility.zoom, greaterThanOrEqualTo(13));
+      expect(without.zoom, greaterThanOrEqualTo(13));
+    });
+
+    test('座標はあるが status=failed の場合は自分の座標を使わない', () {
+      // failed は座標 null 運用だが、万一残っていても採用済み扱いにしない
+      final c = Customer(name: 'F', nameKana: 'エフ',
+          transportLocations: ['場所1'],
+          transportLocationLats: [42.80], transportLocationLngs: [143.00],
+          transportLocationStatus: [Customer.locFailed]);
+      final p = TransportLocationResolver.resolveInitialPinPosition(c, 0,
+          facilityLat: 42.9238, facilityLng: 143.1966);
+      expect(p.source, PinInitialSource.facility);
+    });
+
+    test('範囲外 index でもクラッシュせずフォールバックする', () {
+      final c = Customer(name: 'G', nameKana: 'ジ', transportLocations: ['場所1']);
+      final p = TransportLocationResolver.resolveInitialPinPosition(c, 5);
+      expect(p.source, PinInitialSource.obihiroCenter);
+    });
+
+    test('PinInitialSource のラベルが全分岐で定義されている', () {
+      for (final s in PinInitialSource.values) {
+        expect(s.label, isNotEmpty);
+      }
+    });
+  });
+
+  group('手動ピン指定の保存（adoptManualCoord）', () {
+    test('受け入れ基準3: status=manual で座標が Hive に保存される', () async {
+      final c = Customer(id: 'pin1', name: 'P', nameKana: 'ピ',
+          transportLocations: ['西帯広小学校前'],
+          transportLocationStatus: [Customer.locFailed]);
+      await CustomerService.instance.addCustomer(c);
+      await TransportLocationResolver.instance.adoptManualCoord(
+          c, 0, 42.9015, 143.1452,
+          formatted: '北海道帯広市西18条南2丁目');
+      final saved = CustomerService.instance.getCustomerById('pin1')!;
+      expect(saved.transportStatus(0), Customer.locManual);
+      expect(saved.transportCoord(0), (lat: 42.9015, lng: 143.1452));
+      expect(saved.transportFormatted(0), '北海道帯広市西18条南2丁目');
+      expect(saved.transportTypes(0), ['premise']);
+    });
+
+    test('逆ジオコード失敗（null）でも座標は保存され「手動指定地点」になる', () async {
+      final c = Customer(id: 'pin2', name: 'P2', nameKana: 'ピ',
+          transportLocations: ['原野の集合場所']);
+      await CustomerService.instance.addCustomer(c);
+      await TransportLocationResolver.instance
+          .adoptManualCoord(c, 0, 42.9500, 143.3000, formatted: null);
+      final saved = CustomerService.instance.getCustomerById('pin2')!;
+      expect(saved.transportStatus(0), Customer.locManual);
+      expect(saved.transportCoord(0), (lat: 42.9500, lng: 143.3000));
+      expect(saved.transportFormatted(0), TransportLocationResolver.manualPinLabel);
+    });
+
+    test('逆ジオコードが空文字を返しても「手動指定地点」になる', () async {
+      final c = Customer(id: 'pin3', name: 'P3', nameKana: 'ピ',
+          transportLocations: ['x']);
+      await CustomerService.instance.addCustomer(c);
+      await TransportLocationResolver.instance
+          .adoptManualCoord(c, 0, 42.92, 143.20, formatted: '   ');
+      expect(CustomerService.instance.getCustomerById('pin3')!.transportFormatted(0),
+          TransportLocationResolver.manualPinLabel);
+    });
+
+    test('sanitizeManualLabel: 「日本」等の国レベル表記は手動指定地点に置換', () {
+      expect(TransportLocationResolver.sanitizeManualLabel('日本'),
+          TransportLocationResolver.manualPinLabel);
+      expect(TransportLocationResolver.sanitizeManualLabel('日本国'),
+          TransportLocationResolver.manualPinLabel);
+      expect(TransportLocationResolver.sanitizeManualLabel('Japan'),
+          TransportLocationResolver.manualPinLabel);
+      expect(TransportLocationResolver.sanitizeManualLabel(null),
+          TransportLocationResolver.manualPinLabel);
+      // 通常の住所はそのまま
+      expect(TransportLocationResolver.sanitizeManualLabel('北海道帯広市西4条南10丁目'),
+          '北海道帯広市西4条南10丁目');
+    });
+
+    test('逆ジオコードが「日本」を返しても座標は破棄されない（sanitizeCoords 整合）', () async {
+      final c = Customer(id: 'pin4', name: 'P4', nameKana: 'ピ',
+          transportLocations: ['周辺に住所が無い地点']);
+      await CustomerService.instance.addCustomer(c);
+      await TransportLocationResolver.instance
+          .adoptManualCoord(c, 0, 42.9800, 143.4000, formatted: '日本');
+      final saved = CustomerService.instance.getCustomerById('pin4')!;
+      // ユーザーが意図して置いたピンなので座標は残る
+      expect(saved.transportStatus(0), Customer.locManual);
+      expect(saved.transportCoord(0), (lat: 42.9800, lng: 143.4000));
+      expect(saved.transportFormatted(0), TransportLocationResolver.manualPinLabel);
+    });
+
+    test('受け入れ基準: 帯広市外への手動配置は許可される（近隣町村への送迎）', () async {
+      // 芽室町（帯広 bounds 外の近隣町村）
+      final c = Customer(id: 'pin5', name: 'P5', nameKana: 'ピ',
+          transportLocations: ['芽室町の集合場所']);
+      await CustomerService.instance.addCustomer(c);
+      await TransportLocationResolver.instance
+          .adoptManualCoord(c, 0, 42.9100, 142.8000, formatted: '北海道河西郡芽室町');
+      final saved = CustomerService.instance.getCustomerById('pin5')!;
+      expect(saved.transportStatus(0), Customer.locManual);
+      expect(saved.transportCoord(0), (lat: 42.9100, lng: 142.8000));
+      // bounds 外であることを確認（それでも保存されている）
+      expect(
+          const GeocodeCandidate(formattedAddress: '', lat: 42.91, lng: 142.80)
+              .isOutsideObihiroBounds,
+          isTrue);
+    });
+
+    test('受け入れ基準4: 手動指定地点はリセット対象に含まれない', () async {
+      // 帯広市外 + 逆ジオコード失敗という最も「疑わしい」条件でも対象外
+      final c = Customer(id: 'pin6', name: 'P6', nameKana: 'ピ',
+          transportLocations: ['芽室町の集合場所']);
+      await CustomerService.instance.addCustomer(c);
+      await TransportLocationResolver.instance
+          .adoptManualCoord(c, 0, 42.9100, 142.8000, formatted: null);
+      final saved = CustomerService.instance.getCustomerById('pin6')!;
+      expect(TransportLocationResolver.findSuspectAdoptions([saved]), isEmpty);
+      final n = await TransportLocationResolver.instance.resetSuspectAdoptions([saved]);
+      expect(n, 0);
+      expect(CustomerService.instance.getCustomerById('pin6')!.transportStatus(0),
+          Customer.locManual);
+      // countStatus でも suspect に数えられない
+      final st = TransportLocationResolver.countStatus([saved]);
+      expect(st.suspect, 0);
+      expect(st.manual, 1);
+    });
+
+    test('手動ピンの types は premise（粒度不足判定に掛からない）', () {
+      expect(TransportLocationResolver.manualPinTypes, ['premise']);
+      const pseudo = GeocodeCandidate(
+          formattedAddress: TransportLocationResolver.manualPinLabel,
+          lat: 42.92, lng: 143.20,
+          types: TransportLocationResolver.manualPinTypes);
+      expect(pseudo.hasPointGranularity, isTrue);
+      expect(pseudo.isCountryLevel, isFalse);
+    });
+
+    test('手動ピン後に地図で微調整しても manual のまま維持される（退行確認）', () async {
+      final c = Customer(id: 'pin7', name: 'P7', nameKana: 'ピ',
+          transportLocations: ['x']);
+      await CustomerService.instance.addCustomer(c);
+      await TransportLocationResolver.instance
+          .adoptManualCoord(c, 0, 42.92, 143.20, formatted: '初回ピン');
+      await TransportLocationResolver.instance
+          .adoptManualCoord(c, 0, 42.93, 143.21, formatted: '微調整後');
+      final saved = CustomerService.instance.getCustomerById('pin7')!;
+      expect(saved.transportStatus(0), Customer.locManual);
+      expect(saved.transportCoord(0), (lat: 42.93, lng: 143.21));
+      expect(saved.transportFormatted(0), '微調整後');
+    });
+  });
+
   group('候補並び替え（帯広市内・地点粒度を優先）', () {
     test('sortedByPreference: 帯広市内の公園が「日本」「県外」より先に来る', () {
       final r = GeocodeCandidatesResult(address: '南公園', candidates: [

@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/customer.dart';
 import '../models/geocode_candidate.dart';
+import '../services/transport_location_resolver.dart';
 import '../theme/app_theme.dart';
 import 'draggable_marker_map.dart';
 
@@ -401,4 +402,259 @@ Future<LatLng?> showAdjustCoordDialog(
       ],
     ),
   );
+}
+
+// ════════════════════════════════════════════════════════════════
+// 地図から直接ピン指定ダイアログ（Day 8 追加改修 / 最終手段）
+// ════════════════════════════════════════════════════════════════
+
+/// 「地図から直接指定」の結果
+class PinPickResult {
+  final double lat;
+  final double lng;
+
+  /// 逆ジオコーディングで取得した住所（失敗時は null）
+  final String? formattedAddress;
+
+  const PinPickResult({
+    required this.lat,
+    required this.lng,
+    this.formattedAddress,
+  });
+}
+
+/// 地図をタップ / マーカーをドラッグしてピンを立てる（geocode 0 件でも使える最終手段）
+///
+/// [initial] は TransportLocationResolver.resolveInitialPinPosition() の結果を渡す。
+/// 確定時に [reverseGeocode] で住所取得を試み、失敗しても座標のみで確定できる。
+Future<PinPickResult?> showMapPinPickerDialog(
+  BuildContext context, {
+  required MapPinInitial initial,
+  required String title,
+  String? addressLabel,
+  Future<String?> Function(double lat, double lng)? reverseGeocode,
+}) {
+  return showDialog<PinPickResult>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _MapPinPickerDialog(
+      initial: initial,
+      title: title,
+      addressLabel: addressLabel,
+      reverseGeocode: reverseGeocode,
+    ),
+  );
+}
+
+class _MapPinPickerDialog extends StatefulWidget {
+  final MapPinInitial initial;
+  final String title;
+  final String? addressLabel;
+  final Future<String?> Function(double lat, double lng)? reverseGeocode;
+
+  const _MapPinPickerDialog({
+    required this.initial,
+    required this.title,
+    this.addressLabel,
+    this.reverseGeocode,
+  });
+
+  @override
+  State<_MapPinPickerDialog> createState() => _MapPinPickerDialogState();
+}
+
+class _MapPinPickerDialogState extends State<_MapPinPickerDialog> {
+  late LatLng _pos;
+  GoogleMapController? _controller;
+  bool _placed = false; // ユーザーが一度でもピンを動かした/置いたか
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pos = LatLng(widget.initial.lat, widget.initial.lng);
+    debugPrint('[MapPinPicker] open: ${widget.title} → ${widget.initial}');
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _setPos(LatLng p, String how) {
+    setState(() {
+      _pos = p;
+      _placed = true;
+    });
+    debugPrint('[MapPinPicker] $how: '
+        '${p.latitude.toStringAsFixed(7)}, ${p.longitude.toStringAsFixed(7)}');
+  }
+
+  Future<void> _confirm() async {
+    setState(() => _busy = true);
+    String? addr;
+    if (widget.reverseGeocode != null) {
+      try {
+        addr = await widget.reverseGeocode!(_pos.latitude, _pos.longitude);
+      } catch (e) {
+        // 逆ジオコード失敗は保存を妨げない（座標が本体）
+        debugPrint('[MapPinPicker] reverseGeocode 失敗（座標のみ確定します）: $e');
+        addr = null;
+      }
+    }
+    if (!mounted) return;
+    Navigator.pop(
+        context,
+        PinPickResult(
+            lat: _pos.latitude, lng: _pos.longitude, formattedAddress: addr));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final outside = GeocodeCandidate(
+            formattedAddress: '', lat: _pos.latitude, lng: _pos.longitude)
+        .isOutsideObihiroBounds;
+
+    return AlertDialog(
+      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      title: Row(
+        children: [
+          const Icon(Icons.add_location_alt_outlined, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.title, style: const TextStyle(fontSize: 15)),
+                if (widget.addressLabel != null)
+                  Text('「${widget.addressLabel}」',
+                      style: const TextStyle(
+                          fontSize: 11.5, color: AppColors.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 540,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 操作ガイド + 初期位置の根拠
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.touch_app_outlined,
+                        size: 15, color: AppColors.primary),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        '地図をタップするとピンが移動します。'
+                        'ピンをドラッグしても調整できます。\n'
+                        '初期表示: ${widget.initial.sourceDescription}',
+                        style: const TextStyle(fontSize: 11, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              // 座標表示
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.my_location, size: 15, color: AppColors.success),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        '緯度: ${_pos.latitude.toStringAsFixed(7)}   '
+                        '経度: ${_pos.longitude.toStringAsFixed(7)}',
+                        style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace'),
+                      ),
+                    ),
+                    if (_placed)
+                      const Icon(Icons.check_circle, size: 14, color: AppColors.success),
+                  ],
+                ),
+              ),
+              if (outside) ...[
+                const SizedBox(height: 6),
+                const Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 13, color: AppColors.warning),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text('帯広エリア外の位置です（近隣町村への送迎は採用できます）',
+                          style: TextStyle(fontSize: 10.5, color: AppColors.warning)),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  height: 300,
+                  child: GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                        target: LatLng(widget.initial.lat, widget.initial.lng),
+                        zoom: widget.initial.zoom),
+                    markers: {
+                      Marker(
+                        markerId: const MarkerId('pin_picker'),
+                        position: _pos,
+                        draggable: true,
+                        icon: BitmapDescriptor.defaultMarkerWithHue(
+                            BitmapDescriptor.hueOrange),
+                        infoWindow: InfoWindow(
+                            title: widget.title, snippet: widget.addressLabel),
+                        onDragEnd: (p) => _setPos(p, 'drag'),
+                      ),
+                    },
+                    onMapCreated: (c) => _controller = c,
+                    // 地図タップでピンを移動（ドロップ操作）
+                    onTap: (p) => _setPos(p, 'tap'),
+                    myLocationEnabled: false,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: true,
+                    mapToolbarEnabled: false,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          child: const Text('キャンセル'),
+        ),
+        FilledButton.icon(
+          onPressed: _busy ? null : _confirm,
+          icon: _busy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.push_pin, size: 16),
+          label: Text(_busy ? '住所を取得中...' : 'この位置に決定'),
+        ),
+      ],
+    );
+  }
 }

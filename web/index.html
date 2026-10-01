@@ -121,6 +121,42 @@
       });
     };
 
+    // ─── JS Interop: 逆ジオコーディング（Day 8 追加改修） ─────────
+    // reverseGeocode(lat, lng) → Promise<string(JSON)>
+    //   JSON: { status, formattedAddress, types }
+    //
+    // 「地図から直接指定」で立てたピンの住所表示用。
+    // 座標が本体なので、失敗（ZERO_RESULTS / エラー）でも reject せず
+    // status を返すだけにして、呼び出し側が保存を続行できるようにする。
+    window.reverseGeocode = function(lat, lng) {
+      return new Promise(function(resolve) {
+        if (!window.google || !window.google.maps) {
+          resolve(JSON.stringify({ status: 'NOT_LOADED', formattedAddress: '', types: [] }));
+          return;
+        }
+        var geocoder = new google.maps.Geocoder();
+        console.log('[Geocoder] reverse: ' + lat + ', ' + lng);
+        geocoder.geocode(
+          { location: { lat: lat, lng: lng }, language: 'ja', region: 'JP' },
+          function(results, status) {
+            if (status === 'OK' && results && results.length > 0) {
+              // 最も粒度の細かい（先頭の）結果を使う
+              var r = results[0];
+              console.log('[Geocoder] reverse ok: ' + (r.formatted_address || ''));
+              resolve(JSON.stringify({
+                status: 'OK',
+                formattedAddress: r.formatted_address || '',
+                types: Array.isArray(r.types) ? r.types : []
+              }));
+            } else {
+              console.warn('[Geocoder] reverse failed: ' + status);
+              resolve(JSON.stringify({ status: status || 'ERROR', formattedAddress: '', types: [] }));
+            }
+          }
+        );
+      });
+    };
+
     // ─── JS Interop: Geocoder 候補一覧（Day 8） ──────────────────
     // geocodeCandidates(address, maxResults) → Promise<string(JSON)>
     //   JSON: { status, candidates: [{formattedAddress, lat, lng, placeId, types, partialMatch}] }

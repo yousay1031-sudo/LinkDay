@@ -20,6 +20,9 @@ external JSPromise _geocodeAddressJs(String address);
 @JS('geocodeCandidates')
 external JSPromise _geocodeCandidatesJs(String address, int maxResults);
 
+@JS('reverseGeocode')
+external JSPromise _reverseGeocodeJs(double lat, double lng);
+
 @JS('getDirectionsRoundTrip')
 external JSPromise _getDirectionsRoundTripJs(String requestJson);
 
@@ -30,6 +33,28 @@ class GeoResult {
   final double lat;
   final double lng;
   const GeoResult({required this.lat, required this.lng});
+}
+
+/// 逆ジオコーディング結果（Day 8 追加改修）
+///
+/// 「地図から直接指定」の住所表示用。座標が本体なので
+/// 失敗しても例外にせず [ok] = false で返す。
+class ReverseGeocodeResult {
+  final bool ok;
+  final String formattedAddress;
+  final List<String> types;
+  final String status;
+
+  const ReverseGeocodeResult({
+    required this.ok,
+    required this.formattedAddress,
+    this.types = const [],
+    this.status = '',
+  });
+
+  /// 失敗時（住所未取得）
+  static const ReverseGeocodeResult failed =
+      ReverseGeocodeResult(ok: false, formattedAddress: '', status: 'FAILED');
 }
 
 /// Routes API (computeRoutes) の各区間結果
@@ -146,6 +171,43 @@ class MapsJsService {
     } catch (e) {
       debugPrint('[MapsJsService] geocodeAddress error: $e');
       rethrow;
+    }
+  }
+
+  // ── 逆ジオコーディング（Day 8 追加改修） ─────────────────
+
+  /// 緯度経度 → 住所（地図から直接指定したピンの表示用）
+  ///
+  /// 座標が本体のため、失敗しても throw せず
+  /// [ReverseGeocodeResult.failed] を返す（呼び出し側は保存を続行可能）。
+  Future<ReverseGeocodeResult> reverseGeocode(double lat, double lng) async {
+    try {
+      await _getKeyAndEnsureLoaded();
+      debugPrint('[MapsJsService] reverseGeocode: '
+          '${lat.toStringAsFixed(7)}, ${lng.toStringAsFixed(7)}');
+      final jsResult = await _reverseGeocodeJs(lat, lng).toDart;
+      final dartified = jsResult.dartify();
+      final str = (dartified is String) ? dartified : '';
+      if (str.isEmpty) return ReverseGeocodeResult.failed;
+      final decoded = jsonDecode(str);
+      if (decoded is! Map) return ReverseGeocodeResult.failed;
+      final status = (decoded['status'] as String?) ?? 'ERROR';
+      final addr = ((decoded['formattedAddress'] as String?) ?? '').trim();
+      if (status != 'OK' || addr.isEmpty) {
+        debugPrint('[MapsJsService] reverseGeocode failed: status=$status');
+        return ReverseGeocodeResult(
+            ok: false, formattedAddress: '', status: status);
+      }
+      final types = (decoded['types'] is List)
+          ? (decoded['types'] as List).map((e) => e.toString()).toList()
+          : const <String>[];
+      debugPrint('[MapsJsService] reverseGeocode result: "$addr" $types');
+      return ReverseGeocodeResult(
+          ok: true, formattedAddress: addr, types: types, status: status);
+    } catch (e) {
+      // API キー未設定・ネットワークエラー等。座標保存は妨げない。
+      debugPrint('[MapsJsService] reverseGeocode error (座標のみ保存します): $e');
+      return ReverseGeocodeResult.failed;
     }
   }
 

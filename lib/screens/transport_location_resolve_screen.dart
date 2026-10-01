@@ -154,8 +154,19 @@ class _TransportLocationResolveScreenState
                 : const <AutoAdoptBlockReason>[]);
       case ResolveOutcome.failed:
         _changed = true;
-        _snack('${c.name} 送迎場所${i + 1}: 該当なし / 取得失敗', color: AppColors.error);
         _load();
+        // geocode 0 件 → 最終手段（地図から直接指定）を即座に案内する
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${c.name} 送迎場所${i + 1}: 該当なし / 取得失敗'),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: '地図から指定',
+            textColor: Colors.white,
+            onPressed: () => _pickOnMap(c, i),
+          ),
+        ));
       case ResolveOutcome.alreadyResolved:
         // 解決済み → 候補を再表示して選び直し可能に
         await _resolveSingle(c, i, force: true);
@@ -212,6 +223,41 @@ class _TransportLocationResolveScreenState
     await TransportLocationResolver.instance.clearCoord(c, i);
     _changed = true;
     _load();
+  }
+
+  // ── 地図から直接ピン指定（最終手段 / Day 8 追加改修） ──────────
+
+  /// geocode 0 件・採用可能な候補なしでも位置を確定できる最終手段
+  Future<void> _pickOnMap(Customer c, int i) async {
+    final settings = SettingsService.instance.getSettings();
+    final initial = TransportLocationResolver.resolveInitialPinPosition(
+      c, i,
+      facilityLat: settings.facilityLat,
+      facilityLng: settings.facilityLng,
+    );
+    debugPrint('[ResolveScreen] pickOnMap: ${c.name}[$i] initial=$initial');
+    final picked = await showMapPinPickerDialog(
+      context,
+      initial: initial,
+      title: '${c.name}  送迎場所${i + 1}',
+      addressLabel: c.transportLocations[i],
+      // 逆ジオコーディングは失敗しても null を返すだけ（座標保存は続行）
+      reverseGeocode: (lat, lng) async {
+        final r = await MapsJsService.instance.reverseGeocode(lat, lng);
+        return r.ok ? r.formattedAddress : null;
+      },
+    );
+    if (picked == null || !mounted) return;
+    await TransportLocationResolver.instance.adoptManualCoord(
+      c, i, picked.lat, picked.lng,
+      formatted: picked.formattedAddress,
+    );
+    if (!mounted) return;
+    _changed = true;
+    _queue.removeWhere((q) => q.customer.id == c.id && q.index == i);
+    _load();
+    _snack('${c.name} 送迎場所${i + 1}: '
+        '${picked.formattedAddress ?? TransportLocationResolver.manualPinLabel} を手動指定しました');
   }
 
   // ── 修正3: 誤採用（帯広市外・粒度不足）の一括解除 ───────────────
@@ -787,6 +833,26 @@ class _TransportLocationResolveScreenState
                               fontFamily: 'monospace')),
                   ],
                 ),
+                // 最終手段への導線: failed / unresolved では常に表示
+                if (st == Customer.locFailed || st == Customer.locUnresolved) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickOnMap(c, i),
+                      icon: const Icon(Icons.add_location_alt_outlined, size: 13),
+                      label: const Text('地図から直接指定', style: TextStyle(fontSize: 10.5)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 26),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -803,6 +869,8 @@ class _TransportLocationResolveScreenState
                   } else {
                     _resolveSingle(c, i, force: st != Customer.locUnresolved);
                   }
+                case 'pin':
+                  _pickOnMap(c, i);
                 case 'adjust':
                   _adjust(c, i);
                 case 'clear':
@@ -820,6 +888,18 @@ class _TransportLocationResolveScreenState
                       : inQueue
                           ? '候補から選択'
                           : '候補を取得'),
+                ),
+              ),
+              // 最終手段: geocode 0 件 / 採用可能な候補なしでも常に押下可能
+              const PopupMenuItem(
+                value: 'pin',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.add_location_alt_outlined,
+                      size: 18, color: AppColors.primary),
+                  title: Text('地図から直接指定'),
+                  subtitle: Text('候補が無い場合の最終手段',
+                      style: TextStyle(fontSize: 10)),
                 ),
               ),
               const PopupMenuItem(

@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/customer.dart';
 import '../services/customer_service.dart';
 import '../services/maps_js_service.dart';
+import '../services/settings_service.dart';
 import '../services/transport_location_resolver.dart';
 import '../theme/app_theme.dart';
 import '../utils/kana_util.dart';
@@ -305,6 +306,69 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     } finally {
       if (mounted) setState(() => _locBusy[i] = false);
     }
+  }
+
+  // ── 地図から直接ピン指定（最終手段 / Day 8 追加改修） ──────────
+
+  /// 編集中バッファの座標から初期位置算出用の一時 Customer を組む
+  ///
+  /// 保存前の編集中状態（_locLats/_locLngs/_locStatus）を反映させるため、
+  /// widget.customer ではなくバッファから作る。
+  Customer _bufferAsCustomer() {
+    final locs = <String>[];
+    final lats = <double?>[];
+    final lngs = <double?>[];
+    final stat = <String>[];
+    for (int k = 0; k < 3; k++) {
+      // 空欄も index を保つためプレースホルダを入れる（座標の添字整合が重要）
+      locs.add(_transportCtrl(k).text.trim());
+      lats.add(_locLats[k]);
+      lngs.add(_locLngs[k]);
+      stat.add(_locStatus[k]);
+    }
+    return Customer(
+      name: _nameCtrl.text.trim().isEmpty ? '（新規）' : _nameCtrl.text.trim(),
+      nameKana: 'テンポラリ',
+      transportLocations: locs,
+      transportLocationLats: lats,
+      transportLocationLngs: lngs,
+      transportLocationStatus: stat,
+    );
+  }
+
+  /// geocode 0 件・採用可能な候補なしでも位置を確定できる最終手段
+  Future<void> _pickOnMap(int i) async {
+    final settings = SettingsService.instance.getSettings();
+    final initial = TransportLocationResolver.resolveInitialPinPosition(
+      _bufferAsCustomer(), i,
+      facilityLat: settings.facilityLat,
+      facilityLng: settings.facilityLng,
+    );
+    final label = _transportCtrl(i).text.trim();
+    debugPrint('[CustomerEdit] pickOnMap: [$i] initial=$initial');
+    final picked = await showMapPinPickerDialog(
+      context,
+      initial: initial,
+      title: '送迎場所${i + 1}',
+      addressLabel: label.isEmpty ? null : label,
+      reverseGeocode: (lat, lng) async {
+        final r = await MapsJsService.instance.reverseGeocode(lat, lng);
+        return r.ok ? r.formattedAddress : null;
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _locLats[i] = picked.lat;
+      _locLngs[i] = picked.lng;
+      _locStatus[i] = Customer.locManual;
+      // 逆ジオコードが「日本」等を返した場合も「手動指定地点」に置き換える
+      // （sanitizeCoords による誤破棄を防ぐ）
+      _locFormatted[i] =
+          TransportLocationResolver.sanitizeManualLabel(picked.formattedAddress);
+      _locTypes[i] = TransportLocationResolver.manualPinTypes.join(',');
+    });
+    _snack(
+        '送迎場所${i + 1}: ${_locFormatted[i]} を手動指定（保存で確定）', AppColors.success);
   }
 
   /// 「地図で微調整」
@@ -961,6 +1025,12 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             label: _locStatus[i] == Customer.locFailed ? 'リトライ' : '候補を取得',
             busy: busy,
             onTap: busy ? null : () => _fetchCandidates(i),
+          ),
+          // 最終手段: geocode 0 件・候補なしでも常に押下可能
+          _smallAction(
+            icon: Icons.add_location_alt_outlined,
+            label: '地図から直接指定',
+            onTap: busy ? null : () => _pickOnMap(i),
           ),
           _smallAction(
             icon: Icons.edit_location_alt_outlined,
