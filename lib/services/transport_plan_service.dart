@@ -221,7 +221,7 @@ class TransportPlanService {
 
     debugPrint('[TransportPlanService] optimizeRoute: '
         '${route.vehicleName} ${route.typeLabel}, '
-        'stops=${route.stops.length}');
+        'stops=${route.stops.length}, optimize=true');
     debugPrint('[TransportPlanService] using latest facilityLatLng='
         '${facilityLat != null ? "${facilityLat.toStringAsFixed(7)},${facilityLng!.toStringAsFixed(7)}" : "null (未設定)"}');
 
@@ -242,6 +242,7 @@ class TransportPlanService {
             facilityLat: facilityLat,
             facilityLng: facilityLng,
             facilityAddress: facilityAddress,
+            optimize: false, // 1停留所は並び替え不要
           );
         } catch (e) {
           debugPrint('[TransportPlanService] directions (1 stop) failed: $e');
@@ -296,13 +297,19 @@ class TransportPlanService {
       optimizedOrder = List.generate(route.stops.length, (i) => i);
     }
 
-    // 停留所を最適順に並び替え
+    // 停留所を暫定順（Haversine NN）に並び替え
+    // ※ この順序は Routes API への入力順。optimize=true で呼ぶため、
+    //   Routes API が optimizedIntermediateWaypointIndices を返した場合は
+    //   _attachDirectionsDataRoundTrip 内でさらに並び替えられる。
+    //   Routes API 失敗時（Haversine fallback）はこの NN 順がそのまま使われる。
     final reordered = optimizedOrder.map((i) => route.stops[i]).toList();
     for (int i = 0; i < reordered.length; i++) {
       reordered[i].orderIndex = i;
     }
+    debugPrint('[TransportPlanService] pre-order (Haversine NN): '
+        '${reordered.map((s) => s.customerName).toList()}');
 
-    // Directions API でセグメントの距離・時間を取得（ラウンドトリップ）
+    // Routes API（optimizeWaypointOrder=true）で順序最適化 + 距離・時間取得
     if (allHaveGeocode && facilityLat != null && facilityLng != null) {
       try {
         await _attachDirectionsDataRoundTrip(
@@ -311,6 +318,7 @@ class TransportPlanService {
           facilityLat: facilityLat,
           facilityLng: facilityLng,
           facilityAddress: facilityAddress,
+          optimize: true,
         );
       } catch (e) {
         debugPrint('[TransportPlanService] directions failed: $e');
@@ -367,12 +375,18 @@ class TransportPlanService {
   /// 時刻計算:
   ///   お迎え: 事業所帰着時刻(利用開始)から逆算
   ///   お送り: 事業所出発時刻(利用終了)から順算
+  ///
+  /// [optimize] true のとき Routes API に optimizeWaypointOrder=true を渡し、
+  ///   返却された optimizedIntermediateWaypointIndices で [reorderedStops] を
+  ///   **その場で並び替える**（呼び出し元のリストが更新される）。
+  ///   false のとき順序は固定（距離・時間取得のみ）。
   Future<void> _attachDirectionsDataRoundTrip({
     required TransportVehicleRoute route,
     required List<TransportStop> reorderedStops,
     required double facilityLat,
     required double facilityLng,
     required String facilityAddress,
+    bool optimize = false,
   }) async {
     if (reorderedStops.isEmpty) return;
 
@@ -389,14 +403,48 @@ class TransportPlanService {
 
     debugPrint('[TransportPlanService] _attachDirectionsDataRoundTrip (Routes API): '
         'facility=$facilityLat,$facilityLng, '
-        'waypoints=${waypointLatLngs.length}件');
+        'waypoints=${waypointLatLngs.length}件, optimize=$optimize');
 
     // JS Interop 経由で Routes API を呼ぶ
     final result = await MapsJsService.instance.getDirectionsRoundTrip(
       facilityLatLng: facilityLatLng,
       waypointLatLngs: waypointLatLngs,
-      optimize: false,
+      optimize: optimize,
     );
+
+    // ── optimizedIntermediateWaypointIndices の反映 ──
+    // optimize=true かつ有効な順列が返った場合のみ、停留所をその順に並び替える。
+    // legs は最適化後の順序で返るため、並び替えてから leg データを割り当てる。
+    if (optimize) {
+      final order = result.optimizedOrder;
+      final n = validStops.length;
+      final isValidPermutation = order.length == n &&
+          order.toSet().length == n &&
+          order.every((i) => i >= 0 && i < n);
+
+      if (isValidPermutation && n == reorderedStops.length) {
+        final before = reorderedStops.map((s) => s.customerName).toList();
+        final applied = order.map((i) => validStops[i]).toList();
+        final isSameOrder = List.generate(n, (i) => i)
+            .every((i) => order[i] == i);
+        reorderedStops
+          ..clear()
+          ..addAll(applied);
+        for (int i = 0; i < reorderedStops.length; i++) {
+          reorderedStops[i].orderIndex = i;
+        }
+        final after = reorderedStops.map((s) => s.customerName).toList();
+        debugPrint('[TransportPlanService] optimized stop order applied'
+            '${isSameOrder ? " (順序変更なし)" : ""}: '
+            'indices=$order, before=$before, after=$after');
+      } else if (order.isEmpty) {
+        debugPrint('[TransportPlanService] optimizedOrder is empty → '
+            '入力順（Haversine NN）を維持');
+      } else {
+        debugPrint('[TransportPlanService] optimizedOrder invalid '
+            '(order=$order, stops=$n) → 入力順を維持');
+      }
+    }
 
     // 合計距離・時間を route に設定
     route.totalDistanceMeters  = result.totalDistanceMeters;

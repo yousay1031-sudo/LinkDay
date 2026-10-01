@@ -167,7 +167,8 @@
         console.log('[Routes API] request:'
           + ' facility=' + facilityLat + ',' + facilityLng
           + ', stops=' + waypointLatLngs.length
-          + ', optimize=' + optimize);
+          + ', optimize=' + optimize
+          + ' (optimizeWaypointOrder=' + optimize + ')');
 
         // ── Routes API ライブラリを動的ロード ──
         // importLibrary("routes") で google.maps.routes.Route を取得する
@@ -238,8 +239,16 @@
 
           // ── optimizedOrder: optimize=false のとき []、undefined 対策 ──
           var optimizedOrder = [];
-          if (optimize && Array.isArray(route.optimizedIntermediateWaypointIndices)) {
-            optimizedOrder = route.optimizedIntermediateWaypointIndices;
+          var rawIdx = route.optimizedIntermediateWaypointIndices;
+          if (optimize && Array.isArray(rawIdx)) {
+            optimizedOrder = rawIdx.map(function(v) { return Number(v); });
+          }
+          if (optimize) {
+            // 診断用: Routes API がフィールドを返したか（undefined / [] / [..]）
+            console.log('[Routes API] optimizedIntermediateWaypointIndices raw='
+              + (rawIdx === undefined ? 'undefined'
+                 : rawIdx === null ? 'null'
+                 : JSON.stringify(rawIdx)));
           }
 
           // ── polylinePoints: Route.path（LatLngAltitude配列）→ {lat,lng} 配列 ──
