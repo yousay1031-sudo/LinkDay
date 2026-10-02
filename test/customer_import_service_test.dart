@@ -300,6 +300,81 @@ void main() {
       expect(CustomerService.instance.getAllCustomers().length, 3);
     });
 
+    // ── Day 10 回帰: 上書きインポートで Day 8 座標が消えない ──────
+    //
+    // 旧実装は merged Customer に transportLocationLats/Lngs/Status を
+    // 渡しておらず、上書きインポートで解決済み座標が全消失していた。
+    test('Day 10 回帰: 上書きインポートで解決済み座標（resolved/manual）が保持される',
+        () async {
+      // 山田は fixture 上 ['北海道帯広市東1条南3丁目', '帯広駅前'] の2件
+      final existing = Customer(
+        id: 'keep-coords',
+        name: '山田 太郎',
+        nameKana: 'ヤマダ タロウ',
+        recipientCertNumber: '1234567890',
+        transportLocations: ['北海道帯広市東1条南3丁目', '帯広駅前'],
+      );
+      // 送迎場所0 = 自動採用、送迎場所1 = 手動確定
+      existing.setTransportCoord(0, 42.9231, 143.1960, Customer.locResolved,
+          formatted: '日本、北海道帯広市東1条南3丁目', types: ['premise']);
+      existing.setTransportCoord(1, 42.9178, 143.2010, Customer.locManual);
+      await CustomerService.instance.addCustomer(existing);
+
+      final bytes =
+          File('test/fixtures/linkday_customer_sample.xlsx').readAsBytesSync();
+      final p = svc.parse(fileName: 's.xlsx', bytes: bytes);
+      await svc.execute(p, resolveDuplicate: (row) async =>
+          row.customer!.name == '山田 太郎'
+              ? DuplicateAction.overwrite
+              : DuplicateAction.skip);
+
+      final after = CustomerService.instance.getCustomerById('keep-coords');
+      expect(after, isNotNull);
+      // 住所が一致する送迎場所の座標・status・根拠が引き継がれている
+      expect(after!.isTransportResolved(0), isTrue,
+          reason: '送迎場所1の解決済み座標が消えている（退行）');
+      expect(after.transportCoord(0)!.lat, closeTo(42.9231, 1e-6));
+      expect(after.transportCoord(0)!.lng, closeTo(143.1960, 1e-6));
+      expect(after.transportStatus(0), Customer.locResolved);
+      expect(after.transportFormatted(0), '日本、北海道帯広市東1条南3丁目');
+      expect(after.transportTypes(0), ['premise']);
+
+      expect(after.isTransportResolved(1), isTrue,
+          reason: '手動確定（manual）座標が消えている（退行）');
+      expect(after.transportStatus(1), Customer.locManual);
+      expect(after.transportCoord(1)!.lat, closeTo(42.9178, 1e-6));
+    });
+
+    test('Day 10 回帰: 住所が変わった送迎場所は未解決に戻る（古い座標を使い回さない）',
+        () async {
+      final existing = Customer(
+        id: 'addr-changed',
+        name: '山田 太郎',
+        nameKana: 'ヤマダ タロウ',
+        recipientCertNumber: '1234567890',
+        // fixture とは異なる住所に座標が付いている状態
+        transportLocations: ['北海道帯広市西99条南99丁目'],
+      );
+      existing.setTransportCoord(0, 42.1111, 143.1111, Customer.locResolved);
+      await CustomerService.instance.addCustomer(existing);
+
+      final bytes =
+          File('test/fixtures/linkday_customer_sample.xlsx').readAsBytesSync();
+      final p = svc.parse(fileName: 's.xlsx', bytes: bytes);
+      await svc.execute(p, resolveDuplicate: (row) async =>
+          row.customer!.name == '山田 太郎'
+              ? DuplicateAction.overwrite
+              : DuplicateAction.skip);
+
+      final after = CustomerService.instance.getCustomerById('addr-changed');
+      expect(after, isNotNull);
+      // 新住所には古い座標を引き継がない
+      expect(after!.transportLocations, ['北海道帯広市東1条南3丁目', '帯広駅前']);
+      expect(after.isTransportResolved(0), isFalse);
+      expect(after.transportStatus(0), Customer.locUnresolved);
+      expect(after.transportCoord(0), isNull);
+    });
+
     test('null（ダイアログ閉じ）は既定でスキップ', () async {
       await CustomerService.instance.addCustomer(Customer(
           id: 'x', name: '山田 太郎', nameKana: 'ヤマダ タロウ',

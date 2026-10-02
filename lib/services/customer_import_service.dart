@@ -291,6 +291,16 @@ class CustomerImportService {
               continue;
             case DuplicateAction.overwrite:
               // 既存 ID を維持して上書き。createdAt / currentMonthUsedDays / isActive は既存を保持。
+              //
+              // Day 10 Fix: Day 8 で解決済みの送迎場所座標を保持する。
+              // 以前は transportLocationLats/Lngs/Status を引き継がず、
+              // 上書きインポートで解決済み座標が全消失していた（致命）。
+              // 住所文字列が一致する送迎場所のみ座標を引き継ぐ
+              // （住所が変わった場合は再ジオコーディングが必要なため未解決に戻す）。
+              final carried = _carryOverTransportCoords(
+                existing: dup.existing,
+                incoming: c,
+              );
               final merged = Customer(
                 id: dup.existing.id,
                 name: c.name,
@@ -311,6 +321,11 @@ class CustomerImportService {
                 createdAt: dup.existing.createdAt,
                 updatedAt: DateTime.now(),
                 isActive: true,
+                transportLocationLats: carried.lats,
+                transportLocationLngs: carried.lngs,
+                transportLocationStatus: carried.status,
+                transportLocationFormatted: carried.formatted,
+                transportLocationTypes: carried.types,
               );
               await CustomerService.instance.updateCustomer(merged);
               overwritten++;
@@ -701,6 +716,93 @@ class CustomerImportService {
   }
 
   static String _normName(String s) => s.replaceAll(RegExp(r'[\s　]+'), '');
+
+  // ── Day 10 Fix: 上書きインポート時の座標引き継ぎ ──────────────────
+  //
+  // Day 8 で解決した送迎場所座標（resolved / manual）は、
+  // 上書きインポートで失われてはならない（再ジオコーディングは
+  // API コストと誤採用リスクを伴うため）。
+  //
+  // 引き継ぎ条件: 送迎場所の住所文字列が正規化後に一致すること。
+  //   - 一致     → 既存の lat/lng/status/formatted/types をそのまま引き継ぐ
+  //   - 不一致   → 住所が変わったので未解決（unresolved）にする
+  //
+  // 既存側の住所リストに対して「同じ住所を探す」方式のため、
+  // 送迎場所1〜3 の並び順が変わっても座標は正しく追従する。
+  static ({
+    List<double?> lats,
+    List<double?> lngs,
+    List<String> status,
+    List<String?> formatted,
+    List<String?> types,
+  }) _carryOverTransportCoords({
+    required Customer existing,
+    required Customer incoming,
+  }) {
+    String normAddr(String s) =>
+        s.replaceAll(RegExp(r'[\s　]+'), '').trim().toLowerCase();
+
+    // 既存の「住所 → 解決情報」インデックス（解決済みのみ対象）
+    final byAddr = <String, ({
+      double? lat,
+      double? lng,
+      String status,
+      String? formatted,
+      String? types,
+    })>{};
+    for (int i = 0; i < existing.transportLocations.length; i++) {
+      final addr = normAddr(existing.transportLocations[i]);
+      if (addr.isEmpty) continue;
+      if (!existing.isTransportResolved(i)) continue; // 未解決は引き継がない
+      byAddr.putIfAbsent(
+        addr,
+        () => (
+          lat: existing.transportLocationLats[i],
+          lng: existing.transportLocationLngs[i],
+          status: existing.transportLocationStatus[i],
+          formatted: existing.transportFormatted(i),
+          types: (i < existing.transportLocationTypes.length)
+              ? existing.transportLocationTypes[i]
+              : null,
+        ),
+      );
+    }
+
+    final n = incoming.transportLocations.length;
+    final lats = List<double?>.filled(n, null, growable: true);
+    final lngs = List<double?>.filled(n, null, growable: true);
+    final status =
+        List<String>.filled(n, Customer.locUnresolved, growable: true);
+    final formatted = List<String?>.filled(n, null, growable: true);
+    final types = List<String?>.filled(n, null, growable: true);
+
+    int carriedCount = 0;
+    for (int i = 0; i < n; i++) {
+      final addr = normAddr(incoming.transportLocations[i]);
+      if (addr.isEmpty) continue;
+      final hit = byAddr[addr];
+      if (hit == null) continue;
+      lats[i] = hit.lat;
+      lngs[i] = hit.lng;
+      status[i] = hit.status;
+      formatted[i] = hit.formatted;
+      types[i] = hit.types;
+      carriedCount++;
+    }
+
+    if (carriedCount > 0) {
+      debugPrint('[CustomerImport] 座標引き継ぎ: ${existing.name} '
+          '$carriedCount/$n 件の解決済み座標を保持');
+    }
+
+    return (
+      lats: lats,
+      lngs: lngs,
+      status: status,
+      formatted: formatted,
+      types: types,
+    );
+  }
 
   static String? _nameBirthdayKey(String name, DateTime? b) {
     if (b == null) return null;

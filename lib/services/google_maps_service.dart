@@ -34,9 +34,27 @@ class DistanceInfo {
 
 /// Google Maps API クライアント
 /// Geocoding / Directions / Distance Matrix をラップする
+///
+/// 【Day 10 セキュリティ注記】
+/// 本クラスの REST 呼び出しは URL クエリに `key=` を含むため、
+/// 例外・ログに URI をそのまま載せると API キーが平文で漏れる。
+/// そのため HTTP 例外は [maskApiKey] を通してから送出する。
+///
+/// 現在アプリ本体が使っているのは Maps JavaScript API（MapsJsService）で、
+/// 本クラスは静的ユーティリティ（buildGoogleMapsUrl* / haversineDistance /
+/// optimizeRouteNearestNeighbor）のみ利用されている。REST メソッドは
+/// 将来の再利用に備えて残しているが、再利用時もマスクが効く。
 class GoogleMapsService {
   GoogleMapsService._();
   static final GoogleMapsService instance = GoogleMapsService._();
+
+  /// 文字列中の API キーを隠す（ログ・例外メッセージ用）
+  ///
+  /// `key=AIzaSy...` および生の `AIza...` を `key=***REDACTED***` に置換する。
+  @visibleForTesting
+  static String maskApiKey(String s) => s
+      .replaceAll(RegExp(r'([?&]key=)[^&\s]+'), r'$1***REDACTED***')
+      .replaceAll(RegExp(r'AIza[0-9A-Za-z_\-]{10,}'), '***REDACTED***');
 
   static const String _geocodingBase =
       'https://maps.googleapis.com/maps/api/geocode/json';
@@ -86,7 +104,9 @@ class GoogleMapsService {
         // API レート制限回避
         await Future.delayed(const Duration(milliseconds: 200));
       } catch (e) {
-        debugPrint('[GoogleMapsService] geocode failed for "$address": $e');
+        // キーが URL 経由で例外文に混ざる可能性があるためマスクする
+        debugPrint('[GoogleMapsService] geocode failed for "$address": '
+            '${maskApiKey(e.toString())}');
         results.add(null);
       }
     }
@@ -402,7 +422,9 @@ class GoogleMapsService {
   void _checkApiStatus(Map<String, dynamic> body) {
     final status = body['status'] as String?;
     if (status == null || status == 'OK' || status == 'ZERO_RESULTS') return;
-    final message = body['error_message'] as String? ?? status;
+    // error_message には リクエスト URL が含まれる場合があるためマスクする
+    final raw = body['error_message'] as String? ?? status;
+    final message = maskApiKey(raw);
     switch (status) {
       case 'REQUEST_DENIED':
         throw Exception('APIキーが無効または権限不足です: $message');

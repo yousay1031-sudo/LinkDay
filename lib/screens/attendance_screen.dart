@@ -209,7 +209,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     String freeText = '';
     bool isOther = false;
 
-    await showDialog(
+    // Day 10 Fix: 以前は「キャンセル」も「保存」も pop() のみで結果を返さず、
+    // キャンセルしても欠席が保存されていた（出席データと Day 9 支給量集計が
+    // 意図せず書き換わる致命バグ）。確定/取消を bool で明示的に受け取る。
+    final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
@@ -288,7 +291,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '保護者への LINE 通知は保存後に確認できます',
+                          // Day 10 Fix: LINE 通知は未実装。送信されると
+                          // 誘導する文言を「準備中」に修正。
+                          'LINE 通知は準備中です（現在は自動送信されません）',
                           style: TextStyle(fontSize: 11),
                         ),
                       ),
@@ -300,7 +305,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('キャンセル'),
             ),
             FilledButton.icon(
@@ -310,7 +315,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               icon: const Icon(Icons.check, size: 16),
               label: const Text('欠席として保存'),
               onPressed: () {
-                Navigator.of(dialogContext).pop();
+                Navigator.of(dialogContext).pop(true);
               },
             ),
           ],
@@ -318,13 +323,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       ),
     );
 
+    // キャンセル（または画面破棄）時は保存しない
+    if (confirmed != true) return;
     if (!mounted) return;
 
-    // ダイアログが閉じられたら欠席保存
-    // キャンセルした場合は selectedReason が初期値のまま→何もしない
-    // ただし「キャンセル」ボタンで pop した場合との区別に
-    // selectedReason が null の可能性はないので保存する
-    // → キャンセル時は return の前で pop されるので問題なし
     final finalReason = isOther
         ? (freeText.isEmpty ? 'その他' : freeText)
         : (selectedReason ?? kAbsenceReasons.first);
@@ -342,7 +344,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     await _showLineNotificationDialog(record.customerName);
   }
 
-  /// LINE 通知確認ダイアログ
+  /// 欠席記録完了の案内ダイアログ
+  ///
+  /// Day 10 Fix: 以前は「送る」ボタンを持つ「空き枠 LINE 通知」ダイアログで、
+  /// 押しても実際には送信されない（未実装）ため「通知したつもり」の
+  /// 誤認を招く状態だった。送信ボタンを廃止し、準備中の案内に統一する。
   Future<void> _showLineNotificationDialog(String customerName) async {
     if (!mounted) return;
     await showDialog(
@@ -350,44 +356,46 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.chat_bubble_outline,
-                color: Color(0xFF06C755), size: 20),
+            Icon(Icons.check_circle_outline,
+                color: AppColors.success, size: 20),
             SizedBox(width: 8),
-            Text('空き枠 LINE 通知'),
+            Expanded(child: Text('欠席を記録しました')),
           ],
         ),
-        content: Text(
-          '$customerName さんの欠席が記録されました。\n\n'
-          '空き枠の LINE 通知を送信しますか？',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$customerName さんの欠席を記録しました。'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.schedule, size: 16, color: AppColors.warning),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '空き枠の LINE 通知は準備中です。\n'
+                      'お手数ですが、保護者への連絡は電話等でお願いします。',
+                      style: TextStyle(fontSize: 11, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         actions: [
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('送らない'),
-          ),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF06C755),
-            ),
-            icon: const Icon(Icons.send, size: 16),
-            label: const Text('送る'),
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              // TODO(line_notification): LINE 通知送信処理を実装する
-              // 例: LineNotificationService.instance.sendVacancyNotification()
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'LINE 通知機能は今後実装予定です',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                    duration: Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
+            child: const Text('OK'),
           ),
         ],
       ),
