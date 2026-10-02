@@ -56,6 +56,20 @@ class GoogleMapsService {
       .replaceAll(RegExp(r'([?&]key=)[^&\s]+'), r'$1***REDACTED***')
       .replaceAll(RegExp(r'AIza[0-9A-Za-z_\-]{10,}'), '***REDACTED***');
 
+  /// API キーを隠した上で HTTP GET する
+  ///
+  /// http パッケージの例外（SocketException / ClientException 等）は
+  /// メッセージに URI 全体を含むことがあり、そのままでは
+  /// `key=AIza...` が UI のエラー表示やログに平文で出てしまう。
+  Future<http.Response> _safeGet(Uri uri, Duration timeout) async {
+    try {
+      return await http.get(uri).timeout(timeout);
+    } catch (e) {
+      throw Exception('通信エラー: ${maskApiKey(e.toString())}');
+    }
+  }
+
+
   static const String _geocodingBase =
       'https://maps.googleapis.com/maps/api/geocode/json';
   static const String _directionsBase =
@@ -77,7 +91,7 @@ class GoogleMapsService {
       'key': apiKey,
     });
 
-    final response = await http.get(uri).timeout(const Duration(seconds: 10));
+    final response = await _safeGet(uri, const Duration(seconds: 10));
     _checkHttpStatus(response);
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -131,7 +145,7 @@ class GoogleMapsService {
       'key': apiKey,
     });
 
-    final response = await http.get(uri).timeout(const Duration(seconds: 15));
+    final response = await _safeGet(uri, const Duration(seconds: 15));
     _checkHttpStatus(response);
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -196,7 +210,7 @@ class GoogleMapsService {
         'stops=${waypointLatLngs.length}件');
 
     final uri = Uri.parse(_directionsBase).replace(queryParameters: params);
-    final response = await http.get(uri).timeout(const Duration(seconds: 20));
+    final response = await _safeGet(uri, const Duration(seconds: 20));
     _checkHttpStatus(response);
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -259,7 +273,7 @@ class GoogleMapsService {
     }
 
     final uri = Uri.parse(_directionsBase).replace(queryParameters: params);
-    final response = await http.get(uri).timeout(const Duration(seconds: 15));
+    final response = await _safeGet(uri, const Duration(seconds: 15));
     _checkHttpStatus(response);
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
