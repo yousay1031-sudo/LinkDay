@@ -1,11 +1,6 @@
-// ignore_for_file: avoid_web_libraries_in_flutter
-import 'dart:js_interop';
-
 import 'package:flutter/foundation.dart';
 
-// ── JS グローバル関数バインディング ──────────────────────────────
-@JS('loadGoogleMaps')
-external JSPromise _loadGoogleMapsJs(String apiKey);
+import 'maps_bridge.dart' as bridge;
 
 /// Google Maps JavaScript API ローダー
 ///
@@ -30,7 +25,7 @@ class MapsLoader {
     }
     try {
       debugPrint('[MapsLoader] Loading Google Maps JS API...');
-      await _loadGoogleMapsJs(apiKey).toDart;
+      await bridge.loadGoogleMaps(apiKey);
       _loaded = true;
       _loadedKey = apiKey;
       debugPrint('[MapsLoader] Google Maps JS API loaded successfully');

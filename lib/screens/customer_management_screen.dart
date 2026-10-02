@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 
 import '../models/customer.dart';
 import '../services/customer_service.dart';
+import '../services/monthly_usage_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/monthly_usage_chip.dart';
 import 'customer_edit_screen.dart';
 import 'customer_import_screen.dart';
 import 'transport_location_resolve_screen.dart';
@@ -24,11 +26,36 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   List<Customer> _expiringCustomers = [];
   bool _showExpiringOnly = false;
 
+  // ── Day 9: 月間支給量の残日数 ────────────────────────────────
+  /// customerId → 当月利用状況
+  Map<String, MonthlyUsage> _usage = {};
+
+  /// 「残日数が少ない順」ソート
+  bool _sortByRemaining = false;
+
+  /// 「超過見込みのみ」フィルタ
+  bool _showOverProjectedOnly = false;
+
   @override
   void initState() {
     super.initState();
     _loadCustomers();
+    _loadUsage();
   }
+
+  /// 当月の利用状況を読み込む（Day 9）
+  Future<void> _loadUsage() async {
+    final list = await MonthlyUsageService.instance.getAllUsage(DateTime.now());
+    if (!mounted) return;
+    setState(() {
+      _usage = {for (final u in list) u.customerId: u};
+      _applyFilter();
+    });
+  }
+
+  /// 超過見込みの児童数
+  int get _overProjectedCount =>
+      _usage.values.where((u) => u.isOverProjected).length;
 
   @override
   void dispose() {
@@ -55,7 +82,49 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     } else {
       base = _allCustomers;
     }
+
+    // Day 9: 超過見込みのみフィルタ
+    if (_showOverProjectedOnly) {
+      base = base
+          .where((c) => _usage[c.id]?.isOverProjected ?? false)
+          .toList();
+    }
+
+    // Day 9: 残日数が少ない順ソート（実績残 → 見込み残 → 氏名）
+    if (_sortByRemaining) {
+      base = List<Customer>.from(base)
+        ..sort((a, b) {
+          final ua = _usage[a.id];
+          final ub = _usage[b.id];
+          // 利用状況が未取得の児童は末尾へ
+          if (ua == null && ub == null) return a.nameKana.compareTo(b.nameKana);
+          if (ua == null) return 1;
+          if (ub == null) return -1;
+          final byActual = ua.remainingActual.compareTo(ub.remainingActual);
+          if (byActual != 0) return byActual;
+          final byProjected =
+              ua.remainingProjected.compareTo(ub.remainingProjected);
+          if (byProjected != 0) return byProjected;
+          return a.nameKana.compareTo(b.nameKana);
+        });
+    }
+
     _filteredCustomers = base;
+  }
+
+  void _toggleSortByRemaining() {
+    setState(() {
+      _sortByRemaining = !_sortByRemaining;
+      _applyFilter();
+    });
+  }
+
+  void _toggleOverProjectedOnly() {
+    setState(() {
+      _showOverProjectedOnly = !_showOverProjectedOnly;
+      if (_showOverProjectedOnly) _showExpiringOnly = false;
+      _applyFilter();
+    });
   }
 
   void _onSearchChanged(String value) {
@@ -84,6 +153,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     );
     if (result == true) {
       _loadCustomers();
+      _loadUsage(); // Day 9: 利用状況も再集計
     }
   }
 
@@ -94,6 +164,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     );
     if (changed == true) {
       _loadCustomers();
+      _loadUsage(); // Day 9: 利用状況も再集計
     }
   }
 
@@ -104,6 +175,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     );
     if (result == true) {
       _loadCustomers();
+      _loadUsage(); // Day 9: 利用状況も再集計
     }
   }
 
@@ -138,6 +210,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
       body: Column(
         children: [
           _buildSearchBar(),
+          _buildUsageFilterBar(),
           if (_expiringCustomers.isNotEmpty) _buildExpiringAlert(),
           Expanded(child: _buildBody()),
         ],
@@ -198,6 +271,60 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
+      ),
+    );
+  }
+
+  /// Day 9: 残日数ソート / 超過見込みフィルタのバー
+  Widget _buildUsageFilterBar() {
+    final over = _overProjectedCount;
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Row(
+        children: [
+          FilterChip(
+            selected: _sortByRemaining,
+            onSelected: (_) => _toggleSortByRemaining(),
+            avatar: Icon(Icons.sort,
+                size: 15,
+                color: _sortByRemaining ? Colors.white : AppColors.onSurfaceVariant),
+            label: const Text('残日数が少ない順'),
+            labelStyle: TextStyle(
+              fontSize: 11.5,
+              color: _sortByRemaining ? Colors.white : AppColors.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+            selectedColor: AppColors.secondary,
+            backgroundColor: AppColors.background,
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+          ),
+          const SizedBox(width: 8),
+          FilterChip(
+            selected: _showOverProjectedOnly,
+            onSelected: over == 0 && !_showOverProjectedOnly
+                ? null
+                : (_) => _toggleOverProjectedOnly(),
+            avatar: Icon(Icons.warning_amber_rounded,
+                size: 15,
+                color: _showOverProjectedOnly
+                    ? Colors.white
+                    : over > 0
+                        ? AppColors.error
+                        : AppColors.onSurfaceVariant),
+            label: Text('超過見込みのみ${over > 0 ? '（$over）' : ''}'),
+            labelStyle: TextStyle(
+              fontSize: 11.5,
+              color: _showOverProjectedOnly ? Colors.white : AppColors.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+            selectedColor: AppColors.error,
+            backgroundColor: AppColors.background,
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
       ),
     );
   }
@@ -434,11 +561,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
         // 下段: 今月利用 & 受給者証期限
         Row(
           children: [
-            _buildUsageBadge(
-                customer.currentMonthUsedDays,
-                customer.monthlyAvailableDays,
-                remaining,
-                remainingColor),
+            _buildUsageBadge(customer, remaining, remainingColor),
             const Spacer(),
             if (certDays != null)
               _buildCertBadge(certDays, certColor),
@@ -510,11 +633,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            _buildUsageBadge(
-                customer.currentMonthUsedDays,
-                customer.monthlyAvailableDays,
-                remaining,
-                remainingColor),
+            _buildUsageBadge(customer, remaining, remainingColor),
             if (certDays != null) ...[
               const SizedBox(height: 4),
               _buildCertBadge(certDays, certColor),
@@ -546,8 +665,15 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     );
   }
 
-  Widget _buildUsageBadge(
-      int used, int total, int remaining, Color color) {
+  /// 今月利用バッジ
+  ///
+  /// Day 9: MonthlyUsage（AttendanceRecord の動的集計）が取得できていれば
+  /// それを正として表示する。未取得時のみ Customer のキャッシュ値で暫定表示。
+  Widget _buildUsageBadge(Customer customer, int remaining, Color color) {
+    final usage = _usage[customer.id];
+    if (usage != null) {
+      return MonthlyUsageChip(usage: usage);
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -555,7 +681,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        '今月 $used/$total 日',
+        '今月 ${customer.currentMonthUsedDays}/${customer.monthlyAvailableDays} 日',
         style: TextStyle(
           fontSize: 11,
           color: color,

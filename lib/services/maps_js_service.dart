@@ -1,30 +1,16 @@
-// ignore_for_file: avoid_web_libraries_in_flutter
-import 'dart:async';
 import 'dart:convert';
-import 'dart:js_interop';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/geocode_candidate.dart';
+import 'maps_bridge.dart' as bridge;
 import 'maps_loader.dart';
 import 'settings_service.dart';
 
-// ── JS グローバル関数バインディング ──────────────────────────────
-// dart:js_interop (@JS アノテーション) で index.html の window.* を呼び出す。
-// package:js は使用しない（dart:js_interop に統一）。
-
-@JS('geocodeAddress')
-external JSPromise _geocodeAddressJs(String address);
-
-@JS('geocodeCandidates')
-external JSPromise _geocodeCandidatesJs(String address, int maxResults);
-
-@JS('reverseGeocode')
-external JSPromise _reverseGeocodeJs(double lat, double lng);
-
-@JS('getDirectionsRoundTrip')
-external JSPromise _getDirectionsRoundTripJs(String requestJson);
+// ── JS Interop ブリッジ ──────────────────────────────────────────
+// dart:js_interop への依存は maps_bridge.dart に隔離している
+// （VM テストで package:linkday_app が読み込めるようにするため）。
 
 // ── 結果クラス ───────────────────────────────────────────────────
 
@@ -161,9 +147,7 @@ class MapsJsService {
 
     debugPrint('[MapsJsService] geocodeAddress: $address');
     try {
-      final jsResult = await _geocodeAddressJs(address).toDart;
-      // JSObject → Map 変換
-      final map = _jsObjectToMap(jsResult);
+      final map = await bridge.geocodeAddress(address);
       final lat = (map['lat'] as num).toDouble();
       final lng = (map['lng'] as num).toDouble();
       debugPrint('[MapsJsService] geocodeAddress result: lat=$lat, lng=$lng');
@@ -185,9 +169,7 @@ class MapsJsService {
       await _getKeyAndEnsureLoaded();
       debugPrint('[MapsJsService] reverseGeocode: '
           '${lat.toStringAsFixed(7)}, ${lng.toStringAsFixed(7)}');
-      final jsResult = await _reverseGeocodeJs(lat, lng).toDart;
-      final dartified = jsResult.dartify();
-      final str = (dartified is String) ? dartified : '';
+      final str = await bridge.reverseGeocode(lat, lng);
       if (str.isEmpty) return ReverseGeocodeResult.failed;
       final decoded = jsonDecode(str);
       if (decoded is! Map) return ReverseGeocodeResult.failed;
@@ -241,9 +223,7 @@ class MapsJsService {
     await _getKeyAndEnsureLoaded();
     debugPrint('[MapsJsService] geocodeCandidates: "$key" (max=$maxResults)');
     try {
-      final jsResult = await _geocodeCandidatesJs(key, maxResults).toDart;
-      final dartified = jsResult.dartify();
-      final str = (dartified is String) ? dartified : '';
+      final str = await bridge.geocodeCandidates(key, maxResults);
       if (str.isEmpty) {
         throw StateError('geocodeCandidates: JS から空の応答');
       }
@@ -330,15 +310,8 @@ class MapsJsService {
         'stops=${waypointLatLngs.length}件, optimize=$optimize');
 
     try {
-      final jsResult = await _getDirectionsRoundTripJs(requestJson).toDart;
-
-      // dartify() の戻り値は String（JSON文字列）のはずだが、
-      // null や JSObject が返る場合に備えて null 安全にキャスト
-      final dartified = jsResult.dartify();
-      if (dartified == null) {
-        throw StateError('Routes API: JS から null が返されました');
-      }
-      final resultStr = (dartified as String?) ?? '';
+      // ブリッジは JSON 文字列を返す（null は StateError に変換済み）
+      final resultStr = await bridge.getDirectionsRoundTrip(requestJson);
       if (resultStr.isEmpty) {
         throw StateError('Routes API: JS から空文字列が返されました');
       }
@@ -417,17 +390,5 @@ class MapsJsService {
       debugPrint('[MapsJsService]   stackTrace: $st');
       rethrow;
     }
-  }
-
-  // ── プライベートヘルパー ──────────────────────────────────────
-
-  /// JSObject を Dart Map に変換する
-  Map<String, dynamic> _jsObjectToMap(JSAny? jsObj) {
-    if (jsObj == null) return {};
-    final dartified = jsObj.dartify();
-    if (dartified is Map) {
-      return dartified.map((k, v) => MapEntry(k.toString(), v));
-    }
-    return {};
   }
 }

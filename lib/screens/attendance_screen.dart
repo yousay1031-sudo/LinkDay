@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/attendance_record.dart';
 import '../services/attendance_pdf_service.dart';
 import '../services/attendance_service.dart';
+import '../services/monthly_usage_service.dart';
 import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/attendance_status_badge.dart';
@@ -120,6 +121,49 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         content: Text('${record.customerName} さんが入室しました'),
         backgroundColor: const Color(0xFF2E7D32),
         duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    // Day 9: 支給量超過の即時警告（記録はブロックしない）
+    await _warnIfOverProjected(record);
+  }
+
+  /// 入室後に支給量超過見込みなら警告する（Day 9）
+  ///
+  /// 制度上、超過しても記録自体は必要なため処理はブロックせず警告のみ行う。
+  Future<void> _warnIfOverProjected(AttendanceRecord record) async {
+    final usage = await MonthlyUsageService.instance
+        .checkOverageAfterCheckIn(record.customerId, today: _selectedDate);
+    if (usage == null || !mounted) return;
+    final name = record.customerName.isNotEmpty
+        ? record.customerName
+        : usage.customerName;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$name：今月の支給日数を超過します'
+                    '（${usage.projectedTotal}/${usage.available}日）',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text('超過分は利用者負担となる可能性があります',
+                      style: TextStyle(fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.error,
+        duration: const Duration(seconds: 7),
         behavior: SnackBarBehavior.floating,
       ),
     );

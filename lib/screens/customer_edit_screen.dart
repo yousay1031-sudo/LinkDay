@@ -7,11 +7,13 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/customer.dart';
 import '../services/customer_service.dart';
 import '../services/maps_js_service.dart';
+import '../services/monthly_usage_service.dart';
 import '../services/settings_service.dart';
 import '../services/transport_location_resolver.dart';
 import '../theme/app_theme.dart';
 import '../utils/kana_util.dart';
 import '../widgets/geocode_candidate_sheet.dart';
+import '../widgets/monthly_usage_chip.dart';
 
 class CustomerEditScreen extends StatefulWidget {
   final Customer? customer;
@@ -61,12 +63,21 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   String? _gender;
   int _monthlyAvailableDays = 23;
   int _currentMonthUsedDays = 0;
+
+  // ── Day 9: 月間利用状況（既存児童のみ。AttendanceRecord から動的集計）──
+  MonthlyUsage? _usage;
+  bool _usageLoading = false;
   List<int> _regularDays = [];
 
   @override
   void initState() {
     super.initState();
     final c = widget.customer;
+    // Day 9: 既存児童は当月の利用状況を動的集計して表示する
+    if (c != null) {
+      _usageLoading = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadUsage(c.id));
+    }
     _nameCtrl = TextEditingController(text: c?.name ?? '');
     _nameKanaCtrl = TextEditingController(text: c?.nameKana ?? '');
     _phoneCtrl = TextEditingController(text: c?.phone ?? '');
@@ -604,6 +615,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
               _buildSection('保護者情報', _buildGuardianInfo()),
               _buildSection('受給者証', _buildCertInfo()),
               _buildSection('定期利用', _buildRegularInfo()),
+              if (_isEditing)
+                _buildSection('今月の利用状況', _buildMonthlyUsageInfo()),
               _buildSection('送迎場所', _buildTransportInfo()),
               _buildSection('備考', _buildNotesInfo()),
             ],
@@ -963,6 +976,70 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             ],
           ),
         ],
+      ],
+    );
+  }
+
+  // ── セクション: 今月の利用状況（Day 9）─────────────────────────────
+
+  /// 当月の利用状況を読み込む
+  ///
+  /// 正は AttendanceRecord の動的集計（MonthlyUsageService）。
+  /// 取得後は画面の「当月利用日数」入力も実績値に合わせて同期する。
+  Future<void> _loadUsage(String customerId) async {
+    final u = await MonthlyUsageService.instance
+        .getUsage(customerId, DateTime.now());
+    if (!mounted) return;
+    setState(() {
+      _usage = u;
+      _usageLoading = false;
+      // キャッシュ入力値を実績に合わせる（保存時の巻き戻りを防ぐ）
+      _currentMonthUsedDays = u.usedActual;
+    });
+  }
+
+  Widget _buildMonthlyUsageInfo() {
+    if (_usageLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: SizedBox(
+              width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+    final u = _usage;
+    if (u == null) {
+      return const Text('利用状況を取得できませんでした',
+          style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('${u.month.year}年${u.month.month}月',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            MonthlyUsageChip(usage: u),
+          ],
+        ),
+        const SizedBox(height: 12),
+        MonthlyUsageStats(usage: u),
+        const SizedBox(height: 12),
+        if (u.isOverProjected) ...[
+          OverProjectedBanner(usage: u),
+          const SizedBox(height: 12),
+        ],
+        MonthlyUsageCalendar(usage: u, today: DateTime.now()),
+        const SizedBox(height: 10),
+        const Text(
+          '※ 実績は出席記録（在室・退室）から自動集計しています。'
+          '欠席・未出席の予定は実績に含まれません。',
+          style: TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
+        ),
       ],
     );
   }

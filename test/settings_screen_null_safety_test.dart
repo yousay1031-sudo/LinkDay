@@ -1,6 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:linkday_app/models/app_settings.dart';
@@ -13,22 +15,30 @@ import 'package:linkday_app/services/settings_service.dart';
 /// 原因: 車両コントローラが postFrameCallback で遅延生成されていたため、
 ///       初回 build で _vehicleNameCtrls[i] が範囲外アクセスになっていた。
 ///
-/// 実行: flutter test --platform chrome test/settings_screen_null_safety_test.dart
-///   （lib 内に dart:js_interop を使うサービスがあるため VM では実行不可）
+/// 実行: flutter test test/settings_screen_null_safety_test.dart
+///
+/// 【Hive.init / hive パッケージを使う理由】
+/// Hive.initFlutter()（hive_flutter）は path_provider 経由で
+/// getApplicationDocumentsDirectory() を呼ぶため、VM テストでは
+/// MissingPluginException になる。一時ディレクトリを明示指定する
+/// Hive.init(path) を使うことで VM 上でも実行可能にしている。
 void main() {
+  late Directory tmp;
+
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
-    await Hive.initFlutter('linkday_test');
+    tmp = await Directory.systemTemp.createTemp('linkday_settings_test_');
+    Hive.init(tmp.path);
     if (!Hive.isAdapterRegistered(7)) {
       Hive.registerAdapter(AppSettingsAdapter());
     }
-    await Hive.deleteBoxFromDisk('app_settings');
     await SettingsService.instance.init();
   });
 
   tearDownAll(() async {
     await Hive.close();
+    await tmp.delete(recursive: true);
   });
 
   testWidgets('SettingsScreen 初回 build が空データ状態で例外なく完了する',

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/attendance_service.dart';
+import '../services/monthly_usage_service.dart';
 import '../services/auth_service.dart';
 import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
@@ -37,6 +38,9 @@ class _HomeScreenState extends State<HomeScreen> {
   int _expiringCount = 0;
   int _attendanceUnprocessedCount = 0;
 
+  /// Day 9: 支給超過見込みの児童（残が少ない順）
+  List<MonthlyUsage> _overProjected = [];
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +58,17 @@ class _HomeScreenState extends State<HomeScreen> {
       _expiringCount = expiring.length;
       _attendanceUnprocessedCount = unprocessed;
     });
+    // Day 9: 支給超過見込みは非同期集計（同じ _loadCounts 系列に乗せる）
+    _loadOverProjected();
+  }
+
+  /// 支給超過見込みの児童を集計する（Day 9）
+  Future<void> _loadOverProjected() async {
+    final over =
+        await MonthlyUsageService.instance.getOverProjected(DateTime.now());
+    debugPrint('[HomeScreen] _loadCounts: overProjected=${over.length}');
+    if (!mounted) return;
+    setState(() => _overProjected = over);
   }
 
   /// メニュー一覧
@@ -534,6 +549,10 @@ class _HomeScreenState extends State<HomeScreen> {
             // ヘッダーエリア
             _buildHeader(context),
 
+            // Day 9: 支給超過見込みサマリー
+            if (_overProjected.isNotEmpty)
+              _buildOverProjectedCard(context, padding),
+
             // グリッドメニュー
             Expanded(
               child: GridView.builder(
@@ -553,6 +572,80 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// Day 9: 支給超過見込みサマリーカード（タップで顧客一覧へ）
+  Widget _buildOverProjectedCard(BuildContext context, double padding) {
+    final count = _overProjected.length;
+    final names = _overProjected.take(3).map((u) => u.customerName).join('、');
+    final more = count > 3 ? ' ほか${count - 3}名' : '';
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(padding, 0, padding, 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CustomerManagementScreen()),
+          ).then((_) => _loadCounts());
+        },
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.error.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.warning_amber_rounded,
+                    color: AppColors.error, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('支給超過見込み $count 名',
+                            style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.error)),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$names$more',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11.5, color: AppColors.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      '今月の支給日数を超過する見込みです。超過分は利用者負担となる可能性があります',
+                      style: TextStyle(fontSize: 10.5, color: AppColors.error),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: AppColors.onSurfaceVariant, size: 20),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

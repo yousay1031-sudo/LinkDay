@@ -1,6 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:hive/hive.dart';
 
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/screens/customer_import_screen.dart';
@@ -8,20 +10,29 @@ import 'package:linkday_app/services/customer_service.dart';
 
 /// 利用者インポート画面: 初回 build / 空データ状態で例外なく表示されること
 ///
-/// 実行: flutter test --platform chrome test/customer_import_screen_test.dart
+/// 実行: flutter test test/customer_import_screen_test.dart
+///
+/// 【Hive.init / hive パッケージを使う理由】
+/// Hive.initFlutter()（hive_flutter）は path_provider 経由で
+/// getApplicationDocumentsDirectory() を呼ぶため、VM テストでは
+/// MissingPluginException になる。一時ディレクトリを明示指定する
+/// Hive.init(path) を使うことで VM 上でも実行可能にしている。
 void main() {
+  late Directory tmp;
+
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    await Hive.initFlutter('linkday_import_screen_test');
+    tmp = await Directory.systemTemp.createTemp('linkday_import_screen_test_');
+    Hive.init(tmp.path);
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(CustomerAdapter());
     }
-    await Hive.deleteBoxFromDisk('customers');
     await CustomerService.instance.init();
   });
 
   tearDownAll(() async {
     await Hive.close();
+    await tmp.delete(recursive: true);
   });
 
   testWidgets('ファイル選択ステップが表示され、16 列チップとテンプレートボタンがある',
