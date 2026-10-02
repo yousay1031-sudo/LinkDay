@@ -7,12 +7,14 @@ import 'firebase_options.dart';
 import 'models/app_settings.dart';
 import 'models/attendance_record.dart';
 import 'models/customer.dart';
+import 'models/notification_log.dart';
 import 'models/transport_plan.dart';
 import 'models/weekly_schedule.dart';
 import 'services/attendance_service.dart';
 import 'services/customer_service.dart';
 import 'services/settings_service.dart';
 import 'services/transport_plan_service.dart';
+import 'services/vacancy_notification_service.dart';
 import 'services/weekly_schedule_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/auth_gate.dart';
@@ -38,6 +40,9 @@ Future<void> main() async {
   Hive.registerAdapter(TransportVehicleRouteAdapter()); // typeId=8
   Hive.registerAdapter(TransportStopAdapter());     // typeId=9
   Hive.registerAdapter(TransportTypeAdapter());     // typeId=10
+  // Day 11: 空き枠 LINE 通知の送信記録
+  Hive.registerAdapter(NotificationLogAdapter());   // typeId=11
+  Hive.registerAdapter(NotificationStatusAdapter()); // typeId=12
 
   // ── 3. Firebase 初期化
   await Firebase.initializeApp(
@@ -59,7 +64,10 @@ Future<void> main() async {
   // ── 8. TransportPlanService の Hive ボックスを開く（Day 6）
   await TransportPlanService.instance.init();
 
-  // ── 9. 日本語ロケールデータ初期化（PDF出力の LocaleDataException 対策）
+  // ── 9. VacancyNotificationService の Hive ボックスを開く（Day 11）
+  await VacancyNotificationService.instance.init();
+
+  // ── 10. 日本語ロケールデータ初期化（PDF出力の LocaleDataException 対策）
   await initializeDateFormatting('ja_JP', null);
 
   final s = SettingsService.instance.getSettings();

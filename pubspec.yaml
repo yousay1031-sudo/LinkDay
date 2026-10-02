@@ -18,10 +18,12 @@ dependencies:
   hive_flutter: 1.1.0
   shared_preferences: 2.5.3
 
-  # Firebase (接続は次回プロンプト)
+  # Firebase
   firebase_core: 3.6.0
   cloud_firestore: 5.4.3
   firebase_auth: 5.3.0
+  # Day 11: LINE 空き枠通知（Callable Function 呼び出し）
+  cloud_functions: 5.1.3
 
   # Maps & Location
   google_maps_flutter: 2.9.0

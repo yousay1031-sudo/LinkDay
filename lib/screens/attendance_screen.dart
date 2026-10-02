@@ -5,9 +5,12 @@ import '../services/attendance_pdf_service.dart';
 import '../services/attendance_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/customer_service.dart';
+import '../services/vacancy_notification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/attendance_status_badge.dart';
 import '../widgets/attendance_time_chip.dart';
+import '../widgets/vacancy_notice_dialog.dart';
+import 'notification_history_screen.dart';
 
 /// 当日出席管理画面
 class AttendanceScreen extends StatefulWidget {
@@ -22,6 +25,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   List<AttendanceRecord> _records = [];
   bool _isLoading = true;
   bool _isPdfGenerating = false;
+
+  /// Day 11: LINE 通知の送信中フラグ（二重タップ防止・進捗表示）
+  bool _isSendingNotice = false;
 
   @override
   void initState() {
@@ -274,27 +280,28 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                // LINE 通知確認
+                // LINE 通知の案内
+                // Day 11: 空き枠通知を実装。保存後に候補確認ダイアログを出し、
+                // 職員が宛先を確認してから送信する（自動送信はしない）。
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF06C755).withValues(alpha: 0.08),
+                    color: kLineGreen.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF06C755).withValues(alpha: 0.3),
+                      color: kLineGreen.withValues(alpha: 0.3),
                     ),
                   ),
                   child: const Row(
                     children: [
                       Icon(Icons.chat_bubble_outline,
-                          size: 16, color: Color(0xFF06C755)),
+                          size: 16, color: kLineGreen),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          // Day 10 Fix: LINE 通知は未実装。送信されると
-                          // 誘導する文言を「準備中」に修正。
-                          'LINE 通知は準備中です（現在は自動送信されません）',
-                          style: TextStyle(fontSize: 11),
+                          '保存後に「空き枠のLINE通知」候補を表示します。\n'
+                          '確認してから送信できます（自動送信はしません）。',
+                          style: TextStyle(fontSize: 11, height: 1.4),
                         ),
                       ),
                     ],
@@ -331,6 +338,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ? (freeText.isEmpty ? 'その他' : freeText)
         : (selectedReason ?? kAbsenceReasons.first);
 
+    // 既存の出席保存ロジックには手を入れない（Day 11 は後続フックのみ追加）
     await AttendanceService.instance.markAbsent(
       customerId: record.customerId,
       date: _selectedDate,
@@ -340,18 +348,91 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     _reload();
 
-    // LINE 通知確認ダイアログ
-    await _showLineNotificationDialog(record.customerName);
+    // Day 11: 欠席保存成功後に空き枠通知フローを起動する
+    await _runVacancyNotificationFlow(record);
   }
 
-  /// 欠席記録完了の案内ダイアログ
+  // ── Day 11: 空き枠 LINE 通知フロー ──────────────────────────
+
+  /// 欠席登録成功後のフック。
   ///
-  /// Day 10 Fix: 以前は「送る」ボタンを持つ「空き枠 LINE 通知」ダイアログで、
-  /// 押しても実際には送信されない（未実装）ため「通知したつもり」の
-  /// 誤認を招く状態だった。送信ボタンを廃止し、準備中の案内に統一する。
-  Future<void> _showLineNotificationDialog(String customerName) async {
+  /// 1. 候補抽出（VacancyNotificationService.findCandidates）
+  /// 2. 候補確認ダイアログ（職員がチェックを外せる／未連携は別枠）
+  /// 3. 「送信する」が明示的に押された場合のみ Callable Function 呼び出し
+  ///
+  /// 【BUG-002 の教訓】
+  /// ダイアログの戻り値 shouldSend が true のときだけ送信する。
+  /// null（バリアタップ・戻るキー）は VacancyNoticeDialog.show が
+  /// cancelled に正規化するため、ここで送信されることはない。
+  Future<void> _runVacancyNotificationFlow(AttendanceRecord record) async {
+    final svc = VacancyNotificationService.instance;
+
+    VacancyCandidateResult candidates;
+    try {
+      candidates = await svc.findCandidates(
+        date: _selectedDate,
+        absentCustomerIds: [record.customerId],
+      );
+    } catch (e) {
+      debugPrint('[AttendanceScreen] findCandidates failed: $e');
+      if (!mounted) return;
+      await _showAbsenceSavedDialog(
+        record.customerName,
+        note: '空き枠候補の抽出に失敗しました。保護者への連絡は電話等でお願いします。',
+      );
+      return;
+    }
     if (!mounted) return;
-    await showDialog(
+
+    // 候補 0 件 → 通知ダイアログは出さず完了案内のみ
+    if (candidates.isEmpty) {
+      await _showAbsenceSavedDialog(
+        record.customerName,
+        note: '本日、空き枠を埋められる候補のご家庭はありませんでした。',
+      );
+      return;
+    }
+
+    final result = await VacancyNoticeDialog.show(
+      context,
+      candidates: candidates,
+      absentChildName: record.customerName,
+    );
+    if (!mounted) return;
+
+    // 「送信しない」／ダイアログ破棄 → 何も送らない
+    if (!result.shouldSend || result.selected.isEmpty) {
+      debugPrint('[AttendanceScreen] vacancy notice cancelled by staff');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('LINE通知は送信しませんでした'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // ── 送信（進捗表示つき）
+    setState(() => _isSendingNotice = true);
+    final sendResult = await svc.sendNotices(
+      date: _selectedDate,
+      candidates: result.selected,
+      messageOverride: result.message.isEmpty ? null : result.message,
+    );
+    if (!mounted) return;
+    setState(() => _isSendingNotice = false);
+
+    await VacancySendResultDialog.show(context, sendResult);
+  }
+
+  /// 欠席記録完了の案内（通知を送らなかった場合）
+  Future<void> _showAbsenceSavedDialog(
+    String customerName, {
+    required String note,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Row(
@@ -362,35 +443,38 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             Expanded(child: Text('欠席を記録しました')),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('$customerName さんの欠席を記録しました。'),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
-                border:
-                    Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.schedule, size: 16, color: AppColors.warning),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '空き枠の LINE 通知は準備中です。\n'
-                      'お手数ですが、保護者への連絡は電話等でお願いします。',
-                      style: TextStyle(fontSize: 11, height: 1.4),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$customerName さんの欠席を記録しました。'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline,
+                        size: 16, color: AppColors.warning),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        note,
+                        style: const TextStyle(fontSize: 11, height: 1.4),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           FilledButton(
@@ -472,14 +556,46 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return Scaffold(
       appBar: _buildAppBar(),
       body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  _buildSummaryBar(),
-                  Expanded(child: _buildBody()),
-                ],
+        child: Stack(
+          children: [
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+                    children: [
+                      _buildSummaryBar(),
+                      Expanded(child: _buildBody()),
+                    ],
+                  ),
+            // Day 11: LINE 通知送信中のオーバーレイ（二重操作をブロック）
+            if (_isSendingNotice)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  child: const Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(color: kLineGreen),
+                            SizedBox(height: 16),
+                            Text('LINE通知を送信中です…',
+                                style: TextStyle(fontSize: 13)),
+                            SizedBox(height: 4),
+                            Text('画面を閉じずにお待ちください',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.onSurfaceVariant)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
+          ],
+        ),
       ),
     );
   }
@@ -506,6 +622,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           icon: const Icon(Icons.calendar_today_outlined),
           tooltip: '日付変更',
           onPressed: _changeDate,
+        ),
+        // Day 11: LINE 通知の送信履歴
+        IconButton(
+          icon: const Icon(Icons.chat_bubble_outline),
+          tooltip: 'LINE通知の履歴',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const NotificationHistoryScreen(),
+            ),
+          ),
         ),
         _isPdfGenerating
             ? const Padding(

@@ -98,6 +98,9 @@ class SettingsService {
       maxStudentsPerDay: current.maxStudentsPerDay,
       defaultPickupStart: current.defaultPickupStart,
       defaultDropoffEnd: current.defaultDropoffEnd,
+      // Day 11: 新フィールドを引き継ぐ（落とすと通知設定が既定値に戻る）
+      vacancyReplyDeadline: current.vacancyReplyDeadline,
+      vacancyMessageTemplate: current.vacancyMessageTemplate,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] facility updated: $name');
@@ -121,6 +124,9 @@ class SettingsService {
       maxStudentsPerDay: current.maxStudentsPerDay,
       defaultPickupStart: current.defaultPickupStart,
       defaultDropoffEnd: current.defaultDropoffEnd,
+      // Day 11: 新フィールドを引き継ぐ（落とすと通知設定が既定値に戻る）
+      vacancyReplyDeadline: current.vacancyReplyDeadline,
+      vacancyMessageTemplate: current.vacancyMessageTemplate,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] vehicles updated: count=$count');
@@ -144,6 +150,8 @@ class SettingsService {
       maxStudentsPerDay: maxStudents,
       defaultPickupStart: pickupStart,
       defaultDropoffEnd: dropoffEnd,
+      vacancyReplyDeadline: current.vacancyReplyDeadline,
+      vacancyMessageTemplate: current.vacancyMessageTemplate,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] operating hours updated');
@@ -163,9 +171,55 @@ class SettingsService {
       maxStudentsPerDay: current.maxStudentsPerDay,
       defaultPickupStart: current.defaultPickupStart,
       defaultDropoffEnd: current.defaultDropoffEnd,
+      // Day 11: 新フィールドを引き継ぐ（落とすと通知設定が既定値に戻る）
+      vacancyReplyDeadline: current.vacancyReplyDeadline,
+      vacancyMessageTemplate: current.vacancyMessageTemplate,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] geocode saved: $lat, $lng');
+  }
+
+  // ── Day 11: 空き枠 LINE 通知設定 ─────────────────────────────
+
+  /// 空き枠通知の回答期限時刻・文面テンプレートを更新する
+  ///
+  /// [deadline] は "HH:mm"。不正な値は既定値にフォールバックする。
+  Future<void> updateVacancyNotice({
+    required String deadline,
+    required String template,
+  }) async {
+    final current = getSettings();
+    final safeDeadline =
+        isValidTimeString(deadline) ? deadline : AppSettings.defaultVacancyReplyDeadline;
+    final safeTemplate = template.trim().isEmpty
+        ? AppSettings.defaultVacancyMessageTemplate
+        : template;
+
+    final updated = AppSettings(
+      facilityName: current.facilityName,
+      facilityAddress: current.facilityAddress,
+      facilityLat: current.facilityLat,
+      facilityLng: current.facilityLng,
+      vehicleCount: current.vehicleCount,
+      vehicleNames: current.vehicleNames,
+      vehicleCapacities: current.vehicleCapacities,
+      maxStudentsPerDay: current.maxStudentsPerDay,
+      defaultPickupStart: current.defaultPickupStart,
+      defaultDropoffEnd: current.defaultDropoffEnd,
+      vacancyReplyDeadline: safeDeadline,
+      vacancyMessageTemplate: safeTemplate,
+    );
+    await _box.put(_kSettingsKey, updated);
+    debugPrint('[SettingsService] vacancy notice updated: deadline=$safeDeadline');
+  }
+
+  /// "HH:mm" 形式として妥当か
+  static bool isValidTimeString(String v) {
+    final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(v.trim());
+    if (m == null) return false;
+    final h = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    return h >= 0 && h <= 23 && min >= 0 && min <= 59;
   }
 
   // ── 2キー方式: JS API キー ───────────────────────────────────

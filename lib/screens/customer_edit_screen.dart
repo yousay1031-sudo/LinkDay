@@ -10,10 +10,13 @@ import '../services/maps_js_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/settings_service.dart';
 import '../services/transport_location_resolver.dart';
+import '../services/vacancy_notification_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/kana_util.dart';
 import '../widgets/geocode_candidate_sheet.dart';
 import '../widgets/monthly_usage_chip.dart';
+import '../widgets/vacancy_notice_dialog.dart'
+    show kLineGreen, LinkingCodeDialog;
 
 class CustomerEditScreen extends StatefulWidget {
   final Customer? customer;
@@ -28,6 +31,10 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool get _isEditing => widget.customer != null;
+
+  // ── Day 11: LINE 連携操作の進捗 ──────────────────────────
+  bool _isIssuingCode = false;
+  bool _isSyncingLinkage = false;
 
   // ── Day 8: 送迎場所 座標バッファ（保存時に Customer に反映）──
   // index 0..2 = 送迎場所1〜3。テキストが変更されたら該当 slot を未解決に戻す。
@@ -838,10 +845,291 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             labelText: 'LINE User ID',
             hintText: '例: U1234567890abcdef...',
             prefixIcon: Icon(Icons.chat_bubble_outline, size: 18),
+            helperText: '通常は下の「LINE連携」から自動で設定されます',
+            helperMaxLines: 2,
           ),
           textInputAction: TextInputAction.next,
+          onChanged: (_) => setState(() {}),
         ),
+        const SizedBox(height: 14),
+        _buildLineLinkageSection(),
       ],
+    );
+  }
+
+  // ── Day 11: LINE 連携セクション ──────────────────────────────────────
+
+  /// LINE 連携コードの発行・連携状況の表示・解除・同期
+  ///
+  /// 【連携の優先順位】
+  /// Firestore の line_linkage（保護者が LINE で実際に連携したもの）を
+  /// Day 7 インポートの lineUserId より優先する。「連携状況を同期」で
+  /// line_linkage の値を Hive の Customer.lineUserId に上書き反映する。
+  Widget _buildLineLinkageSection() {
+    final currentId = _lineUserIdCtrl.text.trim();
+    final isLinked = VacancyNotificationService.isValidLineUserId(currentId);
+    final hasInvalidId = currentId.isNotEmpty && !isLinked;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kLineGreen.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kLineGreen.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.chat_bubble_outline,
+                  size: 17, color: kLineGreen),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('LINE連携（空き枠通知）',
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+              if (isLinked)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: kLineGreen,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text('連携済み',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600)),
+                )
+              else
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.onSurfaceVariant.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text('未連携',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.onSurfaceVariant,
+                          fontWeight: FontWeight.w600)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (isLinked)
+            Text(
+              '連携済み（${VacancyNotificationService.maskLineUserId(currentId)}）'
+              ' — 欠席で空きが出た際に通知できます。',
+              style: const TextStyle(fontSize: 11, height: 1.5),
+            )
+          else if (hasInvalidId)
+            const Text(
+              'LINE User ID の形式が不正です（U + 32桁英数字）。'
+              'このままでは通知できません。連携コードで再連携してください。',
+              style: TextStyle(
+                  fontSize: 11, height: 1.5, color: AppColors.error),
+            )
+          else
+            const Text(
+              '未連携です。「連携コード発行」で6桁のコードを発行し、'
+              '保護者に公式アカウントへ送信してもらってください。',
+              style: TextStyle(
+                  fontSize: 11,
+                  height: 1.5,
+                  color: AppColors.onSurfaceVariant),
+            ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kLineGreen,
+                  side: BorderSide(color: kLineGreen.withValues(alpha: 0.6)),
+                  minimumSize: const Size(0, 34),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                icon: _isIssuingCode
+                    ? const SizedBox(
+                        width: 13,
+                        height: 13,
+                        child:
+                            CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.qr_code_2, size: 15),
+                label: const Text('LINE連携コード発行',
+                    style: TextStyle(fontSize: 11)),
+                onPressed: _isIssuingCode ? null : _issueLinkingCode,
+              ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 34),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                icon: _isSyncingLinkage
+                    ? const SizedBox(
+                        width: 13,
+                        height: 13,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync, size: 15),
+                label: const Text('連携状況を同期',
+                    style: TextStyle(fontSize: 11)),
+                onPressed: _isSyncingLinkage ? null : _syncLinkage,
+              ),
+              if (isLinked)
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    side: BorderSide(
+                        color: AppColors.error.withValues(alpha: 0.5)),
+                    minimumSize: const Size(0, 34),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  icon: const Icon(Icons.link_off, size: 15),
+                  label: const Text('連携解除',
+                      style: TextStyle(fontSize: 11)),
+                  onPressed: _unlinkLine,
+                ),
+            ],
+          ),
+          if (!_isEditing) ...[
+            const SizedBox(height: 8),
+            const Text(
+              '※連携コードの発行は、先に児童を保存してから行ってください。',
+              style: TextStyle(
+                  fontSize: 10, color: AppColors.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 連携コードを発行して表示する
+  Future<void> _issueLinkingCode() async {
+    final customer = widget.customer;
+    if (customer == null) {
+      _showSnack('先に児童を保存してから連携コードを発行してください。',
+          isError: true);
+      return;
+    }
+    final name = _nameCtrl.text.trim().isEmpty
+        ? customer.name
+        : _nameCtrl.text.trim();
+
+    setState(() => _isIssuingCode = true);
+    try {
+      final code = await VacancyNotificationService.instance.issueLinkingCode(
+        customerId: customer.id,
+        childName: name,
+      );
+      if (!mounted) return;
+      setState(() => _isIssuingCode = false);
+      await LinkingCodeDialog.show(
+        context,
+        code: code,
+        childName: name,
+        expiresAt: DateTime.now()
+            .add(VacancyNotificationService.linkingCodeTtl),
+      );
+    } on VacancyLinkageException catch (e) {
+      if (!mounted) return;
+      setState(() => _isIssuingCode = false);
+      _showSnack(e.message, isError: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isIssuingCode = false);
+      _showSnack('連携コードの発行に失敗しました。通信状況を確認してください。',
+          isError: true);
+    }
+  }
+
+  /// line_linkage を読んで Customer.lineUserId に反映する
+  Future<void> _syncLinkage() async {
+    setState(() => _isSyncingLinkage = true);
+    try {
+      final result =
+          await VacancyNotificationService.instance.syncLinkages();
+      if (!mounted) return;
+
+      // 自分（編集中の児童）の最新値をフォームへ反映
+      final customer = widget.customer;
+      if (customer != null) {
+        final latest =
+            CustomerService.instance.getCustomerById(customer.id);
+        final id = latest?.lineUserId ?? '';
+        _lineUserIdCtrl.text = id;
+      }
+      setState(() => _isSyncingLinkage = false);
+      _showSnack('連携状況を同期しました（${result.summaryLabel}）');
+    } on VacancyLinkageException catch (e) {
+      if (!mounted) return;
+      setState(() => _isSyncingLinkage = false);
+      _showSnack(e.message, isError: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSyncingLinkage = false);
+      _showSnack('連携状況の同期に失敗しました。通信状況を確認してください。',
+          isError: true);
+    }
+  }
+
+  /// 連携を解除する
+  Future<void> _unlinkLine() async {
+    final customer = widget.customer;
+    if (customer == null) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('LINE連携を解除しますか？'),
+        content: const Text(
+          '解除すると、このご家庭には空き枠通知が送れなくなります。\n'
+          '再連携するには新しい連携コードの発行が必要です。',
+          style: TextStyle(fontSize: 12, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('解除する'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      await VacancyNotificationService.instance.unlink(customer.id);
+      if (!mounted) return;
+      setState(() => _lineUserIdCtrl.text = '');
+      _showSnack('LINE連携を解除しました');
+    } on VacancyLinkageException catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message, isError: true);
+    }
+  }
+
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: isError ? 4 : 3),
+      ),
     );
   }
 

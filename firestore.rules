@@ -1,0 +1,94 @@
+rules_version = '2';
+
+// ============================================================
+// LinkDay Firestore セキュリティルール
+//
+// 【前提】
+// - 業務データ（顧客 / 出席 / 送迎）は端末内 Hive に保持し Firestore に置かない。
+//   Firestore は LINE 連携に必要な最小限のコレクションのみ保持する。
+// - Cloud Functions は Admin SDK で動作するため、本ルールを
+//   バイパスする（lineWebhook は未認証の LINE からの呼び出しだが、
+//   x-line-signature の HMAC 検証を通過したものだけが Firestore に書く）。
+// - クライアント（Flutter Web）は Firebase Auth でサインイン済みの
+//   職員アカウントのみ read/write できる。
+//
+// 【原則】
+// 1. 未認証（request.auth == null）は全コレクション全面拒否。
+// 2. 明示的に許可したコレクション以外は全面拒否（最後の match /{document=**}）。
+// 3. notification_logs はクライアントから作成・更新・削除できない
+//    （冪等キーを兼ねるため、改変されると二重送信が可能になる）。
+//    作成は Cloud Functions（Admin SDK）のみ。クライアントは read のみ。
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── 共通ヘルパー ───────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // 6 桁英数（数字＋大文字英字）の連携コードか
+    function isValidCode(code) {
+      return code is string && code.matches('^[0-9A-Z]{6}$');
+    }
+
+    // LINE userId: 'U' + 32 桁 16 進英数字
+    function isValidLineUserId(id) {
+      return id is string && id.matches('^U[0-9a-fA-F]{32}$');
+    }
+
+    // ── line_linkage: 連携済み（customerId ↔ lineUserId）──
+    // doc id = customerId
+    // クライアント: 認証済みなら read 可（連携状況の同期に使用）。
+    //              write も認証済みに許可（職員による連携解除のため）。
+    match /line_linkage/{customerId} {
+      allow read: if isSignedIn();
+
+      // 作成・更新は形式検証つき（customerId は doc id と一致必須）
+      allow create, update: if isSignedIn()
+        && request.resource.data.customerId == customerId
+        && isValidLineUserId(request.resource.data.lineUserId);
+
+      // 連携解除（職員操作）
+      allow delete: if isSignedIn();
+    }
+
+    // ── linking_codes: 連携コード（有効期限7日）──────────
+    // doc id = code（6桁英数）
+    match /linking_codes/{code} {
+      allow read: if isSignedIn();
+
+      // 発行は認証済み職員のみ。code / customerId / expiresAt を必須にする。
+      allow create: if isSignedIn()
+        && isValidCode(code)
+        && request.resource.data.code == code
+        && request.resource.data.customerId is string
+        && request.resource.data.customerId.size() > 0
+        && request.resource.data.expiresAt is timestamp;
+
+      // 既発行コードの書き換えは禁止（別コードの再発行で代替する）
+      allow update: if false;
+
+      // 失効・取り消しは許可
+      allow delete: if isSignedIn();
+    }
+
+    // ── notification_logs: 通知送信ログ（冪等キー兼用）──
+    // doc id = {YYYY-MM-DD}_{customerId}
+    //
+    // 【重要】クライアントからの書き込みを一切許可しない。
+    // ここを書き換えられると「送信済み」判定を偽装でき、
+    // 二重送信・送信漏れの双方が起こり得る。
+    // 作成・更新は Cloud Functions（Admin SDK）のみが行う。
+    match /notification_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // ── 上記以外は全面拒否 ───────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

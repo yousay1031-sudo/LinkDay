@@ -1,0 +1,24 @@
+# ── ビルド成果物 ────────────────────────────────────────────
+lib/
+*.tsbuildinfo
+
+# ── 依存 ────────────────────────────────────────────────────
+node_modules/
+
+# ── ログ ────────────────────────────────────────────────────
+*.log
+firebase-debug.log
+ui-debug.log
+firestore-debug.log
+
+# ── 秘匿情報（絶対にコミットしない）─────────────────────────
+# LINE チャネルアクセストークン / チャネルシークレットは
+# Secret Manager（firebase functions:secrets:set）にのみ保持する。
+# 下記ファイルが誤って作られてもコミットされないようガードする。
+.env
+.env.*
+.runtimeconfig.json
+*serviceAccount*.json
+*adminsdk*.json
+secrets.json
+line-credentials.json

@@ -53,6 +53,21 @@ class AppSettings extends HiveObject {
   @HiveField(12)
   String? restApiKeyLegacy; // reserved / unused
 
+  // ── Day 11: 空き枠 LINE 通知 ─────────────────────────────────
+  // fieldId 13/14 の追加のみ（既存データは null → 既定値で動作）。
+  // 後方互換: 旧データ読み込み時は Hive が null を渡すため
+  // コンストラクタのデフォルト引数が適用される。
+
+  /// 空き枠通知の回答期限時刻（"HH:mm"）
+  /// 文面に「○○時までにご連絡ください」として差し込む。
+  @HiveField(13)
+  String vacancyReplyDeadline;
+
+  /// 空き枠通知の文面テンプレート
+  /// プレースホルダ: {facility} {date} {deadline} {child}
+  @HiveField(14)
+  String vacancyMessageTemplate;
+
   AppSettings({
     this.facilityName = 'ココスタディ',
     this.facilityAddress = '北海道帯広市西5条南21丁目8 2階',
@@ -67,7 +82,17 @@ class AppSettings extends HiveObject {
     DateTime? updatedAt,
     this.jsApiKeyLegacy,
     this.restApiKeyLegacy,
-  })  : vehicleNames = vehicleNames ?? ['車両A', '車両B'],
+    String? vacancyReplyDeadline,
+    String? vacancyMessageTemplate,
+  })  : vacancyReplyDeadline =
+            (vacancyReplyDeadline == null || vacancyReplyDeadline.isEmpty)
+                ? defaultVacancyReplyDeadline
+                : vacancyReplyDeadline,
+        vacancyMessageTemplate =
+            (vacancyMessageTemplate == null || vacancyMessageTemplate.isEmpty)
+                ? defaultVacancyMessageTemplate
+                : vacancyMessageTemplate,
+        vehicleNames = vehicleNames ?? ['車両A', '車両B'],
         vehicleCapacities = vehicleCapacities ?? [5, 5],
         updatedAt = updatedAt ?? DateTime.now();
 
@@ -92,7 +117,36 @@ class AppSettings extends HiveObject {
       maxStudentsPerDay: maxStudentsPerDay,
       defaultPickupStart: defaultPickupStart,
       defaultDropoffEnd: defaultDropoffEnd,
+      vacancyReplyDeadline: vacancyReplyDeadline,
+      vacancyMessageTemplate: vacancyMessageTemplate,
     );
+  }
+
+  // ── Day 11: 空き枠通知の既定値 ────────────────────────────────
+
+  /// 回答期限の既定（当日 13:00 までに連絡をもらう運用を想定）
+  static const String defaultVacancyReplyDeadline = '13:00';
+
+  /// 通知文面の既定テンプレート
+  static const String defaultVacancyMessageTemplate =
+      '【{facility}】\n'
+      '本日（{date}）、急なキャンセルにより空き枠が出ました。\n'
+      'ご利用を希望される場合は {deadline} までにお電話でご連絡ください。\n'
+      '※先着順となりますのでご了承ください。';
+
+  /// テンプレートに値を差し込んだ通知文面を生成する
+  ///
+  /// [dateLabel] は「10/2」等の表示用日付。
+  /// [childName] は児童名（テンプレートに {child} があれば差し込む）。
+  String buildVacancyMessage({
+    required String dateLabel,
+    String childName = '',
+  }) {
+    return vacancyMessageTemplate
+        .replaceAll('{facility}', facilityName)
+        .replaceAll('{date}', dateLabel)
+        .replaceAll('{deadline}', vacancyReplyDeadline)
+        .replaceAll('{child}', childName);
   }
 
 
