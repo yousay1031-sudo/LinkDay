@@ -27,6 +27,79 @@
         "source": "**",
         "destination": "/index.html"
       }
+    ],
+    "headers": [
+      {
+        "//": "【重要】Flutter Web の主要 JS はハッシュ付きファイル名ではない（main.dart.js は固定名）。immutable を付けると新ビルドが配信されず Day 11 の『古い JS を掴み続ける』事故が再発するため、必ず再検証させる。ETag による 304 応答なので転送量の増加はごく小さい。なお SPA のルート '/' は rewrite で index.html を返すが、Hosting は '/index.html' のパターンに一致させないため '/' を明示的に含める必要がある（既定の max-age=3600 のままだと 1 時間古い HTML が配信される）。",
+        "source": "/",
+        "headers": [
+          {"key": "Cache-Control", "value": "no-cache, must-revalidate"}
+        ]
+      },
+      {
+        "source": "/index.html",
+        "headers": [
+          {"key": "Cache-Control", "value": "no-cache, must-revalidate"}
+        ]
+      },
+      {
+        "source": "/flutter_service_worker.js",
+        "headers": [
+          {"key": "Cache-Control", "value": "no-cache, must-revalidate"}
+        ]
+      },
+      {
+        "source": "/flutter_bootstrap.js",
+        "headers": [
+          {"key": "Cache-Control", "value": "no-cache, must-revalidate"}
+        ]
+      },
+      {
+        "source": "/main.dart.js",
+        "headers": [
+          {"key": "Cache-Control", "value": "no-cache, must-revalidate"}
+        ]
+      },
+      {
+        "source": "/flutter.js",
+        "headers": [
+          {"key": "Cache-Control", "value": "no-cache, must-revalidate"}
+        ]
+      },
+      {
+        "source": "/version.json",
+        "headers": [
+          {"key": "Cache-Control", "value": "no-cache, must-revalidate"}
+        ]
+      },
+      {
+        "//": "canvaskit / フォント / アイコンは内容が変わるのが Flutter SDK 更新時のみ。ただしファイル名にハッシュが付かないため immutable は使わず、1日で再検証させる。",
+        "source": "/canvaskit/**",
+        "headers": [
+          {"key": "Cache-Control", "value": "public, max-age=86400"}
+        ]
+      },
+      {
+        "source": "/assets/**",
+        "headers": [
+          {"key": "Cache-Control", "value": "public, max-age=86400"}
+        ]
+      },
+      {
+        "source": "/icons/**",
+        "headers": [
+          {"key": "Cache-Control", "value": "public, max-age=86400"}
+        ]
+      },
+      {
+        "//": "クリックジャッキング・MIME スニッフィング対策。Cache-Control はここに書かない（'**' は後勝ちで上の canvaskit/assets の max-age=86400 まで打ち消してしまうため）。本アプリは名前付きルートを使わず AuthGate が画面を切り替えるので、URL は常に '/' であり、深いパスのキャッシュを個別に考慮する必要はない。",
+        "source": "**",
+        "headers": [
+          {"key": "X-Content-Type-Options", "value": "nosniff"},
+          {"key": "X-Frame-Options", "value": "DENY"},
+          {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"}
+        ]
+      }
     ]
   },
   "emulators": {

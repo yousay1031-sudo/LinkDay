@@ -16,7 +16,7 @@ void main() {
   group('maskApiKey: API キーを平文で残さない', () {
     test('クエリ文字列の key= をマスクする', () {
       const raw =
-          'https://maps.googleapis.com/maps/api/geocode/json?address=x&key=AIzaSyAKpGd19e1eqgHGKWhBqgsuDpjBFSIHMaQ';
+          'https://maps.googleapis.com/maps/api/geocode/json?address=x&key=AIzaSyDUMMYTESTKEY0000000000000000000';
       final masked = GoogleMapsService.maskApiKey(raw);
 
       expect(masked, isNot(contains('AIzaSy')));
@@ -35,7 +35,7 @@ void main() {
 
     test('URL でない生のキー文字列もマスクする', () {
       const raw =
-          'ClientException: failed with key AIzaSyAKpGd19e1eqgHGKWhBqgsuDpjBFSIHMaQ';
+          'ClientException: failed with key AIzaSyDUMMYTESTKEY0000000000000000000';
       final masked = GoogleMapsService.maskApiKey(raw);
 
       expect(masked, isNot(contains('AIzaSy')));

@@ -2,7 +2,17 @@
 
 **放課後等デイサービス運営支援アプリ**
 
-児童発達支援・放課後等デイサービスの日常業務（顧客管理・出席管理・書類出力）をデジタル化し、施設スタッフの業務効率を最大化するWebアプリケーションです。将来的にはSaaS展開を予定しています。
+児童発達支援・放課後等デイサービスの日常業務（顧客管理・出席管理・送迎計画・書類出力・空き枠の LINE 通知）をデジタル化し、施設スタッフの業務効率を高める Web アプリケーションです。
+
+| 項目 | 内容 |
+|------|------|
+| 本番 URL | https://linkday-proud.web.app |
+| 予備 URL | https://linkday-proud.firebaseapp.com |
+| Firebase プロジェクト | `linkday-proud`（Blaze プラン） |
+| バージョン | v1.0（Day 12 時点） |
+| テスト | 202 件全緑 |
+
+> 機能一覧・既知の制限・今後の拡張候補は **[docs/release_notes_v1.md](docs/release_notes_v1.md)** を参照してください。
 
 ---
 
@@ -12,184 +22,262 @@
 |---|---|
 | フレームワーク | Flutter 3.35.4 / Dart 3.9.2 |
 | UI | Material Design 3 (`useMaterial3: true`) |
-| ローカル DB | Hive 2.2.3 + hive_flutter 1.1.0 (IndexedDB on Web) |
-| 認証 | Firebase Authentication (email/password) |
+| ローカル DB | Hive 2.2.3 + hive_flutter 1.1.0（Web では IndexedDB） |
+| 認証 | Firebase Authentication（email/password） |
+| サーバー処理 | Cloud Functions v2 (Node.js 20 / TypeScript) — `asia-northeast1` |
+| クラウド DB | Cloud Firestore（LINE 連携用の 3 コレクションのみ） |
+| 配信 | Firebase Hosting |
+| 地図 | Google Maps JavaScript API / Geocoding API / Routes API |
+| 外部連携 | LINE Messaging API |
 | PDF 出力 | pdf 3.11.1 + printing 5.13.4 |
 | Excel インポート | excel 2.1.0 + file_picker 8.1.4 |
 | 状態管理 | Provider 6.1.5+1 |
-| コード生成 | hive_generator 2.0.1 + build_runner 2.4.13 |
-| ターゲット | Flutter Web (JS ビルド) / Android APK |
+| ターゲット | Flutter Web（JS ビルド） |
 
 ---
 
-## 現在の実装状況
+## データの置き場所
 
-### ✅ Day 1 — 基盤構築
-- Flutter プロジェクト初期化
-- `AppTheme` (Material 3 テーマ / `#F57C00` ベースカラー)
-- `AuthGate` (StreamBuilder<User?> 認証ゲート)
-- `HomeScreen` (レスポンシブ 4/3/2/1 列グリッドメニュー)
-- `LoginScreen` (email + password フォーム)
+**業務データ（児童情報・出席・送迎計画）はクラウドに送信しません。**
+ブラウザの端末内ストレージ（Hive / IndexedDB）に保存します。
 
-### ✅ Day 2 — Firebase 認証 + キャッシュ対策
-- Firebase Authentication 統合
-- `AuthService` シングルトン (日本語エラーメッセージ)
-- Service Worker キャッシュ恒久対策:
-  - `--pwa-strategy=none` ビルド (SW 空ファイル化)
-  - `web/index.html` 3 層防御 (controllerchange + skipWaiting + `?nocache=1`)
-  - `flutter_bootstrap.js?v=<timestamp>` キャッシュバスティング
+Firestore に保存するのは LINE 連携に必要な最小限の情報のみです。
 
-### ✅ Day 3 — 顧客管理 + Excel 一括インポート
-- `Customer` モデル (Hive typeId=0 / 19 フィールド / UUID 自動生成)
-- `CustomerService` (CRUD / 検索 / 月次リセット)
-- `CustomerManagementScreen` (レスポンシブグリッド / 検索バー / 期限アラートカード)
-- `CustomerEditScreen` (6 セクションフォーム / ふりがな自動変換)
-- `ImportCustomersScreen` (5 ステップ Excel インポートウィザード)
-- 受給者証期限切れバッジ (ホーム画面 AppBar)
-- `KanaUtil` (ひらがな↔カタカナ変換 / 半角カナ全角化)
+| コレクション | 内容 | クライアントからの書き込み |
+|-------------|------|------------------------|
+| `line_linkage` | 児童 ID と LINE userId の紐付け | 可（認証済み職員のみ） |
+| `linking_codes` | 6桁の連携コード（有効期限7日） | 作成・削除のみ |
+| `notification_logs` | 通知送信ログ（二重送信の防止キー） | **不可**（Functions のみ） |
 
-### ✅ Day 4 — 当日出席管理 + PDF 出力
-- `AttendanceStatus` enum (Hive typeId=2 / 4 ステータス: 予定/在室中/退室済/欠席)
-- `AttendanceRecord` モデル (Hive typeId=1 / dateKey ベース管理)
-- `AttendanceService`:
-  - `ensureTodayScheduledRecords` (定期利用曜日から自動生成)
-  - `markPresent` / `markDeparted` / `markAbsent` / `resetAbsent`
-  - `updateCheckInTime` / `updateCheckOutTime` (手動時刻修正)
-  - `getTodaySummary` / `getUnprocessedCount`
-- `AttendancePdfService` (A4 縦 / サービス提供実績記録票 / Noto Sans JP)
-- `AttendanceScreen`:
-  - 集計バー (予定/在室中/退室済/欠席/空き枠)
-  - AnimatedContainer カードグリッド (4/3/2/1 列)
-  - 欠席理由ダイアログ (5 選択肢 + 自由入力)
-  - LINE 通知確認ダイアログ (UI のみ / 送信は TODO)
-  - タップで TimePicker が開く時刻チップ
-  - 日付変更 / PDF 出力ボタン
-- ホーム画面: 出席管理接続 / 未処理バッジ (緑丸) / 本日利用人数表示
+> この設計により、児童の個人情報が外部に出ません。
+> 一方で、端末のブラウザデータを消すとデータが失われます。
+> 定期的な CSV エクスポートによるバックアップを推奨します。
 
 ---
 
 ## セットアップ手順
 
 ### 前提条件
-- Flutter SDK 3.35.4
-- Dart SDK 3.9.2
-- Firebase プロジェクト設定済み (`lib/firebase_options.dart` が存在すること)
+
+- Flutter 3.35.4 / Dart 3.9.2
+- Node.js 20（Cloud Functions 用）
+- Firebase CLI
+- `linkday-proud` プロジェクトへのアクセス権
 
 ### 1. 依存パッケージのインストール
 
 ```bash
 flutter pub get
+cd functions && npm ci && cd ..
 ```
 
 ### 2. Hive アダプターのコード生成
+
+モデル（`lib/models/*.dart`）を変更した場合のみ必要です。
 
 ```bash
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-> 生成ファイル:
-> - `lib/models/customer.g.dart` (CustomerAdapter)
-> - `lib/models/attendance_record.g.dart` (AttendanceRecordAdapter / AttendanceStatusAdapter)
+### 3. Google Maps API キーの設定
 
-### 3. 開発サーバーで起動
+キーはソースに埋め込まず、アプリの**設定画面から入力**します（端末内に保存）。
+
+1. アプリを起動してログイン
+2. ホーム → 設定 → 「Google Maps API キー」に入力
+3. 事業所住所を入力して座標を取得
+
+> キーには必ず HTTP リファラ制限をかけてください。
+> 詳細は [docs/production_monitoring_setup.md](docs/production_monitoring_setup.md) を参照。
+
+### 4. ローカルで起動
 
 ```bash
-flutter run -d chrome
+flutter run -d chrome --web-port 5060
 ```
 
 ---
 
-## ビルド
+## ビルドとデプロイ
+
+### Web ビルド
 
 ```bash
-# Web リリースビルド（Service Worker 無効化 - キャッシュ問題対策）
-flutter build web --release --pwa-strategy=none
-
-# ビルド後の静的ファイルをローカルサーブ
-python3 -m http.server 8080 --directory build/web
+flutter build web --release
 ```
 
-> **注意**: `--pwa-strategy=none` は必須オプションです。
-> 省略すると Service Worker が古いビルドをキャッシュし、
-> 認証状態が正しく反映されなくなる問題が発生します。
-> 詳細は `lib/README.md` を参照してください。
+> **注意**: 依存パッケージを追加・変更した直後は、必ず `flutter clean` を実行してください。
+> ビルドキャッシュ内の `web_plugin_registrant.dart` が古いままだと、
+> 新しいプラグインが登録されず `MissingPluginException` が発生します（Day 11 で実際に発生）。
+>
+> ```bash
+> flutter clean && flutter pub get && flutter build web --release
+> ```
+
+### Hosting へデプロイ
+
+```bash
+firebase use linkday-proud
+flutter build web --release
+firebase deploy --only hosting
+```
+
+### Cloud Functions へデプロイ
+
+```bash
+cd functions && npm run build && npm test && cd ..
+firebase deploy --only functions
+```
+
+### Firestore ルール・インデックス
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+### secrets（LINE のトークン類）
+
+```bash
+firebase functions:secrets:set LINE_CHANNEL_ACCESS_TOKEN
+firebase functions:secrets:set LINE_CHANNEL_SECRET
+firebase deploy --only functions   # 反映には再デプロイが必要
+```
+
+> 値をコマンドライン引数やファイルに書かないでください。対話入力で渡します。
+
+---
+
+## キャッシュ戦略（firebase.json）
+
+Flutter Web の `main.dart.js` は**ハッシュ付きファイル名ではありません**（固定名）。
+そのため `immutable` を付けると、再デプロイしても古い JS が配信され続けます。
+
+`firebase.json` では以下の方針にしています。
+
+| 対象 | Cache-Control | 理由 |
+|------|--------------|------|
+| `/`, `/index.html` | `no-cache, must-revalidate` | 更新を即反映させる |
+| `main.dart.js` / `flutter.js` / `flutter_bootstrap.js` | `no-cache, must-revalidate` | 固定名のため必ず再検証 |
+| `flutter_service_worker.js` | `no-cache, must-revalidate` | 古い SW の固着を防ぐ |
+| `canvaskit/**`, `assets/**`, `icons/**` | `public, max-age=86400` | SDK 更新時のみ変化 |
+
+`no-cache` は「キャッシュしない」ではなく「毎回サーバーに確認する」という意味です。
+変更がなければ 304 が返るため、転送量はほとんど増えません。
+
+---
+
+## テストと静的解析
+
+```bash
+flutter analyze            # 警告ゼロを維持
+flutter test               # 202 件
+cd functions && npm test   # 41 件
+```
 
 ---
 
 ## Hive TypeID 管理
 
-| TypeID | クラス / Enum | ファイル |
-|---|---|---|
-| 0 | `Customer` | `lib/models/customer.dart` |
-| 1 | `AttendanceRecord` | `lib/models/attendance_record.dart` |
-| 2 | `AttendanceStatus` | `lib/models/attendance_record.dart` |
+**TypeID は一度割り当てたら変更しないでください。** 既存データが読めなくなります。
 
-> **重要**: TypeID の重複は Hive の致命的エラーを引き起こします。
-> 新モデル追加時は必ず 3 以降を使用してください。
+| TypeID | クラス |
+|--------|--------|
+| 0 | `Customer` |
+| 1 | `AttendanceRecord` |
+| 2 | `AttendanceStatus` |
+| 3 | `WeeklySchedule` |
+| 4 | `DailySlot` |
+| 5 | `ScheduleStatus` |
+| 6 | `ScheduleEntry` |
+| 7 | `AppSettings` |
+| 8 | `TransportVehicleRoute` |
+| 9 | `TransportStop` |
+| 10 | `TransportType` |
+| 11 | `NotificationLog` |
+| 12 | `NotificationStatus` |
 
----
-
-## 今後の実装予定
-
-| 機能 | 優先度 |
-|---|---|
-| Day 5: 週間利用計画 | 高 |
-| Day 6: 翌日予約選択 | 高 |
-| Day 7: 送迎計画 | 高 |
-| Day 8: 業務日誌 | 中 |
-| Day 9: 個別支援計画 | 中 |
-| Day 10: 職員管理 | 低 |
-| LINE 通知送信 (欠席空き枠) | 中 |
-| SaaS 展開 (Firestore 同期 + tenantId) | 将来 |
+フィールドを追加する場合は、既存のフィールド番号を変えず、末尾に追加してください。
 
 ---
 
 ## ディレクトリ構成
 
 ```
-lib/
-├── firebase_options.dart       # Firebase Web 設定
-├── main.dart                   # エントリポイント / Hive 初期化
-├── README.md                   # 開発者向け運用ガイド
-├── models/
-│   ├── customer.dart           # 顧客モデル (typeId=0)
-│   ├── customer.g.dart         # build_runner 生成
-│   ├── attendance_record.dart  # 出席レコード + ステータス (typeId=1,2)
-│   └── attendance_record.g.dart
-├── services/
-│   ├── auth_service.dart       # Firebase Auth ラッパー
-│   ├── customer_service.dart   # 顧客 CRUD
-│   ├── attendance_service.dart # 出席管理 CRUD
-│   └── attendance_pdf_service.dart # PDF 出力
-├── screens/
-│   ├── login_screen.dart
-│   ├── home_screen.dart
-│   ├── customer_management_screen.dart
-│   ├── customer_edit_screen.dart
-│   ├── import_customers_screen.dart
-│   └── attendance_screen.dart
-├── widgets/
-│   ├── auth_gate.dart
-│   ├── auth_loading_screen.dart
-│   ├── attendance_status_badge.dart
-│   └── attendance_time_chip.dart
-├── theme/
-│   └── app_theme.dart          # AppColors / AppTheme
-└── utils/
-    └── kana_util.dart          # ひらがな↔カタカナ変換
+linkday_app/
+├── lib/
+│   ├── main.dart                  # 起動・Hive 初期化・Firebase 初期化
+│   ├── firebase_options.dart      # Firebase 設定（Web キーは公開前提）
+│   ├── models/                    # Hive モデル（*.g.dart は生成物）
+│   │   ├── customer.dart
+│   │   ├── attendance_record.dart
+│   │   ├── weekly_schedule.dart
+│   │   ├── app_settings.dart
+│   │   ├── transport_plan.dart
+│   │   └── notification_log.dart
+│   ├── services/
+│   │   ├── auth_service.dart
+│   │   ├── customer_service.dart
+│   │   ├── customer_import_service.dart
+│   │   ├── customer_export_service.dart
+│   │   ├── attendance_service.dart
+│   │   ├── weekly_schedule_service.dart
+│   │   ├── monthly_usage_service.dart       # 支給量の残日数集計
+│   │   ├── settings_service.dart
+│   │   ├── transport_plan_service.dart      # 送迎グループ分け・ルート
+│   │   ├── transport_location_resolver.dart # 住所→座標の解決
+│   │   ├── google_maps_service.dart         # APIキーのマスク処理を含む
+│   │   ├── maps_js_service.dart             # JS Interop（Geocoder/Routes）
+│   │   ├── maps_loader.dart                 # Maps JS の多重ロード防止
+│   │   ├── maps_bridge*.dart                # Web/非Web の条件付き実装
+│   │   ├── vacancy_notification_service.dart # 空き枠 LINE 通知
+│   │   └── *_pdf_service.dart               # 各種 PDF 出力
+│   ├── screens/                   # 12 画面
+│   ├── widgets/
+│   ├── theme/
+│   └── utils/
+├── functions/                     # Cloud Functions（TypeScript）
+│   └── src/
+│       ├── index.ts
+│       ├── config.ts              # リージョン・コレクション名
+│       ├── sendVacancyNotice.ts   # 通知送信（Callable）
+│       └── lineWebhook.ts         # LINE webhook（HTTPS）
+├── docs/                          # 運用手順書（下記参照）
+├── test/                          # 202 件
+├── firebase.json                  # Hosting / Functions / Firestore 設定
+├── firestore.rules                # セキュリティルール
+└── firestore.indexes.json
 ```
 
 ---
 
-## ライセンス
+## ドキュメント
 
-**Proprietary** — 社内利用専用。無断複製・再配布禁止。  
-将来的なSaaS展開を予定しています。
+| ファイル | 内容 | 読む人 |
+|---------|------|-------|
+| [docs/release_notes_v1.md](docs/release_notes_v1.md) | 機能一覧・既知の制限・今後の拡張候補 | 全員 |
+| [docs/firebase_auth_production_setup.md](docs/firebase_auth_production_setup.md) | 認証のセキュリティ設定手順 | 管理者 |
+| [docs/production_monitoring_setup.md](docs/production_monitoring_setup.md) | Maps キー・予算・LINE 残枠・障害対応 | 管理者 |
+| [docs/google_cloud_budget_alert.md](docs/google_cloud_budget_alert.md) | Maps API の予算・クォータ詳細 | 管理者 |
+| [docs/line_official_account_setup.md](docs/line_official_account_setup.md) | LINE 公式アカウントの作成・連携 | 管理者 |
+| [docs/guardian_line_link_guide.md](docs/guardian_line_link_guide.md) | 保護者向けの LINE 連携案内 | 保護者配布用 |
+| [docs/day10_audit_report.md](docs/day10_audit_report.md) | 本番前総点検の記録 | 開発 |
 
 ---
 
 ## セキュリティについて
 
-- `lib/firebase_options.dart` に含まれる `apiKey` は Firebase Web API の公開設計仕様に準拠しています
-- Firebase Console で **承認済みドメイン制限** を設定していることを前提とします
-- Admin SDK キーや Service Account 秘密鍵はこのリポジトリに含まれていません
+- `lib/firebase_options.dart` の `apiKey` は **Web クライアントに配布される前提の公開値**です。
+  秘密情報ではなく、ブラウザの開発者ツールからも見えます。
+  悪用防止は **Authentication の承認済みドメイン** と **Firestore セキュリティルール** で担保しています。
+- **Google Maps の API キーは別管理**で、リポジトリに含めません。
+  アプリの設定画面から入力し、端末内に保存します。HTTP リファラ制限が必須です。
+- LINE のチャネルアクセストークンとシークレットは **Secret Manager にのみ**保存します。
+  リポジトリ・クライアントコード・ログには一切含めません。
+- Admin SDK キーや Service Account 秘密鍵はリポジトリに含まれていません。
+
+---
+
+## ライセンス
+
+**Proprietary** — 社内利用専用。無断複製・再配布禁止。
+将来的な SaaS 展開を予定しています。

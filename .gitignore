@@ -55,6 +55,24 @@ ehthumbs.db
 **/macos/Flutter/GeneratedPluginRegistrant.swift
 **/macos/Flutter/ephemeral/
 
+# ── 秘匿情報（絶対にコミットしない）─────────────────────────
+# Firebase Admin SDK / サービスアカウント鍵
+*serviceAccount*.json
+*service-account*.json
+*adminsdk*.json
+firebase-admin-sdk.json
+# 環境変数（LINE のトークン・シークレット等）
+.env
+.env.*
+!.env.example
+# 署名鍵
+*.jks
+*.keystore
+# Firebase CLI のローカル状態
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
 # ── その他 ──────────────────────────────────────────────────
 *.class
 *.log
