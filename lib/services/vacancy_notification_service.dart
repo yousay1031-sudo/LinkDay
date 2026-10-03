@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/notification_log.dart';
@@ -489,18 +490,50 @@ class VacancyNotificationService {
       debugPrint('[VacancyNotification] callable error: ${e.code} / ${e.message}');
       return VacancySendResult(
         items: blocked,
-        fatalError: _localizeFunctionsError(e),
+        fatalError: localizeSendError(e),
+      );
+    } on MissingPluginException catch (e) {
+      // プラグイン未登録（古いビルド成果物が配信されている等）。
+      // 通信状況の問題ではないので、再読み込み／再ビルドへ誘導する。
+      debugPrint('[VacancyNotification] missing plugin: ${e.message}');
+      return VacancySendResult(
+        items: blocked,
+        fatalError: localizeSendError(e),
       );
     } catch (e) {
       debugPrint('[VacancyNotification] unexpected error: $e');
       return VacancySendResult(
         items: blocked,
-        fatalError: '通知の送信中にエラーが発生しました。通信状況を確認して再度お試しください。',
+        fatalError: localizeSendError(e),
       );
     }
   }
 
-  String _localizeFunctionsError(FirebaseFunctionsException e) {
+  /// 送信失敗の原因を職員向けの文言に変換する。
+  ///
+  /// 「通信状況を確認して」の一律表示は誤診を招くため、
+  /// プラグイン未登録 / 未デプロイ / 未認証 / 通信エラー を区別する。
+  @visibleForTesting
+  static String localizeSendError(Object e) {
+    if (e is FirebaseFunctionsException) {
+      return _localizeFunctionsException(e);
+    }
+    if (e is MissingPluginException) {
+      return 'アプリの読み込みが不完全なため送信できません。'
+          'ブラウザを再読み込み（Ctrl+Shift+R / Cmd+Shift+R）してから'
+          '再度お試しください。改善しない場合は管理者に連絡してください。';
+    }
+    final text = e.toString();
+    if (text.contains('MissingPluginException')) {
+      return 'アプリの読み込みが不完全なため送信できません。'
+          'ブラウザを再読み込み（Ctrl+Shift+R / Cmd+Shift+R）してから'
+          '再度お試しください。改善しない場合は管理者に連絡してください。';
+    }
+    return '送信に失敗しました。時間をおいて再度お試しください。'
+        '繰り返す場合は管理者に連絡してください。';
+  }
+
+  static String _localizeFunctionsException(FirebaseFunctionsException e) {
     switch (e.code) {
       case 'unauthenticated':
         return 'ログインの有効期限が切れています。再度サインインしてから送信してください。';
@@ -511,9 +544,19 @@ class VacancyNotificationService {
         return '送信内容が不正です（${e.message ?? ''}）。';
       case 'permission-denied':
         return '送信権限がありません。管理者に連絡してください。';
+      case 'not-found':
+        // 送信機能そのものが未デプロイ／リージョン不一致。現場では解決できない。
+        return '送信機能がサーバーに見つかりません（未デプロイの可能性）。'
+            '管理者に連絡してください。';
       case 'unavailable':
+        return 'サーバーに接続できません。ネットワークを確認して再度お試しください。';
       case 'deadline-exceeded':
-        return '通信に失敗しました。ネットワークを確認して再度お試しください。';
+        return '送信がタイムアウトしました。'
+            '一部が送信済みの可能性があるため、履歴を確認してから再度お試しください。';
+      case 'resource-exhausted':
+        return '送信回数の上限に達しました。時間をおいて再度お試しください。';
+      case 'internal':
+        return 'サーバー側でエラーが発生しました。管理者に連絡してください。';
       default:
         return '送信に失敗しました（${e.code}）。${e.message ?? ''}';
     }

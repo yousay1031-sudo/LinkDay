@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -670,6 +672,70 @@ void main() {
       expect(after.transportCoord(0)?.lng, 143.196);
       expect(after.transportStatus(0), Customer.locManual);
       expect(after.isTransportResolved(0), isTrue);
+    });
+  });
+
+  _mainErrorMessages();
+}
+
+/// Day 11 追加: 送信失敗時のエラー文言が原因別に分かれているか
+///
+/// 一律「通信状況を確認して」だと、プラグイン未登録や未デプロイといった
+/// 現場では解決できない原因まで「ネットワークのせい」と誤診されるため、
+/// 原因ごとに次の行動が変わる文言になっていることを検証する。
+void _mainErrorMessages() {
+  group('localizeSendError（原因別の文言）', () {
+    test('MissingPluginException は再読み込みを促し、通信のせいにしない', () {
+      final msg = VacancyNotificationService.localizeSendError(
+        MissingPluginException(
+          'No implementation found for method FirebaseFunctions#call',
+        ),
+      );
+      expect(msg, contains('再読み込み'));
+      expect(msg, isNot(contains('ネットワークを確認')));
+    });
+
+    test('unauthenticated は再サインインを促す', () {
+      final msg = VacancyNotificationService.localizeSendError(
+        FirebaseFunctionsException(
+          code: 'unauthenticated',
+          message: 'unauthenticated',
+        ),
+      );
+      expect(msg, contains('サインイン'));
+    });
+
+    test('not-found は未デプロイとして管理者連絡を促す', () {
+      final msg = VacancyNotificationService.localizeSendError(
+        FirebaseFunctionsException(code: 'not-found', message: 'not found'),
+      );
+      expect(msg, contains('未デプロイ'));
+      expect(msg, contains('管理者'));
+    });
+
+    test('unavailable のみネットワーク確認を促す', () {
+      final msg = VacancyNotificationService.localizeSendError(
+        FirebaseFunctionsException(code: 'unavailable', message: 'unavailable'),
+      );
+      expect(msg, contains('ネットワークを確認'));
+    });
+
+    test('deadline-exceeded は履歴確認を促す（二重送信を防ぐ）', () {
+      final msg = VacancyNotificationService.localizeSendError(
+        FirebaseFunctionsException(
+          code: 'deadline-exceeded',
+          message: 'timeout',
+        ),
+      );
+      expect(msg, contains('履歴'));
+    });
+
+    test('想定外の例外は通信のせいにしない', () {
+      final msg = VacancyNotificationService.localizeSendError(
+        StateError('boom'),
+      );
+      expect(msg, isNot(contains('ネットワーク')));
+      expect(msg, contains('管理者'));
     });
   });
 }
