@@ -38,6 +38,18 @@ export interface LineApi {
     replyToken: string,
     text: string
   ): Promise<ReplyResult>;
+
+  /**
+   * 任意の message オブジェクト（Flex 等）を push する（Day 13）
+   *
+   * 応募ボタン付きの Flex Message を送るために使う。
+   * テキスト専用の [pushText] は既存フローが使っているため変更しない。
+   */
+  pushMessage(
+    accessToken: string,
+    lineUserId: string,
+    message: unknown
+  ): Promise<PushResult>;
 }
 
 const PUSH_ENDPOINT = 'https://api.line.me/v2/bot/message/push';
@@ -81,6 +93,37 @@ export const realLineApi: LineApi = {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       logger.error('[line.push] network error', {
+        lineUserId: maskUserId(lineUserId),
+        error: msg,
+      });
+      return {lineUserId, ok: false, httpStatus: 0, error: msg};
+    }
+  },
+
+  async pushMessage(accessToken, lineUserId, message) {
+    try {
+      const res = await fetch(PUSH_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({to: lineUserId, messages: [message]}),
+      });
+
+      if (res.ok) {
+        return {lineUserId, ok: true, httpStatus: res.status};
+      }
+      const bodyText = await safeText(res);
+      logger.warn('[line.pushMessage] failed', {
+        lineUserId: maskUserId(lineUserId),
+        httpStatus: res.status,
+        error: bodyText,
+      });
+      return {lineUserId, ok: false, httpStatus: res.status, error: bodyText};
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logger.error('[line.pushMessage] network error', {
         lineUserId: maskUserId(lineUserId),
         error: msg,
       });

@@ -18,6 +18,7 @@ import type {Firestore} from 'firebase-admin/firestore';
 import {COLLECTIONS} from './config';
 import {lineApi, maskUserId} from './line/client';
 import {verifyLineSignature} from './line/signature';
+import {handleSlotPostback} from './slotPostback';
 
 /**
  * HTTP レスポンスの最小インターフェース
@@ -72,6 +73,11 @@ interface LineEvent {
   replyToken?: string;
   source?: {userId?: string; type?: string};
   message?: {type?: string; text?: string};
+  /** Day 13: 応募ボタン（postback action）の戻り */
+  postback?: {data?: string};
+  /** 重複検知用。LINE は webhook を再送することがある */
+  webhookEventId?: string;
+  deliveryContext?: {isRedelivery?: boolean};
 }
 
 /**
@@ -80,7 +86,8 @@ interface LineEvent {
 export async function processWebhookEvents(
   db: Firestore,
   accessToken: string,
-  events: LineEvent[]
+  events: LineEvent[],
+  channelSecret?: string
 ): Promise<WebhookEventResult[]> {
   const api = lineApi();
   const out: WebhookEventResult[] = [];
@@ -88,6 +95,30 @@ export async function processWebhookEvents(
   for (const ev of events) {
     const lineUserId = ev.source?.userId ?? '';
     const replyToken = ev.replyToken ?? '';
+
+    // ── Day 13: 応募／キャンセル（postback）
+    // 既存の follow / message 分岐より前に置くが、type が異なるため干渉しない。
+    if (ev.type === 'postback') {
+      if (!channelSecret) {
+        // ハッシュ用ソルトが無いと本人照合ができない。処理せずログのみ。
+        logger.error('[lineWebhook] channelSecret missing; postback skipped');
+        out.push({
+          type: 'postback',
+          handled: false,
+          reply: null,
+          linkedCustomerId: null,
+        });
+        continue;
+      }
+      const r = await handleSlotPostback(db, accessToken, ev, channelSecret);
+      out.push({
+        type: 'postback',
+        handled: r.handled,
+        reply: r.reply,
+        linkedCustomerId: null,
+      });
+      continue;
+    }
 
     if (ev.type === 'follow') {
       if (replyToken) await api.replyText(accessToken, replyToken, MSG_FOLLOW);
@@ -272,7 +303,7 @@ export async function handleLineWebhook(
   }
 
   try {
-    await processWebhookEvents(db, accessToken, events);
+    await processWebhookEvents(db, accessToken, events, channelSecret);
   } catch (e) {
     logger.error('[lineWebhook] processing error', {
       error: e instanceof Error ? e.message : String(e),

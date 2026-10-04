@@ -351,10 +351,14 @@ class VacancyNotificationService {
   /// 2. サーバー: notification_logs の create で ALREADY_EXISTS を検出
   ///
   /// [candidates] 送信対象（職員がチェックを外したものは渡さない）
+  /// [sourceAbsentCustomerId] 欠席した児童の customerId（Day 13）
+  ///   指定すると、保護者の LINE に「応募する」ボタン付きの通知が届き、
+  ///   先着 1 名でその場で確定できる。未指定なら従来どおりテキストのみ。
   Future<VacancySendResult> sendNotices({
     required DateTime date,
     required List<VacancyCandidate> candidates,
     String? messageOverride,
+    String? sourceAbsentCustomerId,
   }) async {
     final dateKey = _dateKey(date);
     final message = messageOverride ?? buildMessage(date);
@@ -426,6 +430,9 @@ class VacancyNotificationService {
       final res = await callable.call<dynamic>({
         'date': dateKey,
         'message': message,
+        if (sourceAbsentCustomerId != null &&
+            sourceAbsentCustomerId.isNotEmpty)
+          'sourceAbsentCustomerId': sourceAbsentCustomerId,
         'recipients': targets
             .map((c) => {
                   'customerId': c.customerId,

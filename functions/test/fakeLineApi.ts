@@ -20,9 +20,16 @@ export interface ReplyCall {
   text: string;
 }
 
+/** Day 13: Flex 等の任意メッセージ push */
+export interface PushMessageCall {
+  lineUserId: string;
+  message: unknown;
+}
+
 export class FakeLineApi implements LineApi {
   pushCalls: PushCall[] = [];
   replyCalls: ReplyCall[] = [];
+  pushMessageCalls: PushMessageCall[] = [];
 
   /** 特定 userId を失敗させる（LINE API エラー再現） */
   failUserIds = new Set<string>();
@@ -50,6 +57,29 @@ export class FakeLineApi implements LineApi {
     return {lineUserId, ok: true, httpStatus: 200};
   }
 
+  async pushMessage(
+    accessToken: string,
+    lineUserId: string,
+    message: unknown
+  ): Promise<PushResult> {
+    this.pushMessageCalls.push({lineUserId, message});
+    // 検証を簡単にするため、送信先の記録は pushCalls にも残す。
+    this.pushCalls.push({
+      lineUserId,
+      text: JSON.stringify(message),
+      hasToken: accessToken.length > 0,
+    });
+    if (this.failUserIds.has(lineUserId)) {
+      return {
+        lineUserId,
+        ok: false,
+        httpStatus: this.failHttpStatus,
+        error: this.failMessage,
+      };
+    }
+    return {lineUserId, ok: true, httpStatus: 200};
+  }
+
   async replyText(
     accessToken: string,
     replyToken: string,
@@ -62,6 +92,7 @@ export class FakeLineApi implements LineApi {
   reset(): void {
     this.pushCalls = [];
     this.replyCalls = [];
+    this.pushMessageCalls = [];
     this.failUserIds.clear();
   }
 }

@@ -86,6 +86,37 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // ── slots: 空き枠の先着応募（Day 13）────────────────
+    // doc id = {YYYY-MM-DD}_{欠席児童のcustomerId}
+    //
+    // 【重要】クライアントからの書き込みを一切許可しない。
+    // status / claimedBy を書き換えられると、
+    //   - 確定済みの枠を open に戻して横取りする
+    //   - 他人を claimedBy に書き込んで枠を奪う
+    //   - notifiedList に自分を足して対象外から応募する
+    // が可能になる。確定は Cloud Functions の transaction のみが行う。
+    // 職員向けの応募状況表示のため read は認証済みに許可する。
+    match /slots/{slotId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // ── webhook_processed: webhook 冪等キー（Day 13）────
+    // LINE の再送による二重確定を防ぐための記録。
+    // クライアントが消せると再送で二重処理が通ってしまうため、
+    // read も含めて全面拒否（Functions の Admin SDK のみ）。
+    match /webhook_processed/{eventId} {
+      allow read, write: if false;
+    }
+
+    // ── slot_audit: 枠の状態変化の監査ログ（Day 13）─────
+    // 不正検知・トラブル調査用。改ざんされると監査の意味が無いため
+    // クライアントからの書き込みは禁止。read は職員に許可する。
+    match /slot_audit/{auditId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
     // ── 上記以外は全面拒否 ───────────────────────────────
     match /{document=**} {
       allow read, write: if false;

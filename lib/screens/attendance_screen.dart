@@ -419,6 +419,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       date: _selectedDate,
       candidates: result.selected,
       messageOverride: result.message.isEmpty ? null : result.message,
+      // Day 13: 欠席者を枠の出所として渡すと、保護者の LINE に
+      // 「応募する」ボタン付きで届き、先着1名でその場で確定できる。
+      sourceAbsentCustomerId: record.customerId,
     );
     if (!mounted) return;
     setState(() => _isSendingNotice = false);

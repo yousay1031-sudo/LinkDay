@@ -19,6 +19,15 @@ import type {Firestore} from 'firebase-admin/firestore';
 
 import {COLLECTIONS} from './config';
 import {LINE_TEXT_MAX_LENGTH, lineApi, maskUserId} from './line/client';
+import {buildVacancyFlexMessage} from './slotMessage';
+import {
+  appendNotified,
+  createSlotIfAbsent,
+  hashLineUserId,
+  makeSlotId,
+  type NotifiedEntry,
+} from './slots';
+import {SLOT_TTL_HOURS} from './config';
 
 /** 通知の宛先 1 件 */
 export interface Recipient {
@@ -33,6 +42,13 @@ export interface SendVacancyNoticeInput {
   date: string;
   recipients: Recipient[];
   message: string;
+  /**
+   * Day 13: 欠席した児童の customerId（空き枠の出所）
+   *
+   * 指定された場合のみ「応募する」ボタン付きの Flex を送る。
+   * 未指定なら従来どおりテキストのみ（後方互換）。
+   */
+  sourceAbsentCustomerId?: string;
 }
 
 /** 1 件ごとの結果ステータス */
@@ -154,7 +170,35 @@ export function validateInput(data: unknown): SendVacancyNoticeInput {
     return true;
   });
 
-  return {date, recipients: deduped, message};
+  const sourceAbsentCustomerId =
+    typeof d.sourceAbsentCustomerId === 'string'
+      ? d.sourceAbsentCustomerId.trim()
+      : '';
+
+  return {
+    date,
+    recipients: deduped,
+    message,
+    sourceAbsentCustomerId:
+      sourceAbsentCustomerId.length > 0 ? sourceAbsentCustomerId : undefined,
+  };
+}
+
+/**
+ * 枠の確認コードを生成する（6桁英数・紛らわしい文字を除く）。
+ *
+ * postback data に載せ、通知を受け取った本人かの簡易裏付けに使う。
+ * 本人性の主たる担保は LINE の署名検証（source.userId）であり、
+ * これは「古い通知のボタンを使い回せない」ための補助。
+ */
+export function generateSlotCode(): string {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const crypto = require('crypto') as typeof import('crypto');
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const buf = crypto.randomBytes(6);
+  let out = '';
+  for (let i = 0; i < 6; i++) out += alphabet[buf[i] % alphabet.length];
+  return out;
 }
 
 /**
@@ -167,10 +211,90 @@ export async function runSendVacancyNotice(
   db: Firestore,
   uid: string,
   input: SendVacancyNoticeInput,
-  accessToken: string
+  accessToken: string,
+  /** Day 13: lineUserId のハッシュ用ソルト。未指定なら枠を作らずテキスト送信 */
+  channelSecret?: string
 ): Promise<SendVacancyNoticeOutput> {
   const api = lineApi();
   const results: SendResultItem[] = [];
+
+  // ── Day 13: 応募ボタンを付けるかの判定
+  // sourceAbsentCustomerId と channelSecret が揃ったときだけ枠を作る。
+  // 揃わない場合は従来どおりテキストのみ（後方互換・既存テストも通る）。
+  const useSlot =
+    typeof input.sourceAbsentCustomerId === 'string' &&
+    input.sourceAbsentCustomerId.length > 0 &&
+    typeof channelSecret === 'string' &&
+    channelSecret.length > 0;
+
+  const slotId = useSlot
+    ? makeSlotId(input.date, input.sourceAbsentCustomerId as string)
+    : '';
+  let slotCode = '';
+  let slotExpiresAt = new Date();
+
+  if (useSlot) {
+    const now = new Date();
+    slotExpiresAt = new Date(now.getTime() + SLOT_TTL_HOURS * 3600 * 1000);
+    slotCode = generateSlotCode();
+    // 通知対象を先に notifiedList として登録しておく
+    // （応募時に「通知を受け取った人か」を判定するため）
+    const notified: NotifiedEntry[] = input.recipients
+      .filter((r) => isValidLineUserId(r.lineUserId))
+      .map((r) => ({
+        customerId: r.customerId,
+        lineUserIdHash: hashLineUserId(
+          r.lineUserId,
+          channelSecret as string
+        ),
+        servedAt: now,
+      }));
+
+    const created = await createSlotIfAbsent(db, {
+      slotId,
+      dateKey: input.date,
+      sourceAbsent: input.sourceAbsentCustomerId as string,
+      linkCode: slotCode,
+      notifiedList: notified,
+      createdBy: 'vacancy_notice',
+      now,
+    });
+
+    if (!created) {
+      // 既存の枠（同じ日の追加送信）。確定済みかもしれないので作り直さず、
+      // 既存の linkCode / expiresAt を読み直して使う。
+      const snap = await db.collection(COLLECTIONS.slots).doc(slotId).get();
+      const data = (snap.data() ?? {}) as Record<string, unknown>;
+      if (typeof data.linkCode === 'string') slotCode = data.linkCode;
+      const ex = data.expiresAt;
+      if (ex instanceof Date) slotExpiresAt = ex;
+      else if (
+        ex !== null &&
+        typeof ex === 'object' &&
+        ex !== undefined &&
+        'toDate' in (ex as object)
+      ) {
+        slotExpiresAt = (ex as {toDate: () => Date}).toDate();
+      }
+      // 新しく追加された宛先を notifiedList に足す
+      for (const r of input.recipients) {
+        if (!isValidLineUserId(r.lineUserId)) continue;
+        await appendNotified(db, slotId, {
+          customerId: r.customerId,
+          lineUserIdHash: hashLineUserId(
+            r.lineUserId,
+            channelSecret as string
+          ),
+          servedAt: new Date(),
+        });
+      }
+    }
+    logger.info('[sendVacancyNotice] slot ready', {
+      slotId,
+      created,
+      recipients: input.recipients.length,
+    });
+  }
 
   for (const r of input.recipients) {
     // ── 1. 宛先形式の検証（誤送信防止）
@@ -216,7 +340,20 @@ export async function runSendVacancyNotice(
     }
 
     // ── 3. LINE push 送信
-    const push = await api.pushText(accessToken, r.lineUserId, input.message);
+    // 枠がある場合は応募ボタン付き Flex、無い場合は従来どおりテキスト。
+    const push = useSlot
+      ? await api.pushMessage(
+          accessToken,
+          r.lineUserId,
+          buildVacancyFlexMessage({
+            dateKey: input.date,
+            message: input.message,
+            slotId,
+            linkCode: slotCode,
+            expiresAt: slotExpiresAt,
+          })
+        )
+      : await api.pushText(accessToken, r.lineUserId, input.message);
 
     const status: SendStatus = push.ok ? 'sent' : 'failed';
     await logRef.set(
@@ -273,7 +410,9 @@ export async function runSendVacancyNotice(
 export async function handleSendVacancyNotice(
   req: CallableRequest<unknown>,
   db: Firestore,
-  accessToken: string | undefined
+  accessToken: string | undefined,
+  /** Day 13: 応募ボタン用。未設定ならテキスト送信にフォールバック */
+  channelSecret?: string
 ): Promise<SendVacancyNoticeOutput> {
   // ── 認証必須（ID トークン検証は onCall が実施。auth が無い = 未認証）
   if (!req.auth || !req.auth.uid) {
@@ -293,5 +432,11 @@ export async function handleSendVacancyNotice(
   }
 
   const input = validateInput(req.data);
-  return runSendVacancyNotice(db, req.auth.uid, input, accessToken);
+  return runSendVacancyNotice(
+    db,
+    req.auth.uid,
+    input,
+    accessToken,
+    channelSecret
+  );
 }

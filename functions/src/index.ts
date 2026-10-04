@@ -6,7 +6,8 @@
  *      空き枠が出た日に、候補保護者へ LINE push 通知を送る。
  *      Firebase Auth 必須・同一 date+customerId は冪等。
  *  - lineWebhook (HTTPS, asia-northeast1)
- *      LINE からの webhook（follow / 連携コード受付）。署名検証必須。
+ *      LINE からの webhook（follow / 連携コード受付 / Day 13: 応募 postback）。
+ *      署名検証必須。
  *
  * secrets:
  *  - LINE_CHANNEL_ACCESS_TOKEN
@@ -35,7 +36,9 @@ setGlobalOptions({region: REGION, maxInstances: 10});
 export const sendVacancyNotice = onCall(
   {
     region: REGION,
-    secrets: [LINE_CHANNEL_ACCESS_TOKEN],
+    // Day 13: 応募ボタンの slot 作成で lineUserId のハッシュソルトに
+    // チャネルシークレットを使うため、両方の secret を要求する。
+    secrets: [LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET],
     // CORS: Flutter Web（Firebase Hosting ドメイン）から呼ばれる
     cors: true,
     timeoutSeconds: 120,
@@ -45,7 +48,8 @@ export const sendVacancyNotice = onCall(
     handleSendVacancyNotice(
       req,
       getFirestore(),
-      LINE_CHANNEL_ACCESS_TOKEN.value()
+      LINE_CHANNEL_ACCESS_TOKEN.value(),
+      LINE_CHANNEL_SECRET.value()
     )
 );
 
