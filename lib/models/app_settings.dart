@@ -68,6 +68,14 @@ class AppSettings extends HiveObject {
   @HiveField(14)
   String vacancyMessageTemplate;
 
+  // ── Day 14: 空き枠の応募受付時間 ─────────────────────────────
+  // fieldId 15 の追加のみ（既存データは null → 既定 6 時間で動作）。
+
+  /// 空き枠の応募受付時間（時間）。通知送信時から何時間で締め切るか。
+  /// サーバー側でも 1〜24 に丸められる（Functions clampSlotTtlHours）。
+  @HiveField(15)
+  int slotTtlHours;
+
   AppSettings({
     this.facilityName = 'ココスタディ',
     this.facilityAddress = '北海道帯広市西5条南21丁目8 2階',
@@ -84,7 +92,9 @@ class AppSettings extends HiveObject {
     this.restApiKeyLegacy,
     String? vacancyReplyDeadline,
     String? vacancyMessageTemplate,
-  })  : vacancyReplyDeadline =
+    int? slotTtlHours,
+  })  : slotTtlHours = clampSlotTtlHours(slotTtlHours),
+        vacancyReplyDeadline =
             (vacancyReplyDeadline == null || vacancyReplyDeadline.isEmpty)
                 ? defaultVacancyReplyDeadline
                 : vacancyReplyDeadline,
@@ -119,7 +129,25 @@ class AppSettings extends HiveObject {
       defaultDropoffEnd: defaultDropoffEnd,
       vacancyReplyDeadline: vacancyReplyDeadline,
       vacancyMessageTemplate: vacancyMessageTemplate,
+      slotTtlHours: slotTtlHours,
     );
+  }
+
+  // ── Day 14: 応募受付時間の既定値・範囲 ───────────────────────
+
+  /// 既定の受付時間（functions/src/config.ts の SLOT_TTL_HOURS と一致必須）
+  static const int defaultSlotTtlHours = 6;
+
+  /// 許可範囲（functions/src/config.ts の SLOT_TTL_MIN/MAX_HOURS と一致必須）
+  static const int minSlotTtlHours = 1;
+  static const int maxSlotTtlHours = 24;
+
+  /// 受付時間を許可範囲に丸める。null・範囲外は既定値/境界へ。
+  static int clampSlotTtlHours(int? v) {
+    if (v == null) return defaultSlotTtlHours;
+    if (v < minSlotTtlHours) return minSlotTtlHours;
+    if (v > maxSlotTtlHours) return maxSlotTtlHours;
+    return v;
   }
 
   // ── Day 11: 空き枠通知の既定値 ────────────────────────────────

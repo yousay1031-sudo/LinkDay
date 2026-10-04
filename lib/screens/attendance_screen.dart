@@ -1,14 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/attendance_record.dart';
+import '../models/slot_info.dart';
 import '../services/attendance_pdf_service.dart';
 import '../services/attendance_service.dart';
 import '../services/monthly_usage_service.dart';
+import '../services/slot_service.dart';
 import '../services/customer_service.dart';
 import '../services/vacancy_notification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/attendance_status_badge.dart';
 import '../widgets/attendance_time_chip.dart';
+import '../widgets/slot_status_panel.dart';
 import '../widgets/vacancy_notice_dialog.dart';
 import 'notification_history_screen.dart';
 
@@ -29,12 +34,82 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   /// Day 11: LINE 通知の送信中フラグ（二重タップ防止・進捗表示）
   bool _isSendingNotice = false;
 
+  // ── Day 14: LINE 応募（slots）の購読 ──────────────────────
+  // 選択中の日付の枠だけを購読する。日付変更時は購読を張り直す。
+  StreamSubscription<List<SlotInfo>>? _slotSub;
+  List<SlotInfo> _slots = const [];
+  String? _slotError;
+
+  /// 募集中→受付終了の切り替わりを画面に反映するための再描画タイマー
+  Timer? _slotTick;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeAndLoad();
     });
+    _subscribeSlots();
+    _slotTick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && _slots.isNotEmpty) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _slotSub?.cancel();
+    _slotTick?.cancel();
+    super.dispose();
+  }
+
+  /// 選択中の日付の枠を購読し直す。
+  /// 前日の購読は必ず cancel する（他日の枠が混ざらないように）。
+  void _subscribeSlots() {
+    _slotSub?.cancel();
+    _slotSub = null;
+    setStateSafe(() {
+      _slots = const [];
+      _slotError = null;
+    });
+    try {
+      _slotSub = SlotService.instance.watchByDate(_selectedDate).listen(
+        (slots) {
+          if (!mounted) return;
+          setState(() {
+            _slots = slots;
+            _slotError = null;
+          });
+        },
+        onError: (Object e) {
+          debugPrint('[AttendanceScreen] slots watch error: $e');
+          if (!mounted) return;
+          setState(() => _slotError = '通信または権限のエラー');
+        },
+      );
+    } catch (e) {
+      // Firebase 未初期化など。出席管理そのものは止めない。
+      debugPrint('[AttendanceScreen] slots watch failed: $e');
+      setStateSafe(() => _slotError = '接続できません');
+    }
+  }
+
+  void setStateSafe(VoidCallback fn) {
+    if (mounted) {
+      setState(fn);
+    } else {
+      fn();
+    }
+  }
+
+  String? _customerNameOf(String customerId) =>
+      CustomerService.instance.getCustomerById(customerId)?.name;
+
+  /// 欠席した児童の枠（カード内チップ用）。同じ児童は 1 日 1 枠。
+  SlotInfo? _slotForAbsent(String customerId) {
+    for (final s in _slots) {
+      if (s.sourceAbsent == customerId) return s;
+    }
+    return null;
   }
 
   // ── データ読み込み ──────────────────────────────────────────
@@ -88,6 +163,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _selectedDate = picked;
       _isLoading = true;
     });
+    _subscribeSlots();
     await _ensureScheduled();
     _loadRecords();
   }
@@ -566,6 +642,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 : Column(
                     children: [
                       _buildSummaryBar(),
+                      // Day 14: 選択日の LINE 応募状況
+                      SlotStatusPanel(
+                        slots: _slots,
+                        now: DateTime.now(),
+                        nameOf: _customerNameOf,
+                        error: _slotError,
+                      ),
                       Expanded(child: _buildBody()),
                     ],
                   ),
@@ -794,6 +877,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           itemCount: _records.length,
           itemBuilder: (ctx, i) => _AttendanceCard(
             record: _records[i],
+            slotView: _slotViewFor(_records[i]),
             onMarkPresent: () => _markPresent(_records[i]),
             onMarkDeparted: () => _markDeparted(_records[i]),
             onMarkAbsent: () => _showAbsenceDialog(_records[i]),
@@ -804,6 +888,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         );
       },
     );
+  }
+
+  /// 欠席カード用: その児童の枠の表示内容（無ければ null）
+  SlotRowView? _slotViewFor(AttendanceRecord r) {
+    if (r.status != AttendanceStatus.absent) return null;
+    final slot = _slotForAbsent(r.customerId);
+    if (slot == null) return null;
+    return SlotRowView.from(slot,
+        now: DateTime.now(), nameOf: _customerNameOf);
   }
 
   Widget _buildEmptyState() {
@@ -858,6 +951,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
 class _AttendanceCard extends StatelessWidget {
   final AttendanceRecord record;
+
+  /// Day 14: 欠席カードに出す LINE 応募の状態（枠が無ければ null）
+  final SlotRowView? slotView;
   final VoidCallback onMarkPresent;
   final VoidCallback onMarkDeparted;
   final VoidCallback onMarkAbsent;
@@ -867,6 +963,7 @@ class _AttendanceCard extends StatelessWidget {
 
   const _AttendanceCard({
     required this.record,
+    this.slotView,
     required this.onMarkPresent,
     required this.onMarkDeparted,
     required this.onMarkAbsent,
@@ -1015,6 +1112,15 @@ class _AttendanceCard extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+            ],
+
+            // ── Day 14: LINE 応募の状態（欠席カードのみ）
+            if (slotView != null) ...[
+              const SizedBox(height: 6),
+              SlotChip(
+                key: const Key('slotChip'),
+                view: slotView!,
               ),
             ],
 

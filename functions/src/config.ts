@@ -54,6 +54,26 @@ export const COLLECTIONS = {
  */
 export const SLOT_TTL_HOURS = 6;
 
+/** 受付期限として許可する範囲（時間）。範囲外はサーバー側で丸める */
+export const SLOT_TTL_MIN_HOURS = 1;
+export const SLOT_TTL_MAX_HOURS = 24;
+
+/**
+ * クライアントから渡された受付期限（時間）を安全な値に正規化する。
+ *
+ * AppSettings（端末側）から変更可能にしたが、クライアント入力は信用しない。
+ *  - 未指定 / 数値でない / NaN / Infinity → 既定値（SLOT_TTL_HOURS）
+ *  - 小数 → 切り捨て
+ *  - 範囲外 → 1〜24 に丸める（極端に長い受付で枠が塞がるのを防ぐ）
+ */
+export function clampSlotTtlHours(v: unknown): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return SLOT_TTL_HOURS;
+  const n = Math.floor(v);
+  if (n < SLOT_TTL_MIN_HOURS) return SLOT_TTL_MIN_HOURS;
+  if (n > SLOT_TTL_MAX_HOURS) return SLOT_TTL_MAX_HOURS;
+  return n;
+}
+
 /** webhook 冪等レコードの保持期間（LINE の再送期間より十分長く取る） */
 export const WEBHOOK_PROCESSED_TTL_HOURS = 24;
 

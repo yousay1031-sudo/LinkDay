@@ -101,6 +101,7 @@ class SettingsService {
       // Day 11: 新フィールドを引き継ぐ（落とすと通知設定が既定値に戻る）
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
+      slotTtlHours: current.slotTtlHours,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] facility updated: $name');
@@ -127,6 +128,7 @@ class SettingsService {
       // Day 11: 新フィールドを引き継ぐ（落とすと通知設定が既定値に戻る）
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
+      slotTtlHours: current.slotTtlHours,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] vehicles updated: count=$count');
@@ -152,6 +154,7 @@ class SettingsService {
       defaultDropoffEnd: dropoffEnd,
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
+      slotTtlHours: current.slotTtlHours,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] operating hours updated');
@@ -174,9 +177,35 @@ class SettingsService {
       // Day 11: 新フィールドを引き継ぐ（落とすと通知設定が既定値に戻る）
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
+      slotTtlHours: current.slotTtlHours,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] geocode saved: $lat, $lng');
+  }
+
+  // ── Day 14: 空き枠の応募受付時間 ──────────────────────────────
+
+  /// 応募の受付時間（時間）を更新する。範囲外は 1〜24 に丸める。
+  /// 他の設定は一切変更しない。
+  Future<void> updateSlotTtlHours(int hours) async {
+    final current = getSettings();
+    final updated = AppSettings(
+      facilityName: current.facilityName,
+      facilityAddress: current.facilityAddress,
+      facilityLat: current.facilityLat,
+      facilityLng: current.facilityLng,
+      vehicleCount: current.vehicleCount,
+      vehicleNames: current.vehicleNames,
+      vehicleCapacities: current.vehicleCapacities,
+      maxStudentsPerDay: current.maxStudentsPerDay,
+      defaultPickupStart: current.defaultPickupStart,
+      defaultDropoffEnd: current.defaultDropoffEnd,
+      vacancyReplyDeadline: current.vacancyReplyDeadline,
+      vacancyMessageTemplate: current.vacancyMessageTemplate,
+      slotTtlHours: AppSettings.clampSlotTtlHours(hours),
+    );
+    await _box.put(_kSettingsKey, updated);
+    debugPrint('[SettingsService] slotTtlHours updated: ${updated.slotTtlHours}');
   }
 
   // ── Day 11: 空き枠 LINE 通知設定 ─────────────────────────────
@@ -208,6 +237,7 @@ class SettingsService {
       defaultDropoffEnd: current.defaultDropoffEnd,
       vacancyReplyDeadline: safeDeadline,
       vacancyMessageTemplate: safeTemplate,
+      slotTtlHours: current.slotTtlHours,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] vacancy notice updated: deadline=$safeDeadline');

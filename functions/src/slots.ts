@@ -21,7 +21,11 @@
 import * as logger from 'firebase-functions/logger';
 import type {Firestore, Transaction} from 'firebase-admin/firestore';
 
-import {COLLECTIONS, SLOT_TTL_HOURS, WEBHOOK_PROCESSED_TTL_HOURS} from './config';
+import {
+  COLLECTIONS,
+  clampSlotTtlHours,
+  WEBHOOK_PROCESSED_TTL_HOURS,
+} from './config';
 import {maskUserId} from './line/client';
 
 /** 枠の状態 */
@@ -214,15 +218,18 @@ export async function createSlotIfAbsent(
     notifiedList: NotifiedEntry[];
     createdBy: 'vacancy_notice' | 'manual_phone';
     now?: Date;
+    /** 受付期限（時間）。未指定は既定値。範囲外は 1〜24 に丸める */
+    ttlHours?: number;
   }
 ): Promise<boolean> {
   const now = params.now ?? new Date();
+  const ttlHours = clampSlotTtlHours(params.ttlHours);
   const ref = db.collection(COLLECTIONS.slots).doc(params.slotId);
   const doc: Record<string, unknown> = {
     status: 'open',
     scheduledAt: now,
     opensAt: now,
-    expiresAt: new Date(now.getTime() + SLOT_TTL_HOURS * 3600 * 1000),
+    expiresAt: new Date(now.getTime() + ttlHours * 3600 * 1000),
     capacity: 1,
     claimedBy: null,
     notifiedList: params.notifiedList.map((n) => ({

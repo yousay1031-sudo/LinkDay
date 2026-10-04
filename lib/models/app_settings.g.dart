@@ -32,13 +32,14 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
       restApiKeyLegacy: fields[12] as String?,
       vacancyReplyDeadline: fields[13] as String?,
       vacancyMessageTemplate: fields[14] as String?,
+      slotTtlHours: fields[15] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AppSettings obj) {
     writer
-      ..writeByte(15)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.facilityName)
       ..writeByte(1)
@@ -68,7 +69,9 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
       ..writeByte(13)
       ..write(obj.vacancyReplyDeadline)
       ..writeByte(14)
-      ..write(obj.vacancyMessageTemplate);
+      ..write(obj.vacancyMessageTemplate)
+      ..writeByte(15)
+      ..write(obj.slotTtlHours);
   }
 
   @override

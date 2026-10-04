@@ -38,6 +38,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _pickupStart = const TimeOfDay(hour: 8, minute: 30);
   TimeOfDay _dropoffEnd = const TimeOfDay(hour: 16, minute: 30);
 
+  /// Day 14: 空き枠の応募受付時間（時間）
+  int _slotTtlHours = AppSettings.defaultSlotTtlHours;
+
   // ── 地図プレビュー状態 ─────────────────────────────────────────
   /// geocode 後に表示する事業所座標（マーカー位置・地図中心）
   double? _previewLat;
@@ -70,6 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _vehicleCount = settings.vehicleCount.clamp(1, 5);
     _pickupStart = _parseTime(settings.defaultPickupStart);
     _dropoffEnd = _parseTime(settings.defaultDropoffEnd);
+    _slotTtlHours = AppSettings.clampSlotTtlHours(settings.slotTtlHours);
     _rebuildVehicleControllers(settings.vehicleNames, settings.vehicleCapacities);
 
     // 既存の geocode 済み座標があれば地図プレビューを初期表示
@@ -188,6 +192,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!mounted) return;
     _showSnack('運営時間を保存しました', AppColors.success);
+  }
+
+  Future<void> _saveSlotTtl(int hours) async {
+    final v = AppSettings.clampSlotTtlHours(hours);
+    setState(() => _slotTtlHours = v);
+    await SettingsService.instance.updateSlotTtlHours(v);
+    if (!mounted) return;
+    _showSnack('LINE応募の受付時間を$v時間に変更しました（次回の通知から有効）',
+        AppColors.success);
   }
 
   // ── API キー操作（1キー方式） ─────────────────────────────
@@ -425,6 +438,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildVehicleSection(),
               const SizedBox(height: 16),
               _buildOperatingHoursSection(),
+              const SizedBox(height: 16),
+              _buildSlotTtlSection(),
               const SizedBox(height: 16),
               _buildApiKeySection(),
               const SizedBox(height: 16),
@@ -707,6 +722,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: const Icon(Icons.save, size: 18),
               label: const Text('運営時間を保存'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── セクション: LINE応募の受付時間（Day 14）──────────────────
+
+  Widget _buildSlotTtlSection() {
+    return _SectionCard(
+      title: 'LINE応募の受付時間',
+      icon: Icons.timer_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '空き枠のLINE通知を送ってから、何時間で応募を締め切るかを設定します。'
+            '変更は次回以降の通知から有効で、送信済みの枠の期限は変わりません。',
+            style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              IconButton(
+                key: const Key('slotTtlMinus'),
+                icon: const Icon(Icons.remove_circle_outline),
+                tooltip: '1時間短くする',
+                onPressed: _slotTtlHours > AppSettings.minSlotTtlHours
+                    ? () => _saveSlotTtl(_slotTtlHours - 1)
+                    : null,
+              ),
+              Text(
+                '$_slotTtlHours 時間',
+                key: const Key('slotTtlValue'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+              IconButton(
+                key: const Key('slotTtlPlus'),
+                icon: const Icon(Icons.add_circle_outline),
+                tooltip: '1時間長くする',
+                onPressed: _slotTtlHours < AppSettings.maxSlotTtlHours
+                    ? () => _saveSlotTtl(_slotTtlHours + 1)
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                '（${AppSettings.minSlotTtlHours}〜${AppSettings.maxSlotTtlHours}時間）',
+                style: TextStyle(
+                    fontSize: 11, color: AppColors.onSurfaceVariant),
+              ),
+            ],
           ),
         ],
       ),

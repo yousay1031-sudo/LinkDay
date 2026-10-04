@@ -17,7 +17,7 @@ import {HttpsError, type CallableRequest} from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import type {Firestore} from 'firebase-admin/firestore';
 
-import {COLLECTIONS} from './config';
+import {COLLECTIONS, clampSlotTtlHours} from './config';
 import {LINE_TEXT_MAX_LENGTH, lineApi, maskUserId} from './line/client';
 import {buildVacancyFlexMessage} from './slotMessage';
 import {
@@ -27,7 +27,6 @@ import {
   makeSlotId,
   type NotifiedEntry,
 } from './slots';
-import {SLOT_TTL_HOURS} from './config';
 
 /** 通知の宛先 1 件 */
 export interface Recipient {
@@ -49,6 +48,12 @@ export interface SendVacancyNoticeInput {
    * 未指定なら従来どおりテキストのみ（後方互換）。
    */
   sourceAbsentCustomerId?: string;
+  /**
+   * Day 14: 応募の受付期限（時間）。AppSettings.slotTtlHours から渡る。
+   * 未指定・不正値は既定 6 時間、範囲外は 1〜24 に丸める（clampSlotTtlHours）。
+   * 既に枠がある日の追加送信では、最初に決めた期限を維持する（延長しない）。
+   */
+  slotTtlHours?: number;
 }
 
 /** 1 件ごとの結果ステータス */
@@ -181,6 +186,11 @@ export function validateInput(data: unknown): SendVacancyNoticeInput {
     message,
     sourceAbsentCustomerId:
       sourceAbsentCustomerId.length > 0 ? sourceAbsentCustomerId : undefined,
+    // 範囲外は丸める。未指定のときだけ undefined のままにして既定値に任せる。
+    slotTtlHours:
+      typeof d.slotTtlHours === 'number'
+        ? clampSlotTtlHours(d.slotTtlHours)
+        : undefined,
   };
 }
 
@@ -235,7 +245,8 @@ export async function runSendVacancyNotice(
 
   if (useSlot) {
     const now = new Date();
-    slotExpiresAt = new Date(now.getTime() + SLOT_TTL_HOURS * 3600 * 1000);
+    const ttlHours = clampSlotTtlHours(input.slotTtlHours);
+    slotExpiresAt = new Date(now.getTime() + ttlHours * 3600 * 1000);
     slotCode = generateSlotCode();
     // 通知対象を先に notifiedList として登録しておく
     // （応募時に「通知を受け取った人か」を判定するため）
@@ -258,6 +269,7 @@ export async function runSendVacancyNotice(
       notifiedList: notified,
       createdBy: 'vacancy_notice',
       now,
+      ttlHours,
     });
 
     if (!created) {

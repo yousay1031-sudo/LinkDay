@@ -433,6 +433,9 @@ class VacancyNotificationService {
         if (sourceAbsentCustomerId != null &&
             sourceAbsentCustomerId.isNotEmpty)
           'sourceAbsentCustomerId': sourceAbsentCustomerId,
+        // Day 14: 応募の受付時間（設定画面で変更可能）。
+        // サーバー側でも 1〜24 に丸められるため、改ざんされても安全。
+        'slotTtlHours': SettingsService.instance.getSettings().slotTtlHours,
         'recipients': targets
             .map((c) => {
                   'customerId': c.customerId,
