@@ -21,6 +21,10 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   // ── コントローラー ────────────────────────────────────────────
   final _facilityNameCtrl = TextEditingController();
+
+  /// Day 15: 管理者 LINE userId の入力欄
+  final _adminLineUserIdCtrl = TextEditingController();
+  String? _adminLineUserIdError;
   final _facilityAddressCtrl = TextEditingController();
   // 2キー方式
   final _jsApiKeyCtrl = TextEditingController(); // 共通 API キー（1つに統一）
@@ -74,6 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _pickupStart = _parseTime(settings.defaultPickupStart);
     _dropoffEnd = _parseTime(settings.defaultDropoffEnd);
     _slotTtlHours = AppSettings.clampSlotTtlHours(settings.slotTtlHours);
+    _adminLineUserIdCtrl.text = settings.adminLineUserId ?? '';
     _rebuildVehicleControllers(settings.vehicleNames, settings.vehicleCapacities);
 
     // 既存の geocode 済み座標があれば地図プレビューを初期表示
@@ -89,6 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _facilityNameCtrl.dispose();
+    _adminLineUserIdCtrl.dispose();
     _facilityAddressCtrl.dispose();
     _jsApiKeyCtrl.dispose();
     _maxStudentsCtrl.dispose();
@@ -201,6 +207,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     _showSnack('LINE応募の受付時間を$v時間に変更しました（次回の通知から有効）',
         AppColors.success);
+  }
+
+  /// Day 15: 管理者 LINE userId を保存する。
+  /// 空欄は「未設定に戻す」、形式不正は保存せずエラー表示。
+  Future<void> _saveAdminLineUserId() async {
+    final text = _adminLineUserIdCtrl.text.trim();
+    if (text.isNotEmpty && !AppSettings.isValidLineUserId(text)) {
+      setState(() => _adminLineUserIdError =
+          'userId の形式が正しくありません（U + 英数字32桁、計33文字）');
+      return;
+    }
+    setState(() => _adminLineUserIdError = null);
+    final ok = await SettingsService.instance.updateAdminLineUserId(text);
+    if (!mounted) return;
+    if (!ok) {
+      _showSnack('管理者 userId を保存できませんでした', AppColors.error);
+      return;
+    }
+    _showSnack(
+      text.isEmpty
+          ? '管理者通知を解除しました'
+          : '管理者 userId を保存しました（次回の通知から有効）',
+      AppColors.success,
+    );
   }
 
   // ── API キー操作（1キー方式） ─────────────────────────────
@@ -440,6 +470,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildOperatingHoursSection(),
               const SizedBox(height: 16),
               _buildSlotTtlSection(),
+              const SizedBox(height: 16),
+              _buildAdminLineUserIdSection(),
               const SizedBox(height: 16),
               _buildApiKeySection(),
               const SizedBox(height: 16),
@@ -777,6 +809,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontSize: 11, color: AppColors.onSurfaceVariant),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── セクション: 管理者 LINE userId（Day 15）──────────────────
+
+  Widget _buildAdminLineUserIdSection() {
+    return _SectionCard(
+      title: '管理者のLINE通知',
+      icon: Icons.notifications_active_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '保護者がLINEで空き枠に応募（確定）または取り消したとき、'
+            'ここに設定したLINEへ1通だけ通知します。'
+            '事業所代表者が自分のLINEで公式アカウントを友だち追加・連携し、'
+            'その userId を貼り付けてください。空欄で保存すると通知を止めます。',
+            style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('adminLineUserIdField'),
+            controller: _adminLineUserIdCtrl,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: '管理者 LINE userId',
+              hintText: 'U1234567890abcdef1234567890abcdef',
+              prefixIcon: const Icon(Icons.badge_outlined),
+              errorText: _adminLineUserIdError,
+            ),
+            onChanged: (_) {
+              if (_adminLineUserIdError != null) {
+                setState(() => _adminLineUserIdError = null);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: const Key('adminLineUserIdSave'),
+              onPressed: _saveAdminLineUserId,
+              icon: const Icon(Icons.save),
+              label: const Text('管理者 userId を保存'),
+            ),
           ),
         ],
       ),

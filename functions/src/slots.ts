@@ -81,6 +81,11 @@ export interface ClaimResult {
   claimedCustomerId: string | null;
   /** 枠を取り逃した他の通知先（敗者通知に使う。claim 成功時のみ） */
   losers: NotifiedEntry[];
+  /**
+   * 確定（claimed）／取り消し（released）が成立した時刻。管理者通知の文面に使う。
+   * transaction に渡した `now` と同一の値（再実行されても最終試行の値）。
+   */
+  at?: Date;
 }
 
 /**
@@ -390,6 +395,7 @@ export async function claimSlot(
       slotId: params.slotId,
       claimedCustomerId: params.customerId,
       losers,
+      at: now,
     };
   });
 }
@@ -452,8 +458,68 @@ export async function releaseSlot(
       slotId: params.slotId,
       claimedCustomerId: params.customerId,
       losers: [],
+      at: now,
     };
   });
+}
+
+/**
+ * 枠の管理者通知先を保存する（Day 15）。
+ *
+ * 管理者の LINE userId は端末（Hive）の設定で、webhook からは読めない。
+ * そのため通知送信時に Callable 入力で受け取り、枠単位でここへ保存する。
+ * 生の userId を含むため、slots（client read 可）ではなく別コレクションに置く。
+ *
+ *  - 有効な userId → 保存（再送時は最新の設定で上書き）
+ *  - 未指定 → 既存の通知先を削除（設定を消した後の送信で古い宛先に飛ばさない）
+ *
+ * 失敗しても通知送信全体は止めない（管理者通知は付随機能）。
+ */
+export async function saveAdminTarget(
+  db: Firestore,
+  slotId: string,
+  adminLineUserId: string | undefined
+): Promise<void> {
+  try {
+    const ref = db.collection(COLLECTIONS.slotAdminTargets).doc(slotId);
+    if (adminLineUserId === undefined || adminLineUserId.length === 0) {
+      await ref.delete();
+      return;
+    }
+    await ref.set({
+      adminLineUserId,
+      updatedAt: new Date(),
+      ttl: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+    });
+  } catch (e) {
+    logger.warn('[slots] admin target save failed', {
+      slotId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+/** 枠の管理者通知先を読む。未設定・読み出し失敗は null */
+export async function loadAdminTarget(
+  db: Firestore,
+  slotId: string
+): Promise<string | null> {
+  try {
+    const snap = await db
+      .collection(COLLECTIONS.slotAdminTargets)
+      .doc(slotId)
+      .get();
+    if (!snap.exists) return null;
+    const d = snap.data() as Record<string, unknown>;
+    const v = d.adminLineUserId;
+    return typeof v === 'string' && v.length > 0 ? v : null;
+  } catch (e) {
+    logger.warn('[slots] admin target load failed', {
+      slotId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
 }
 
 /** LINE userId から連携済み customerId を引く */

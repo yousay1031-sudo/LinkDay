@@ -18,7 +18,10 @@ import * as logger from 'firebase-functions/logger';
 import type {Firestore} from 'firebase-admin/firestore';
 
 import {lineApi, maskUserId} from './line/client';
+import {COLLECTIONS} from './config';
 import {
+  buildAdminClaimedText,
+  buildAdminReleasedText,
   buildClaimedFlexMessage,
   formatDateJa,
   parsePostbackData,
@@ -26,6 +29,7 @@ import {
 import {
   claimSlot,
   hashLineUserId,
+  loadAdminTarget,
   releaseSlot,
   reserveWebhookEvent,
   resolveCustomerIdByLineUserId,
@@ -207,6 +211,8 @@ export async function handleSlotPostback(
         dateKey,
         channelSecret
       );
+      // 職員（管理者）へ確定を通知（アプリを開かなくても気づけるように）
+      await notifyAdmin(db, accessToken, 'claimed', result, dateKey, customerId);
       break;
     }
     case 'already_claimed_by_self':
@@ -232,6 +238,7 @@ export async function handleSlotPostback(
     case 'released':
       replyText = MSG_RELEASED;
       await reply(replyText);
+      await notifyAdmin(db, accessToken, 'released', result, dateKey, customerId);
       break;
     case 'release_denied':
       replyText = MSG_RELEASE_DENIED;
@@ -250,6 +257,93 @@ export async function handleSlotPostback(
     reply: replyText,
     losersNotified,
   };
+}
+
+/** 管理者通知で使う児童名の既定（名簿から引けなかった場合） */
+export const ADMIN_NOTIFY_FALLBACK_NAME = 'ご利用者';
+
+/**
+ * 応募者の氏名を引く。notification_logs/{date}_{customerId} の childName を使う
+ * （通知を受けた人だけが応募できるため、必ず存在する）。
+ * 引けない・空のときは ADMIN_NOTIFY_FALLBACK_NAME。
+ */
+async function lookupChildName(
+  db: Firestore,
+  dateKey: string,
+  customerId: string
+): Promise<string> {
+  try {
+    const snap = await db
+      .collection(COLLECTIONS.notificationLogs)
+      .doc(`${dateKey}_${customerId}`)
+      .get();
+    if (snap.exists) {
+      const d = snap.data() as Record<string, unknown>;
+      if (typeof d.childName === 'string' && d.childName.trim().length > 0) {
+        return d.childName.trim();
+      }
+    }
+  } catch (e) {
+    logger.warn('[slotPostback] child name lookup failed', {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return ADMIN_NOTIFY_FALLBACK_NAME;
+}
+
+/**
+ * 管理者へ確定／取り消しを 1 通だけ push する（transaction の外）。
+ *
+ *  - 呼ばれるのは outcome が claimed / released のときだけ。
+ *    already_filled / already_claimed_by_self / 重複 webhook は呼ばれない
+ *    ＝ 無料枠（200通/月）を連打や再送で消費しない。
+ *  - 宛先は枠ごとに保存された adminLineUserId。未設定ならスキップ（エラーにしない）。
+ *  - 送信失敗は握り潰す（応募者の確定／取り消しは既に成立している）。
+ *  - 生の userId はログに出さない（maskUserId）。
+ *
+ * @returns 送信できたら true
+ */
+export async function notifyAdmin(
+  db: Firestore,
+  accessToken: string,
+  kind: 'claimed' | 'released',
+  result: ClaimResult,
+  dateKey: string,
+  customerId: string
+): Promise<boolean> {
+  const adminUserId = await loadAdminTarget(db, result.slotId);
+  if (adminUserId === null) {
+    logger.info('admin notify skipped: no adminLineUserId', {
+      slotId: result.slotId,
+      kind,
+    });
+    return false;
+  }
+  try {
+    const name = await lookupChildName(db, dateKey, customerId);
+    const at = result.at ?? new Date();
+    const text =
+      kind === 'claimed'
+        ? buildAdminClaimedText(dateKey, name, at)
+        : buildAdminReleasedText(dateKey, name, at);
+    const r = await lineApi().pushText(accessToken, adminUserId, text);
+    logger.info('[slotPostback] admin notified', {
+      slotId: result.slotId,
+      kind,
+      ok: r.ok,
+      httpStatus: r.httpStatus,
+      adminLineUserId: maskUserId(adminUserId),
+    });
+    return r.ok;
+  } catch (e) {
+    logger.warn('[slotPostback] admin notify failed', {
+      slotId: result.slotId,
+      kind,
+      adminLineUserId: maskUserId(adminUserId),
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return false;
+  }
 }
 
 /**

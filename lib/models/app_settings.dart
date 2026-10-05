@@ -76,6 +76,16 @@ class AppSettings extends HiveObject {
   @HiveField(15)
   int slotTtlHours;
 
+  // ── Day 15: 管理者 LINE userId ───────────────────────────────
+  // fieldId 16 の追加のみ（既存データは null → 未設定として動作）。
+
+  /// 管理者（事業所代表者）の LINE userId。
+  /// 設定されていれば、応募の確定・取り消し時に管理者へ LINE 通知する。
+  /// null = 未設定（通知しない。確定処理には影響しない）。
+  /// 形式は 'U' + 32桁 16進（[isValidLineUserId]）。
+  @HiveField(16)
+  String? adminLineUserId;
+
   AppSettings({
     this.facilityName = 'ココスタディ',
     this.facilityAddress = '北海道帯広市西5条南21丁目8 2階',
@@ -93,7 +103,9 @@ class AppSettings extends HiveObject {
     String? vacancyReplyDeadline,
     String? vacancyMessageTemplate,
     int? slotTtlHours,
+    String? adminLineUserId,
   })  : slotTtlHours = clampSlotTtlHours(slotTtlHours),
+        adminLineUserId = normalizeAdminLineUserId(adminLineUserId),
         vacancyReplyDeadline =
             (vacancyReplyDeadline == null || vacancyReplyDeadline.isEmpty)
                 ? defaultVacancyReplyDeadline
@@ -130,8 +142,28 @@ class AppSettings extends HiveObject {
       vacancyReplyDeadline: vacancyReplyDeadline,
       vacancyMessageTemplate: vacancyMessageTemplate,
       slotTtlHours: slotTtlHours,
+      adminLineUserId: adminLineUserId,
     );
   }
+
+  // ── Day 15: 管理者 LINE userId の形式 ────────────────────────
+
+  static final RegExp _lineUserIdRe = RegExp(r'^U[0-9a-fA-F]{32}$');
+
+  /// LINE userId の形式か（'U' + 32桁 16進。functions の isValidLineUserId と一致）
+  static bool isValidLineUserId(String? v) =>
+      v != null && _lineUserIdRe.hasMatch(v.trim());
+
+  /// 保存用に正規化する。前後空白を除き、空は null。
+  /// 形式の検証は行わない（形式不正の拒否は SettingsService 側）。
+  static String? normalizeAdminLineUserId(String? v) {
+    if (v == null) return null;
+    final t = v.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  /// 管理者通知が有効か（設定済みかつ形式 OK）
+  bool get hasAdminLineUserId => isValidLineUserId(adminLineUserId);
 
   // ── Day 14: 応募受付時間の既定値・範囲 ───────────────────────
 

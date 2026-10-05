@@ -117,6 +117,13 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // ── slot_admin_targets: 枠ごとの管理者通知先（Day 15）──
+    // 管理者の LINE userId（生値）を持つため、read も含め全面拒否。
+    // slots は職員が read できるので、そこには置かず別コレクションに分離している。
+    match /slot_admin_targets/{slotId} {
+      allow read, write: if false;
+    }
+
     // ── 上記以外は全面拒否 ───────────────────────────────
     match /{document=**} {
       allow read, write: if false;

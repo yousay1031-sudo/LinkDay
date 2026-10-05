@@ -43,6 +43,11 @@ export const COLLECTIONS = {
   webhookProcessed: 'webhook_processed',
   /** 枠の状態変化の監査ログ（Day 13） */
   slotAudit: 'slot_audit',
+  /**
+   * 枠ごとの管理者通知先（Day 15）。
+   * 生の LINE userId を持つため client からは read/write とも全面拒否。
+   */
+  slotAdminTargets: 'slot_admin_targets',
 } as const;
 
 /**

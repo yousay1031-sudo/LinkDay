@@ -25,6 +25,7 @@ import {
   createSlotIfAbsent,
   hashLineUserId,
   makeSlotId,
+  saveAdminTarget,
   type NotifiedEntry,
 } from './slots';
 
@@ -54,6 +55,12 @@ export interface SendVacancyNoticeInput {
    * 既に枠がある日の追加送信では、最初に決めた期限を維持する（延長しない）。
    */
   slotTtlHours?: number;
+  /**
+   * Day 15: 管理者の LINE userId（AppSettings.adminLineUserId）。
+   * 応募の確定・取り消し時に管理者へ通知する宛先。
+   * 形式不正は undefined に落とす（通知送信自体は失敗させない）。
+   */
+  adminLineUserId?: string;
 }
 
 /** 1 件ごとの結果ステータス */
@@ -191,6 +198,12 @@ export function validateInput(data: unknown): SendVacancyNoticeInput {
       typeof d.slotTtlHours === 'number'
         ? clampSlotTtlHours(d.slotTtlHours)
         : undefined,
+    // 形式不正（空・短い・別物の文字列）は黙って捨てる。誤った宛先へ送らない。
+    adminLineUserId:
+      typeof d.adminLineUserId === 'string' &&
+      isValidLineUserId(d.adminLineUserId)
+        ? d.adminLineUserId.trim()
+        : undefined,
   };
 }
 
@@ -301,10 +314,13 @@ export async function runSendVacancyNotice(
         });
       }
     }
+    // 管理者通知先を枠単位で保存（未設定なら既存の宛先を消す）
+    await saveAdminTarget(db, slotId, input.adminLineUserId);
     logger.info('[sendVacancyNotice] slot ready', {
       slotId,
       created,
       recipients: input.recipients.length,
+      adminNotify: input.adminLineUserId !== undefined,
     });
   }
 

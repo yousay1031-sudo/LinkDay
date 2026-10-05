@@ -102,6 +102,7 @@ class SettingsService {
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
+      adminLineUserId: current.adminLineUserId,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] facility updated: $name');
@@ -129,6 +130,7 @@ class SettingsService {
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
+      adminLineUserId: current.adminLineUserId,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] vehicles updated: count=$count');
@@ -155,6 +157,7 @@ class SettingsService {
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
+      adminLineUserId: current.adminLineUserId,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] operating hours updated');
@@ -178,6 +181,7 @@ class SettingsService {
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
+      adminLineUserId: current.adminLineUserId,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] geocode saved: $lat, $lng');
@@ -203,9 +207,47 @@ class SettingsService {
       vacancyReplyDeadline: current.vacancyReplyDeadline,
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: AppSettings.clampSlotTtlHours(hours),
+      adminLineUserId: current.adminLineUserId,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] slotTtlHours updated: ${updated.slotTtlHours}');
+  }
+
+  // ── Day 15: 管理者 LINE userId ────────────────────────────────
+
+  /// 管理者の LINE userId を保存する。他の設定は一切変更しない。
+  ///
+  /// - 空・空白のみ → 未設定（null）として保存（通知を止める操作）
+  /// - 形式不正（'U' + 32桁 16進でない）→ 保存せず false を返す
+  ///   （誤った宛先を保存して、別人や存在しない宛先へ送るのを防ぐ）
+  /// - 正しい形式 → trim して保存し true
+  Future<bool> updateAdminLineUserId(String? value) async {
+    final normalized = AppSettings.normalizeAdminLineUserId(value);
+    if (normalized != null && !AppSettings.isValidLineUserId(normalized)) {
+      return false;
+    }
+    final current = getSettings();
+    final updated = AppSettings(
+      facilityName: current.facilityName,
+      facilityAddress: current.facilityAddress,
+      facilityLat: current.facilityLat,
+      facilityLng: current.facilityLng,
+      vehicleCount: current.vehicleCount,
+      vehicleNames: current.vehicleNames,
+      vehicleCapacities: current.vehicleCapacities,
+      maxStudentsPerDay: current.maxStudentsPerDay,
+      defaultPickupStart: current.defaultPickupStart,
+      defaultDropoffEnd: current.defaultDropoffEnd,
+      vacancyReplyDeadline: current.vacancyReplyDeadline,
+      vacancyMessageTemplate: current.vacancyMessageTemplate,
+      slotTtlHours: current.slotTtlHours,
+      adminLineUserId: normalized,
+    );
+    await _box.put(_kSettingsKey, updated);
+    // 生の userId はログに出さない（設定有無のみ）
+    debugPrint(
+        '[SettingsService] adminLineUserId ${normalized == null ? "cleared" : "saved"}');
+    return true;
   }
 
   // ── Day 11: 空き枠 LINE 通知設定 ─────────────────────────────
@@ -238,6 +280,7 @@ class SettingsService {
       vacancyReplyDeadline: safeDeadline,
       vacancyMessageTemplate: safeTemplate,
       slotTtlHours: current.slotTtlHours,
+      adminLineUserId: current.adminLineUserId,
     );
     await _box.put(_kSettingsKey, updated);
     debugPrint('[SettingsService] vacancy notice updated: deadline=$safeDeadline');

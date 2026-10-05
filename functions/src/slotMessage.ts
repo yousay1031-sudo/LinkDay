@@ -121,6 +121,50 @@ export function formatDateJa(dateKey: string): string {
   return `${mo}月${d}日(${wd})`;
 }
 
+/** 管理者通知用の日付「10/6（火）」（全角括弧） */
+export function formatDateShortJa(dateKey: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!m) return dateKey;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const d = parseInt(m[3], 10);
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  const wd = ['日', '月', '火', '水', '木', '金', '土'][probe.getUTCDay()];
+  return `${mo}/${d}（${wd}）`;
+}
+
+/** 管理者通知用の時刻「10:23」（JST・ゼロ埋め2桁分） */
+export function formatClockJst(d: Date): string {
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const hh = jst.getUTCHours();
+  const mm = String(jst.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+/** 管理者へ送る「確定」通知文 */
+export function buildAdminClaimedText(
+  dateKey: string,
+  childName: string,
+  at: Date
+): string {
+  return (
+    `【確定】${formatDateShortJa(dateKey)}${childName}さんが` +
+    `空き枠に応募しました（${formatClockJst(at)}）`
+  );
+}
+
+/** 管理者へ送る「キャンセル」通知文 */
+export function buildAdminReleasedText(
+  dateKey: string,
+  childName: string,
+  at: Date
+): string {
+  return (
+    `【キャンセル】${formatDateShortJa(dateKey)}${childName}さんが` +
+    `空き枠への応募を取り消しました（${formatClockJst(at)}）`
+  );
+}
+
 /**
  * 応募ボタン付き Flex Message を組み立てる。
  *

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../models/app_settings.dart';
 import '../models/notification_log.dart';
 import 'attendance_service.dart';
 import 'customer_service.dart';
@@ -354,6 +355,40 @@ class VacancyNotificationService {
   /// [sourceAbsentCustomerId] 欠席した児童の customerId（Day 13）
   ///   指定すると、保護者の LINE に「応募する」ボタン付きの通知が届き、
   ///   先着 1 名でその場で確定できる。未指定なら従来どおりテキストのみ。
+  /// Callable `sendVacancyNotice` に渡すペイロードを組み立てる。
+  ///
+  /// 純粋関数（Firebase に依存しない）にしてあるのは、
+  /// 「管理者 userId が設定済みのときだけ渡す」等を単体テストで固定するため。
+  @visibleForTesting
+  static Map<String, dynamic> buildCallablePayload({
+    required String dateKey,
+    required String message,
+    required String? sourceAbsentCustomerId,
+    required AppSettings settings,
+    required List<VacancyCandidate> targets,
+  }) {
+    return {
+      'date': dateKey,
+      'message': message,
+      if (sourceAbsentCustomerId != null && sourceAbsentCustomerId.isNotEmpty)
+        'sourceAbsentCustomerId': sourceAbsentCustomerId,
+      // Day 14: 応募の受付時間（設定画面で変更可能）。
+      // サーバー側でも 1〜24 に丸められるため、改ざんされても安全。
+      'slotTtlHours': settings.slotTtlHours,
+      // Day 15: 管理者の LINE userId（設定済み・形式 OK のときのみ渡す）。
+      // 応募の確定・取り消しを管理者へ通知する宛先。サーバー側でも形式検証する。
+      if (settings.hasAdminLineUserId)
+        'adminLineUserId': settings.adminLineUserId!.trim(),
+      'recipients': targets
+          .map((c) => {
+                'customerId': c.customerId,
+                'lineUserId': c.lineUserId,
+                'childName': c.childName,
+              })
+          .toList(),
+    };
+  }
+
   Future<VacancySendResult> sendNotices({
     required DateTime date,
     required List<VacancyCandidate> candidates,
@@ -427,23 +462,13 @@ class VacancyNotificationService {
         options: HttpsCallableOptions(timeout: const Duration(seconds: 90)),
       );
 
-      final res = await callable.call<dynamic>({
-        'date': dateKey,
-        'message': message,
-        if (sourceAbsentCustomerId != null &&
-            sourceAbsentCustomerId.isNotEmpty)
-          'sourceAbsentCustomerId': sourceAbsentCustomerId,
-        // Day 14: 応募の受付時間（設定画面で変更可能）。
-        // サーバー側でも 1〜24 に丸められるため、改ざんされても安全。
-        'slotTtlHours': SettingsService.instance.getSettings().slotTtlHours,
-        'recipients': targets
-            .map((c) => {
-                  'customerId': c.customerId,
-                  'lineUserId': c.lineUserId,
-                  'childName': c.childName,
-                })
-            .toList(),
-      });
+      final res = await callable.call<dynamic>(buildCallablePayload(
+        dateKey: dateKey,
+        message: message,
+        sourceAbsentCustomerId: sourceAbsentCustomerId,
+        settings: SettingsService.instance.getSettings(),
+        targets: targets,
+      ));
 
       final items = <VacancySendResultItem>[...blocked];
       final data = res.data;
