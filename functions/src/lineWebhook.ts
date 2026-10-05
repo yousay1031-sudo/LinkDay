@@ -5,6 +5,7 @@
  *  - follow  : 友だち追加 → 「連携コードを送信してください」と reply
  *  - message : テキストが 6 桁英数の連携コードと一致すれば line_linkage へ保存
  *              → 「連携が完了しました」と reply。不一致は「コードが違います」
+ *  - message「ID確認」: 送信者本人の userId を reply（管理者の設定用・保存しない）
  *  - unfollow: ブロック（reply 不可）→ ログのみ
  *
  * 【セキュリティ】
@@ -46,6 +47,31 @@ export const MSG_EXPIRED =
   'この連携コードは有効期限が切れています。お手数ですが施設に新しいコードの発行をご依頼ください。';
 export const MSG_NOT_A_CODE =
   '連携コード（6桁）を送信してください。\nご用件のある方は施設へお電話ください。';
+
+/**
+ * 管理者用「ID確認」コマンド（Day 15）。
+ *
+ * 管理者通知の設定には代表者の lineUserId が要るが、連携コードを送ると
+ * 児童の保護者として line_linkage に登録されてしまう。児童に紐付けずに
+ * 自分の userId だけを知るための専用経路。
+ * 前後の空白（全角含む）だけ許容し、完全一致のみ反応する（部分一致はしない）。
+ * 返すのは送信者本人の userId だけで、何も保存しない。
+ */
+export const ID_CHECK_COMMAND = 'ID確認';
+
+export function isIdCheckCommand(text: string): boolean {
+  return text.trim() === ID_CHECK_COMMAND;
+}
+
+export function buildIdCheckReply(lineUserId: string): string {
+  return (
+    `あなたのユーザーID: ${lineUserId}\n` +
+    '（このIDをLinkDayの設定画面の管理者LINE通知欄に貼ってください）'
+  );
+}
+
+export const MSG_ID_CHECK_UNAVAILABLE =
+  'ユーザーIDを取得できませんでした。1対1のトークでもう一度お試しください。';
 
 /** 正規化: 全角→半角・小文字→大文字・空白除去 */
 export function normalizeCode(text: string): string {
@@ -149,6 +175,27 @@ export async function processWebhookEvents(
 
     if (ev.type === 'message' && ev.message?.type === 'text') {
       const raw = ev.message.text ?? '';
+
+      // ── 「ID確認」: 連携コード照合より先に処理する（保存は一切しない）
+      if (isIdCheckCommand(raw)) {
+        const text =
+          lineUserId.length > 0
+            ? buildIdCheckReply(lineUserId)
+            : MSG_ID_CHECK_UNAVAILABLE;
+        if (replyToken) await api.replyText(accessToken, replyToken, text);
+        // 生の userId はログに残さない（reply 本文には含まれる）
+        logger.info('[lineWebhook] id check', {
+          lineUserId: maskUserId(lineUserId),
+        });
+        out.push({
+          type: 'message',
+          handled: true,
+          reply: text,
+          linkedCustomerId: null,
+        });
+        continue;
+      }
+
       const code = normalizeCode(raw);
 
       // コード書式でない → 案内のみ（Firestore は引かない）
