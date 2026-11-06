@@ -9,6 +9,14 @@ import '../services/transport_pdf_service.dart';
 import '../services/transport_plan_service.dart';
 import '../services/weekly_schedule_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/empty_state.dart';
+import '../widgets/motion/press_scale.dart';
+import '../widgets/motion/skeleton_gate.dart';
+import '../widgets/motion/staggered.dart';
+import '../widgets/motion/state_switcher.dart';
+import '../widgets/motion/success_feedback.dart';
+import '../widgets/skeletons/screen_skeletons.dart';
 import 'settings_screen.dart';
 import 'transport_map_screen.dart';
 
@@ -26,6 +34,13 @@ class _TransportScreenState extends State<TransportScreen>
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
   String? _errorMessage;
+
+  /// 全データ読込（初回・日付変更）中。骨格表示用。
+  /// 最適化・削除などの操作中（_isLoading）では立てない（画面を潰さない）
+  bool _initialLoading = true;
+
+  /// 全データ読込に失敗した（骨格ではなくエラー＋再試行を出す）
+  bool _loadFailed = false;
 
   // 現在表示中のルート
   List<TransportVehicleRoute> _pickupRoutes = [];
@@ -78,7 +93,11 @@ class _TransportScreenState extends State<TransportScreen>
   // ── 全データ読み込み ─────────────────────────────────────────
 
   Future<void> _loadAll() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _initialLoading = true;
+      _loadFailed = false;
+    });
     try {
       // 利用予定者を取得（3段階フォールバック）
       final customers = await _fetchScheduledCustomers();
@@ -95,6 +114,7 @@ class _TransportScreenState extends State<TransportScreen>
           _pickupRoutes = pickup;
           _dropoffRoutes = dropoff;
           _isLoading = false;
+          _initialLoading = false;
           _errorMessage = null;
         });
       }
@@ -102,6 +122,8 @@ class _TransportScreenState extends State<TransportScreen>
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _initialLoading = false;
+          _loadFailed = true;
           _errorMessage = '読み込みエラー: $e';
         });
       }
@@ -156,7 +178,8 @@ class _TransportScreenState extends State<TransportScreen>
         final idSet = <String>{};
         for (final entry in entries) {
           if (idSet.contains(entry.customerId)) continue;
-          final customer = CustomerService.instance.getCustomerById(entry.customerId);
+          final customer =
+              CustomerService.instance.getCustomerById(entry.customerId);
           if (customer != null && customer.isActive) {
             result.add(customer);
             idSet.add(entry.customerId);
@@ -228,8 +251,7 @@ class _TransportScreenState extends State<TransportScreen>
     }
 
     if (useApi && (_jsApiKey ?? '').isEmpty) {
-      _showSnack('APIキーが設定されていません。設定画面で登録してください。',
-          isError: true);
+      _showSnack('APIキーが設定されていません。設定画面で登録してください。', isError: true);
       return;
     }
 
@@ -239,7 +261,8 @@ class _TransportScreenState extends State<TransportScreen>
       final apiKey = useApi ? _jsApiKey : null;
 
       // お迎え・お送り両方生成
-      final pickupRoutes = await TransportPlanService.instance.autoGroupCustomers(
+      final pickupRoutes =
+          await TransportPlanService.instance.autoGroupCustomers(
         dateKey: _dateKey,
         customers: customers,
         type: TransportType.pickup,
@@ -313,8 +336,7 @@ class _TransportScreenState extends State<TransportScreen>
 
   Future<void> _optimizeRoute(TransportVehicleRoute route) async {
     if ((_jsApiKey ?? '').isEmpty) {
-      _showSnack('APIキーが設定されていません。設定画面で登録してください。',
-          isError: true);
+      _showSnack('APIキーが設定されていません。設定画面で登録してください。', isError: true);
       return;
     }
     if (route.stops.isEmpty) {
@@ -449,10 +471,9 @@ class _TransportScreenState extends State<TransportScreen>
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('キャンセル'),
           ),
-          ElevatedButton(
+          AppElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('削除'),
           ),
         ],
@@ -489,10 +510,8 @@ class _TransportScreenState extends State<TransportScreen>
 
   // ── 停留所削除 ──────────────────────────────────────────────
 
-  Future<void> _removeStop(
-      TransportVehicleRoute route, int stopIndex) async {
-    final stops = List<TransportStop>.from(route.stops)
-      ..removeAt(stopIndex);
+  Future<void> _removeStop(TransportVehicleRoute route, int stopIndex) async {
+    final stops = List<TransportStop>.from(route.stops)..removeAt(stopIndex);
     for (int i = 0; i < stops.length; i++) {
       stops[i].orderIndex = i;
     }
@@ -519,12 +538,18 @@ class _TransportScreenState extends State<TransportScreen>
 
   void _showSnack(String msg, {bool isError = false}) {
     if (!mounted) return;
+    if (!isError) {
+      // 成功はチェックマーク付き（文言は呼び出し元のまま）
+      showSuccessSnack(context, msg);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
-      backgroundColor: isError ? AppColors.error : AppColors.success,
+      backgroundColor: AppColors.error,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.all(16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.controlBorderRadius)),
     ));
   }
 
@@ -540,14 +565,23 @@ class _TransportScreenState extends State<TransportScreen>
         children: [
           _buildDateNav(),
           _buildTabBar(),
-          if (_isLoading)
+          // 操作中（最適化・グループ分け等）の細い進行バー。初回読込は骨格が担当
+          if (_isLoading && !_initialLoading)
             const LinearProgressIndicator(
               minHeight: 3,
               color: AppColors.primary,
             ),
-          if (_errorMessage != null) _buildErrorBanner(),
+          if (_errorMessage != null && !_loadFailed) _buildErrorBanner(),
           _buildFacilityNotSetBanner(),
-          Expanded(child: _buildTabView()),
+          Expanded(
+            child: SkeletonGate(
+              loading: _initialLoading,
+              errorMessage: _loadFailed ? _errorMessage : null,
+              onRetry: _loadAll,
+              skeleton: const TransportSkeleton(),
+              builder: (context) => _buildTabView(),
+            ),
+          ),
         ],
       ),
     );
@@ -621,38 +655,43 @@ class _TransportScreenState extends State<TransportScreen>
             icon: const Icon(Icons.chevron_left),
             onPressed: () {
               setState(() {
-                _selectedDate =
-                    _selectedDate.subtract(const Duration(days: 1));
+                _selectedDate = _selectedDate.subtract(const Duration(days: 1));
               });
               _loadAll();
             },
           ),
-          GestureDetector(
-            onTap: _pickDate,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today,
-                      size: 16, color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${_selectedDate.year}年${_selectedDate.month}月'
-                    '${_selectedDate.day}日（$wd）',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+          PressableScale(
+            child: GestureDetector(
+              onTap: _pickDate,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today,
+                        size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    // 日付の切替は StateSwitcher（0.7→1.0 / 250ms、消えない）
+                    StateSwitcher(
+                      stateKey: _dateKey,
+                      child: Text(
+                        '${_selectedDate.year}年${_selectedDate.month}月'
+                        '${_selectedDate.day}日（$wd）',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -670,8 +709,7 @@ class _TransportScreenState extends State<TransportScreen>
               setState(() => _selectedDate = DateTime.now());
               _loadAll();
             },
-            child: const Text('今日',
-                style: TextStyle(color: AppColors.primary)),
+            child: const Text('今日', style: TextStyle(color: AppColors.primary)),
           ),
         ],
       ),
@@ -811,10 +849,18 @@ class _TransportScreenState extends State<TransportScreen>
             child: _buildEmptyState(label),
           )
         else
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) => _buildRouteCard(routes[i]),
-              childCount: routes.length,
+          SliverToBoxAdapter(
+            child: StaggerScope(
+              child: Column(
+                children: [
+                  for (var i = 0; i < routes.length; i++)
+                    StaggeredItem(
+                      index: i,
+                      total: routes.length,
+                      child: _buildRouteCard(routes[i]),
+                    ),
+                ],
+              ),
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 80)),
@@ -834,8 +880,7 @@ class _TransportScreenState extends State<TransportScreen>
         children: [
           // 利用予定者数バッジ
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: count > 0
                   ? AppColors.primary.withValues(alpha: 0.12)
@@ -868,23 +913,21 @@ class _TransportScreenState extends State<TransportScreen>
           ),
           const Spacer(),
           // このタブのみ自動グループ分け
-          OutlinedButton.icon(
+          AppOutlinedButton.icon(
             onPressed: _isLoading ? null : () => _autoGroup(type),
             icon: const Icon(Icons.auto_awesome, size: 16),
             label: const Text('自動グループ分け'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary,
               side: const BorderSide(color: AppColors.primary),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               textStyle: const TextStyle(fontSize: 12),
             ),
           ),
           if (routes.isNotEmpty) ...[
             const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed:
-                  _isLoading ? null : () => _optimizeAllRoutes(routes),
+            AppOutlinedButton.icon(
+              onPressed: _isLoading ? null : () => _optimizeAllRoutes(routes),
               icon: const Icon(Icons.route, size: 16),
               label: const Text('全最適化'),
               style: OutlinedButton.styleFrom(
@@ -901,8 +944,7 @@ class _TransportScreenState extends State<TransportScreen>
     );
   }
 
-  Future<void> _optimizeAllRoutes(
-      List<TransportVehicleRoute> routes) async {
+  Future<void> _optimizeAllRoutes(List<TransportVehicleRoute> routes) async {
     if ((_jsApiKey ?? '').isEmpty) {
       _showSnack('APIキーが設定されていません', isError: true);
       return;
@@ -939,7 +981,8 @@ class _TransportScreenState extends State<TransportScreen>
             // 個別ルートで Directions 失敗 → フォールバック適用
             // 他のルートの処理は続行する
             hasFallback = true;
-            debugPrint('[TransportScreen] DirectionsFallback (${r.vehicleName}): ${e.message}');
+            debugPrint(
+                '[TransportScreen] DirectionsFallback (${r.vehicleName}): ${e.message}');
           }
         }
       }
@@ -964,94 +1007,55 @@ class _TransportScreenState extends State<TransportScreen>
     final count = _scheduledCustomers.length;
     final weekdays = ['月', '火', '水', '木', '金', '土', '日'];
     final wd = weekdays[_selectedDate.weekday - 1];
-    final dateStr =
-        '${_selectedDate.month}月${_selectedDate.day}日（$wd）';
+    final dateStr = '${_selectedDate.month}月${_selectedDate.day}日（$wd）';
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.directions_car_outlined,
-              size: 64,
-              color: AppColors.onSurfaceVariant.withValues(alpha: 0.4),
+    return EmptyState(
+      icon: Icons.directions_car_outlined,
+      title: '$label ルートがありません',
+      message: count > 0 ? null : '$dateStrの週間計画にデータがありません\n週間利用計画を先に作成してください',
+      actions: [
+        if (count > 0) ...[
+          // 利用予定数の表示
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppTheme.pillBorderRadius),
+              border:
+                  Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
             ),
-            const SizedBox(height: 16),
-            Text(
-              '$label ルートがありません',
-              style: const TextStyle(
-                  color: AppColors.onSurfaceVariant,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.people, size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  '$dateStrの利用予定: $count名',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            // 利用予定数の表示
-            if (count > 0) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.people,
-                        size: 16, color: AppColors.primary),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$dateStrの利用予定: $count名',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              // 自動グループ分け 大ボタン
-              ElevatedButton.icon(
-                onPressed: _isLoading ? null : _showAutoAssignMenu,
-                icon: const Icon(Icons.auto_awesome, size: 20),
-                label: const Text(
-                  '自動グループ分け',
-                  style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 28, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  elevation: 3,
-                ),
-              ),
-            ] else ...[
-              Text(
-                '$dateStrの週間計画にデータがありません',
-                style: const TextStyle(
-                    color: AppColors.onSurfaceVariant, fontSize: 13),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '週間利用計画を先に作成してください',
-                style: TextStyle(
-                    color: AppColors.onSurfaceVariant, fontSize: 12),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+          // 自動グループ分け 大ボタン
+          AppElevatedButton.icon(
+            onPressed: _isLoading ? null : _showAutoAssignMenu,
+            icon: const Icon(Icons.auto_awesome, size: 20),
+            label: const Text(
+              '自動グループ分け',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1083,8 +1087,7 @@ class _TransportScreenState extends State<TransportScreen>
               const SizedBox(height: 16),
               const Text(
                 '自動グループ分けモード',
-                style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
               Text(
@@ -1162,8 +1165,7 @@ class _TransportScreenState extends State<TransportScreen>
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.onSurfaceVariant)),
+                          fontSize: 12, color: AppColors.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -1177,6 +1179,12 @@ class _TransportScreenState extends State<TransportScreen>
   // ── 車両カード ───────────────────────────────────────────────
 
   Widget _buildRouteCard(TransportVehicleRoute route) {
+    return PressableScale(
+      child: _buildRouteCardBody(route),
+    );
+  }
+
+  Widget _buildRouteCardBody(TransportVehicleRoute route) {
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       shape: RoundedRectangleBorder(
@@ -1211,8 +1219,8 @@ class _TransportScreenState extends State<TransportScreen>
               color: AppColors.primary,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.directions_car,
-                color: Colors.white, size: 22),
+            child:
+                const Icon(Icons.directions_car, color: Colors.white, size: 22),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1242,24 +1250,20 @@ class _TransportScreenState extends State<TransportScreen>
                   children: [
                     if (route.totalDistanceLabel != '—') ...[
                       const Icon(Icons.straighten,
-                          size: 13,
-                          color: AppColors.onSurfaceVariant),
+                          size: 13, color: AppColors.onSurfaceVariant),
                       const SizedBox(width: 3),
                       Text(route.totalDistanceLabel,
                           style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.onSurfaceVariant)),
+                              fontSize: 12, color: AppColors.onSurfaceVariant)),
                       const SizedBox(width: 10),
                     ],
                     if (route.totalDurationLabel != '—') ...[
                       const Icon(Icons.timer_outlined,
-                          size: 13,
-                          color: AppColors.onSurfaceVariant),
+                          size: 13, color: AppColors.onSurfaceVariant),
                       const SizedBox(width: 3),
                       Text(route.totalDurationLabel,
                           style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.onSurfaceVariant)),
+                              fontSize: 12, color: AppColors.onSurfaceVariant)),
                     ],
                     if (route.optimizedAt != null) ...[
                       const SizedBox(width: 8),
@@ -1276,8 +1280,8 @@ class _TransportScreenState extends State<TransportScreen>
             ),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert,
-                color: AppColors.onSurfaceVariant),
+            icon:
+                const Icon(Icons.more_vert, color: AppColors.onSurfaceVariant),
             onSelected: (v) => _onCardMenuSelected(v, route),
             itemBuilder: (_) => const [
               PopupMenuItem(
@@ -1308,8 +1312,7 @@ class _TransportScreenState extends State<TransportScreen>
                     Icon(Icons.delete_outline,
                         size: 18, color: AppColors.error),
                     SizedBox(width: 8),
-                    Text('削除',
-                        style: TextStyle(color: AppColors.error)),
+                    Text('削除', style: TextStyle(color: AppColors.error)),
                   ])),
             ],
           ),
@@ -1363,9 +1366,7 @@ class _TransportScreenState extends State<TransportScreen>
     return Column(
       children: [
         _buildFacilityTile(
-          route.transportType == TransportType.pickup
-              ? null
-              : _facilityAddress,
+          route.transportType == TransportType.pickup ? null : _facilityAddress,
           isStart: true,
           type: route.transportType,
         ),
@@ -1415,8 +1416,7 @@ class _TransportScreenState extends State<TransportScreen>
       ),
       subtitle: Text(
         _facilityAddress,
-        style: const TextStyle(
-            fontSize: 11, color: AppColors.onSurfaceVariant),
+        style: const TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
         overflow: TextOverflow.ellipsis,
       ),
       dense: true,
@@ -1433,8 +1433,7 @@ class _TransportScreenState extends State<TransportScreen>
         decoration: BoxDecoration(
           color: AppColors.secondary.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-              color: AppColors.secondary.withValues(alpha: 0.4)),
+          border: Border.all(color: AppColors.secondary.withValues(alpha: 0.4)),
         ),
         child: Center(
           child: Text(
@@ -1452,8 +1451,7 @@ class _TransportScreenState extends State<TransportScreen>
           Expanded(
             child: Text(
               stop.customerName,
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
           if (stop.durationLabel.isNotEmpty)
@@ -1485,13 +1483,11 @@ class _TransportScreenState extends State<TransportScreen>
             ),
           const SizedBox(width: 4),
           IconButton(
-            icon:
-                const Icon(Icons.close, size: 18, color: AppColors.error),
+            icon: const Icon(Icons.close, size: 18, color: AppColors.error),
             onPressed: () => _removeStop(route, index),
             tooltip: '除外',
             padding: EdgeInsets.zero,
-            constraints:
-                const BoxConstraints(minWidth: 28, minHeight: 28),
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
           ),
           const Icon(Icons.drag_handle,
               size: 20, color: AppColors.onSurfaceVariant),
@@ -1563,9 +1559,7 @@ class _TransportScreenState extends State<TransportScreen>
             const SizedBox(width: 4),
             Text(label,
                 style: TextStyle(
-                    fontSize: 12,
-                    color: color,
-                    fontWeight: FontWeight.w600)),
+                    fontSize: 12, color: color, fontWeight: FontWeight.w600)),
           ],
         ),
       ),

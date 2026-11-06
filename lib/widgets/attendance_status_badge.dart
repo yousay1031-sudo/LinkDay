@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/attendance_record.dart';
+import '../theme/app_motion.dart';
 
 /// ステータスに対応する色定義
 class AttendanceColors {
@@ -142,10 +143,23 @@ class _PulseDotState extends State<_PulseDot>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
+      value: 1.0,
+    );
     _anim = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 減らす設定・テスト用フラグでは点滅させず常時点灯（色は変えない）
+    if (AppMotion.loopingEnabled(context)) {
+      if (!_ctrl.isAnimating) _ctrl.repeat(reverse: true);
+    } else {
+      _ctrl.stop();
+      _ctrl.value = 1.0;
+    }
   }
 
   @override

@@ -6,6 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/app_settings.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/skeleton_gate.dart';
+import '../widgets/motion/success_feedback.dart';
+import '../widgets/skeletons/screen_skeletons.dart';
 import '../widgets/draggable_marker_map.dart';
 
 // ════════════════════════════════════════════════════════════════
@@ -49,9 +53,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// geocode 後に表示する事業所座標（マーカー位置・地図中心）
   double? _previewLat;
   double? _previewLng;
+
   /// 現在のマーカー位置（ドラッグ後に更新）
   LatLng? _markerLatLng;
   bool _savingPosition = false;
+
+  /// API キー（非同期取得）の読込中。ここだけ骨格を出す
+  bool _apiKeyLoading = true;
+  String? _apiKeyLoadError;
 
   @override
   void initState() {
@@ -79,7 +88,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _dropoffEnd = _parseTime(settings.defaultDropoffEnd);
     _slotTtlHours = AppSettings.clampSlotTtlHours(settings.slotTtlHours);
     _adminLineUserIdCtrl.text = settings.adminLineUserId ?? '';
-    _rebuildVehicleControllers(settings.vehicleNames, settings.vehicleCapacities);
+    _rebuildVehicleControllers(
+        settings.vehicleNames, settings.vehicleCapacities);
 
     // 既存の geocode 済み座標があれば地図プレビューを初期表示
     final lat = settings.facilityLat;
@@ -109,19 +119,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final settings = SettingsService.instance.getSettings();
-    final jsKey = await SettingsService.instance.loadJsApiKey();
+    String? jsKey;
+    try {
+      jsKey = await SettingsService.instance.loadJsApiKey();
+    } catch (e) {
+      debugPrint('[SettingsScreen] loadJsApiKey failed: $e');
+      if (!mounted) return;
+      // 骨格のまま放置しない: 入力欄を出して再読込できるようにする
+      setState(() {
+        _apiKeyLoading = false;
+        _apiKeyLoadError = 'APIキーを読み込めませんでした';
+      });
+      return;
+    }
     if (!mounted) return;
 
-    debugPrint('[SettingsScreen] _loadSettings: apiKey=${jsKey == null || jsKey.isEmpty ? "未設定" : "設定済み"}, '
+    debugPrint(
+        '[SettingsScreen] _loadSettings: apiKey=${jsKey == null || jsKey.isEmpty ? "未設定" : "設定済み"}, '
         'facilityLatLng=${settings.hasGeocode ? "あり" : "未設定"}, '
         'vehicleCount=${settings.vehicleCount}');
 
     setState(() {
       _applySettingsSync(settings);
       _jsApiKeyCtrl.text = jsKey ?? '';
-      _jsApiKeyStatus =
-          (jsKey != null && jsKey.isNotEmpty) ? ApiKeyStatus.valid : ApiKeyStatus.notSet;
+      _jsApiKeyStatus = (jsKey != null && jsKey.isNotEmpty)
+          ? ApiKeyStatus.valid
+          : ApiKeyStatus.notSet;
+      _apiKeyLoading = false;
+      _apiKeyLoadError = null;
     });
+  }
+
+  void _retryLoadSettings() {
+    setState(() {
+      _apiKeyLoading = true;
+      _apiKeyLoadError = null;
+    });
+    _loadSettings();
   }
 
   void _rebuildVehicleControllers(List<String> names, List<int> caps) {
@@ -181,9 +215,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveVehicles() async {
     final names = _vehicleNameCtrls.map((c) => c.text.trim()).toList();
-    final caps = _vehicleCapCtrls
-        .map((c) => int.tryParse(c.text) ?? 5)
-        .toList();
+    final caps =
+        _vehicleCapCtrls.map((c) => int.tryParse(c.text) ?? 5).toList();
     await SettingsService.instance.updateVehicles(_vehicleCount, names, caps);
     if (!mounted) return;
     _showSnack('車両設定を保存しました', AppColors.success);
@@ -205,8 +238,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _slotTtlHours = v);
     await SettingsService.instance.updateSlotTtlHours(v);
     if (!mounted) return;
-    _showSnack('LINE応募の受付時間を$v時間に変更しました（次回の通知から有効）',
-        AppColors.success);
+    _showSnack('LINE応募の受付時間を$v時間に変更しました（次回の通知から有効）', AppColors.success);
   }
 
   /// Day 15: 管理者 LINE userId を保存する。
@@ -214,8 +246,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveAdminLineUserId() async {
     final text = _adminLineUserIdCtrl.text.trim();
     if (text.isNotEmpty && !AppSettings.isValidLineUserId(text)) {
-      setState(() => _adminLineUserIdError =
-          'userId の形式が正しくありません（U + 英数字32桁、計33文字）');
+      setState(() =>
+          _adminLineUserIdError = 'userId の形式が正しくありません（U + 英数字32桁、計33文字）');
       return;
     }
     setState(() => _adminLineUserIdError = null);
@@ -226,9 +258,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     _showSnack(
-      text.isEmpty
-          ? '管理者通知を解除しました'
-          : '管理者 userId を保存しました（次回の通知から有効）',
+      text.isEmpty ? '管理者通知を解除しました' : '管理者 userId を保存しました（次回の通知から有効）',
       AppColors.success,
     );
   }
@@ -260,7 +290,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _jsApiKeyStatus = status);
       switch (status) {
         case ApiKeyStatus.valid:
-          _showSnack('✅ API キー有効（地図表示・ルート計算・ジオコーディングが動作します）', AppColors.success);
+          _showSnack(
+              '✅ API キー有効（地図表示・ルート計算・ジオコーディングが動作します）', AppColors.success);
           break;
         case ApiKeyStatus.invalid:
           _showSnack('❌ API キーが無効です。キーの制限設定または権限を確認してください。', AppColors.error);
@@ -435,13 +466,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   void _showSnack(String message, Color color) {
+    // 成功（緑）はチェックマーク付き。文言は呼び出し元のまま
+    if (color == AppColors.success) {
+      showSuccessSnack(context, message);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(AppTheme.controlBorderRadius)),
       ),
     );
   }
@@ -521,7 +559,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             spacing: 8,
             runSpacing: 6,
             children: [
-              OutlinedButton.icon(
+              AppOutlinedButton.icon(
                 onPressed: _geocoding ? null : _geocodeFacility,
                 icon: _geocoding
                     ? const SizedBox(
@@ -535,26 +573,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.primary,
                   side: const BorderSide(color: AppColors.primary),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
               ),
-              OutlinedButton.icon(
+              AppOutlinedButton.icon(
                 onPressed: _openInGoogleMaps,
                 icon: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('G-Mapsで確認',
-                    style: TextStyle(fontSize: 13)),
+                label: const Text('G-Mapsで確認', style: TextStyle(fontSize: 13)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.info,
                   side: const BorderSide(color: AppColors.info),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
               ),
-              ElevatedButton.icon(
+              AppElevatedButton.icon(
                 onPressed: _saveFacility,
                 icon: const Icon(Icons.save, size: 16),
                 label: const Text('保存', style: TextStyle(fontSize: 13)),
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
               ),
             ],
@@ -580,7 +620,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 共通ウィジェット（送迎場所の微調整 UI と共有）
     return DraggableMarkerMap(
       initialPosition: marker,
-      markerTitle: _facilityNameCtrl.text.isNotEmpty ? _facilityNameCtrl.text : '事業所',
+      markerTitle:
+          _facilityNameCtrl.text.isNotEmpty ? _facilityNameCtrl.text : '事業所',
       markerSnippet: _facilityAddressCtrl.text.trim(),
       hue: BitmapDescriptor.hueOrange,
       onPositionChanged: _onMarkerDragged,
@@ -673,7 +714,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           }),
           Align(
             alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
+            child: AppElevatedButton.icon(
               onPressed: _saveVehicles,
               icon: const Icon(Icons.save, size: 18),
               label: const Text('車両設定を保存'),
@@ -749,7 +790,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
+            child: AppElevatedButton.icon(
               onPressed: _saveOperatingHours,
               icon: const Icon(Icons.save, size: 18),
               label: const Text('運営時間を保存'),
@@ -805,8 +846,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(width: 8),
               const Text(
                 '（${AppSettings.minSlotTtlHours}〜${AppSettings.maxSlotTtlHours}時間）',
-                style: TextStyle(
-                    fontSize: 11, color: AppColors.onSurfaceVariant),
+                style:
+                    TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
               ),
             ],
           ),
@@ -852,7 +893,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
+            child: AppElevatedButton.icon(
               key: const Key('adminLineUserIdSave'),
               onPressed: _saveAdminLineUserId,
               icon: const Icon(Icons.save),
@@ -883,43 +924,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
             status: _jsApiKeyStatus,
           ),
           const SizedBox(height: 8),
-          TextFormField(
-            controller: _jsApiKeyCtrl,
-            obscureText: !_jsApiKeyVisible,
-            decoration: InputDecoration(
-              labelText: 'API キー (AIza...)',
-              prefixIcon: const Icon(Icons.vpn_key_outlined),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _jsApiKeyVisible ? Icons.visibility_off : Icons.visibility,
+          SkeletonGate(
+            loading: _apiKeyLoading,
+            fillParent: false,
+            errorMessage: _apiKeyLoadError,
+            onRetry: _retryLoadSettings,
+            skeleton: const SettingsSkeleton(),
+            builder: (_) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: _jsApiKeyCtrl,
+                  obscureText: !_jsApiKeyVisible,
+                  decoration: InputDecoration(
+                    labelText: 'API キー (AIza...)',
+                    prefixIcon: const Icon(Icons.vpn_key_outlined),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _jsApiKeyVisible
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () =>
+                          setState(() => _jsApiKeyVisible = !_jsApiKeyVisible),
+                    ),
+                  ),
                 ),
-                onPressed: () =>
-                    setState(() => _jsApiKeyVisible = !_jsApiKeyVisible),
-              ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Maps JavaScript API キーを入力してください。\n'
+                  '地図表示・住所検索・ルート計算すべてに使用されます。\n'
+                  '「HTTPリファラー」制限を付けてください。',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.onSurfaceVariant,
+                      height: 1.5),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Maps JavaScript API キーを入力してください。\n'
-            '地図表示・住所検索・ルート計算すべてに使用されます。\n'
-            '「HTTPリファラー」制限を付けてください。',
-            style: TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant, height: 1.5),
           ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              ElevatedButton.icon(
+              AppElevatedButton.icon(
                 onPressed: _saveJsApiKey,
                 icon: const Icon(Icons.save, size: 16),
                 label: const Text('保存'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 ),
               ),
-              OutlinedButton.icon(
+              AppOutlinedButton.icon(
                 onPressed: _testingJsKey ? null : _testJsApiKey,
                 icon: _testingJsKey
                     ? const SizedBox(
@@ -932,15 +991,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.primary,
                   side: const BorderSide(color: AppColors.primary),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 ),
               ),
               TextButton.icon(
                 onPressed: _clearJsApiKey,
-                icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.error),
-                label: const Text('クリア', style: TextStyle(color: AppColors.error)),
+                icon: const Icon(Icons.delete_outline,
+                    size: 16, color: AppColors.error),
+                label:
+                    const Text('クリア', style: TextStyle(color: AppColors.error)),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 ),
               ),
             ],
@@ -993,6 +1056,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
   /// キーのサブヘッダー（アイコン・タイトル・状態バッジ）
   Widget _buildKeySubHeader({
     required IconData icon,

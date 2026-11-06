@@ -15,6 +15,10 @@ import '../theme/app_theme.dart';
 import '../utils/kana_util.dart';
 import '../widgets/geocode_candidate_sheet.dart';
 import '../widgets/monthly_usage_chip.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/skeleton_gate.dart';
+import '../widgets/motion/success_feedback.dart';
+import '../widgets/skeletons/screen_skeletons.dart';
 import '../widgets/vacancy_notice_dialog.dart'
     show kLineGreen, LinkingCodeDialog;
 
@@ -202,7 +206,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     if (!mounted) return;
     final now = _transportCtrl(i).text.trim();
     setState(() {
-      if (now != _locOriginalText[i] && _locStatus[i] != Customer.locUnresolved) {
+      if (now != _locOriginalText[i] &&
+          _locStatus[i] != Customer.locUnresolved) {
         // 別の場所に書き換えられた → 座標を無効化
         _locLats[i] = null;
         _locLngs[i] = null;
@@ -270,7 +275,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           : null;
       final blocked = judgement != null && !judgement.allowed;
       if (blocked) {
-        debugPrint('[Resolver] auto-adopt blocked: "$address" → ${judgement.reasonText}');
+        debugPrint(
+            '[Resolver] auto-adopt blocked: "$address" → ${judgement.reasonText}');
       }
       final picked = await showGeocodeCandidateSheet(
         context,
@@ -293,14 +299,17 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             _locTypes[i] = c.types.isEmpty ? null : c.types.join(',');
           });
         } else if (blocked) {
-          _snack('送迎場所${i + 1}: 自動採用不可（${judgement.reasonText}）。'
-              '候補を選んで採用してください。', AppColors.warning);
+          _snack(
+              '送迎場所${i + 1}: 自動採用不可（${judgement.reasonText}）。'
+              '候補を選んで採用してください。',
+              AppColors.warning);
         }
         return;
       }
       // 受け入れ基準5: 国レベル座標はどの経路でも保存しない
       if (!TransportLocationResolver.isStorableCandidate(picked)) {
-        _snack('「${picked.formattedAddress}」は国レベルの座標のため採用できません', AppColors.error);
+        _snack(
+            '「${picked.formattedAddress}」は国レベルの座標のため採用できません', AppColors.error);
         return;
       }
       setState(() {
@@ -310,7 +319,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         _locFormatted[i] = picked.formattedAddress;
         _locTypes[i] = picked.types.isEmpty ? null : picked.types.join(',');
       });
-      _snack('送迎場所${i + 1}: ${picked.formattedAddress} を採用（保存で確定）', AppColors.success);
+      _snack('送迎場所${i + 1}: ${picked.formattedAddress} を採用（保存で確定）',
+          AppColors.success);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -358,7 +368,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   Future<void> _pickOnMap(int i) async {
     final settings = SettingsService.instance.getSettings();
     final initial = TransportLocationResolver.resolveInitialPinPosition(
-      _bufferAsCustomer(), i,
+      _bufferAsCustomer(),
+      i,
       facilityLat: settings.facilityLat,
       facilityLng: settings.facilityLng,
     );
@@ -381,12 +392,11 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       _locStatus[i] = Customer.locManual;
       // 逆ジオコードが「日本」等を返した場合も「手動指定地点」に置き換える
       // （sanitizeCoords による誤破棄を防ぐ）
-      _locFormatted[i] =
-          TransportLocationResolver.sanitizeManualLabel(picked.formattedAddress);
+      _locFormatted[i] = TransportLocationResolver.sanitizeManualLabel(
+          picked.formattedAddress);
       _locTypes[i] = TransportLocationResolver.manualPinTypes.join(',');
     });
-    _snack(
-        '送迎場所${i + 1}: ${_locFormatted[i]} を手動指定（保存で確定）', AppColors.success);
+    _snack('送迎場所${i + 1}: ${_locFormatted[i]} を手動指定（保存で確定）', AppColors.success);
   }
 
   /// 「地図で微調整」
@@ -526,12 +536,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isEditing ? '顧客情報を保存しました' : '顧客を登録しました'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      // 保存成功: チェックマーク付きスナックバー（文言は従来どおり）
+      showSuccessSnack(context, _isEditing ? '顧客情報を保存しました' : '顧客を登録しました');
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
@@ -570,7 +576,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('キャンセル'),
           ),
-          ElevatedButton(
+          AppElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
@@ -636,7 +642,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: SizedBox(
             height: 56,
-            child: ElevatedButton(
+            child: AppElevatedButton(
               onPressed: _isLoading ? null : _save,
               child: _isLoading
                   ? const SizedBox(
@@ -711,8 +717,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             labelText: '氏名 *',
             hintText: '例: 山田 太郎',
           ),
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? '氏名は必須です' : null,
+          validator: (v) => (v == null || v.trim().isEmpty) ? '氏名は必須です' : null,
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 12),
@@ -782,9 +787,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                       color: _gender == g
                           ? AppColors.primary
                           : AppColors.onSurface,
-                      fontWeight: _gender == g
-                          ? FontWeight.w600
-                          : FontWeight.normal,
+                      fontWeight:
+                          _gender == g ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                 );
@@ -887,8 +891,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text('LINE連携（空き枠通知）',
-                    style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.bold)),
+                    style:
+                        TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
               ),
               if (isLinked)
                 Container(
@@ -931,17 +935,15 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             const Text(
               'LINE User ID の形式が不正です（U + 32桁英数字）。'
               'このままでは通知できません。連携コードで再連携してください。',
-              style: TextStyle(
-                  fontSize: 11, height: 1.5, color: AppColors.error),
+              style:
+                  TextStyle(fontSize: 11, height: 1.5, color: AppColors.error),
             )
           else
             const Text(
               '未連携です。「連携コード発行」で6桁のコードを発行し、'
               '保護者に公式アカウントへ送信してもらってください。',
               style: TextStyle(
-                  fontSize: 11,
-                  height: 1.5,
-                  color: AppColors.onSurfaceVariant),
+                  fontSize: 11, height: 1.5, color: AppColors.onSurfaceVariant),
             ),
           const SizedBox(height: 10),
           Wrap(
@@ -959,12 +961,11 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                     ? const SizedBox(
                         width: 13,
                         height: 13,
-                        child:
-                            CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.qr_code_2, size: 15),
-                label: const Text('LINE連携コード発行',
-                    style: TextStyle(fontSize: 11)),
+                label:
+                    const Text('LINE連携コード発行', style: TextStyle(fontSize: 11)),
                 onPressed: _isIssuingCode ? null : _issueLinkingCode,
               ),
               OutlinedButton.icon(
@@ -979,8 +980,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.sync, size: 15),
-                label: const Text('連携状況を同期',
-                    style: TextStyle(fontSize: 11)),
+                label: const Text('連携状況を同期', style: TextStyle(fontSize: 11)),
                 onPressed: _isSyncingLinkage ? null : _syncLinkage,
               ),
               if (isLinked)
@@ -993,8 +993,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
                   icon: const Icon(Icons.link_off, size: 15),
-                  label: const Text('連携解除',
-                      style: TextStyle(fontSize: 11)),
+                  label: const Text('連携解除', style: TextStyle(fontSize: 11)),
                   onPressed: _unlinkLine,
                 ),
             ],
@@ -1003,8 +1002,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             const SizedBox(height: 8),
             const Text(
               '※連携コードの発行は、先に児童を保存してから行ってください。',
-              style: TextStyle(
-                  fontSize: 10, color: AppColors.onSurfaceVariant),
+              style: TextStyle(fontSize: 10, color: AppColors.onSurfaceVariant),
             ),
           ],
         ],
@@ -1016,13 +1014,11 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   Future<void> _issueLinkingCode() async {
     final customer = widget.customer;
     if (customer == null) {
-      _showSnack('先に児童を保存してから連携コードを発行してください。',
-          isError: true);
+      _showSnack('先に児童を保存してから連携コードを発行してください。', isError: true);
       return;
     }
-    final name = _nameCtrl.text.trim().isEmpty
-        ? customer.name
-        : _nameCtrl.text.trim();
+    final name =
+        _nameCtrl.text.trim().isEmpty ? customer.name : _nameCtrl.text.trim();
 
     setState(() => _isIssuingCode = true);
     try {
@@ -1036,8 +1032,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         context,
         code: code,
         childName: name,
-        expiresAt: DateTime.now()
-            .add(VacancyNotificationService.linkingCodeTtl),
+        expiresAt:
+            DateTime.now().add(VacancyNotificationService.linkingCodeTtl),
       );
     } on VacancyLinkageException catch (e) {
       if (!mounted) return;
@@ -1046,8 +1042,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isIssuingCode = false);
-      _showSnack('連携コードの発行に失敗しました。通信状況を確認してください。',
-          isError: true);
+      _showSnack('連携コードの発行に失敗しました。通信状況を確認してください。', isError: true);
     }
   }
 
@@ -1055,15 +1050,13 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   Future<void> _syncLinkage() async {
     setState(() => _isSyncingLinkage = true);
     try {
-      final result =
-          await VacancyNotificationService.instance.syncLinkages();
+      final result = await VacancyNotificationService.instance.syncLinkages();
       if (!mounted) return;
 
       // 自分（編集中の児童）の最新値をフォームへ反映
       final customer = widget.customer;
       if (customer != null) {
-        final latest =
-            CustomerService.instance.getCustomerById(customer.id);
+        final latest = CustomerService.instance.getCustomerById(customer.id);
         final id = latest?.lineUserId ?? '';
         _lineUserIdCtrl.text = id;
       }
@@ -1076,8 +1069,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSyncingLinkage = false);
-      _showSnack('連携状況の同期に失敗しました。通信状況を確認してください。',
-          isError: true);
+      _showSnack('連携状況の同期に失敗しました。通信状況を確認してください。', isError: true);
     }
   }
 
@@ -1166,8 +1158,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                         : '未設定',
                     style: TextStyle(
                       color: _certExpiry != null
-                          ? (_certExpiry!
-                                  .isBefore(DateTime.now().add(const Duration(days: 30)))
+                          ? (_certExpiry!.isBefore(
+                                  DateTime.now().add(const Duration(days: 30)))
                               ? AppColors.error
                               : AppColors.onSurface)
                           : AppColors.onSurfaceVariant,
@@ -1177,8 +1169,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                 if (_certExpiry != null)
                   GestureDetector(
                     onTap: () => setState(() => _certExpiry = null),
-                    child: const Icon(Icons.clear, size: 16,
-                        color: AppColors.onSurfaceVariant),
+                    child: const Icon(Icons.clear,
+                        size: 16, color: AppColors.onSurfaceVariant),
                   ),
               ],
             ),
@@ -1239,8 +1231,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
               checkmarkColor: AppColors.secondary,
               labelStyle: TextStyle(
                 color: isSelected ? AppColors.secondary : AppColors.onSurface,
-                fontWeight:
-                    isSelected ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
             );
           }).toList(),
@@ -1275,41 +1266,54 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
   /// 正は AttendanceRecord の動的集計（MonthlyUsageService）。
   /// 取得後は画面の「当月利用日数」入力も実績値に合わせて同期する。
   Future<void> _loadUsage(String customerId) async {
-    final u = await MonthlyUsageService.instance
-        .getUsage(customerId, DateTime.now());
-    if (!mounted) return;
-    setState(() {
-      _usage = u;
-      _usageLoading = false;
-      // キャッシュ入力値を実績に合わせる（保存時の巻き戻りを防ぐ）
-      _currentMonthUsedDays = u.usedActual;
-    });
+    try {
+      final u = await MonthlyUsageService.instance
+          .getUsage(customerId, DateTime.now());
+      if (!mounted) return;
+      setState(() {
+        _usage = u;
+        _usageLoading = false;
+        // キャッシュ入力値を実績に合わせる（保存時の巻き戻りを防ぐ）
+        _currentMonthUsedDays = u.usedActual;
+      });
+    } catch (e) {
+      debugPrint('[CustomerEditScreen] usage load failed: $e');
+      if (!mounted) return;
+      // 骨格のまま放置しない（エラー表示＋再試行へ）
+      setState(() => _usageLoading = false);
+    }
+  }
+
+  void _retryLoadUsage() {
+    final c = widget.customer;
+    if (c == null) return;
+    setState(() => _usageLoading = true);
+    _loadUsage(c.id);
   }
 
   Widget _buildMonthlyUsageInfo() {
-    if (_usageLoading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
-        child: Center(
-          child: SizedBox(
-              width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
-      );
-    }
     final u = _usage;
-    if (u == null) {
-      return const Text('利用状況を取得できませんでした',
-          style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant));
-    }
+    // 読込中は最終レイアウトと同構造の骨格 → 完了でクロスフェード。
+    // 失敗時は骨格のまま放置せず、メッセージ＋再試行を出す。
+    return SkeletonGate(
+      loading: _usageLoading,
+      fillParent: false,
+      errorMessage: u == null ? '利用状況を取得できませんでした' : null,
+      onRetry: _retryLoadUsage,
+      skeleton: const MonthlyUsageSkeleton(),
+      builder: (_) => _buildMonthlyUsageBody(u!),
+    );
+  }
 
+  Widget _buildMonthlyUsageBody(MonthlyUsage u) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Text('${u.month.year}年${u.month.month}月',
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600)),
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             const Spacer(),
             MonthlyUsageChip(usage: u),
           ],
@@ -1336,7 +1340,11 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
 
   Widget _buildTransportInfo() {
     const hints = ['例: 〇〇小学校', '例: ○○公民館', '例: 自宅'];
-    const icons = [Icons.directions_car, Icons.directions_car, Icons.home_outlined];
+    const icons = [
+      Icons.directions_car,
+      Icons.directions_car,
+      Icons.home_outlined
+    ];
     return Column(
       children: [
         for (int i = 0; i < 3; i++) ...[
@@ -1383,7 +1391,9 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
             Text(
               '${coord.lat.toStringAsFixed(5)}, ${coord.lng.toStringAsFixed(5)}',
               style: const TextStyle(
-                  fontSize: 10.5, color: AppColors.onSurfaceVariant, fontFamily: 'monospace'),
+                  fontSize: 10.5,
+                  color: AppColors.onSurfaceVariant,
+                  fontFamily: 'monospace'),
             ),
           _smallAction(
             icon: Icons.search,
@@ -1432,7 +1442,9 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       ),
       icon: busy
           ? const SizedBox(
-              width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(strokeWidth: 2))
           : Icon(icon, size: 14),
       label: Text(label),
     );

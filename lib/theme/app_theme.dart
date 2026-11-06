@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/motion/page_transition.dart';
+
 /// LinkDay アプリのカラーパレット定義
 class AppColors {
   AppColors._();
@@ -36,10 +38,25 @@ class AppColors {
 class AppTheme {
   AppTheme._();
 
-  // Shape constants
+  // ── Shape（角丸を 2 段階に統一）──────────────────────────
+  /// カード・ボタン・入力欄・スナックバーなど「面」の角丸
   static const double cardBorderRadius = 12.0;
+  static const double controlBorderRadius = 12.0;
+
+  /// ダイアログ
+  static const double dialogBorderRadius = 16.0;
+
+  /// チップ・ピル
+  static const double pillBorderRadius = 20.0;
+
   static const double buttonHeight = 48.0;
   static const double defaultPadding = 16.0;
+
+  // ── 間隔（8dp グリッド）──────────────────────────────────
+  static const double space1 = 8.0;
+  static const double space2 = 16.0;
+  static const double space3 = 24.0;
+  static const double space4 = 32.0;
 
   /// ライトテーマ（Material 3）
   static ThemeData get lightTheme {
@@ -84,21 +101,26 @@ class AppTheme {
         margin: const EdgeInsets.all(0),
       ),
 
-      // ElevatedButton テーマ
+      // ElevatedButton テーマ（押下で elevation 2→0。影の連続アニメはしない）
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(buttonHeight),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(controlBorderRadius),
           ),
-          elevation: 2,
           textStyle: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.5,
           ),
+        ).copyWith(
+          elevation: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) return 0.0;
+            if (states.contains(WidgetState.pressed)) return 0.0;
+            return 2.0;
+          }),
         ),
       ),
 
@@ -109,7 +131,7 @@ class AppTheme {
           minimumSize: const Size.fromHeight(buttonHeight),
           side: const BorderSide(color: AppColors.primary, width: 1.5),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(controlBorderRadius),
           ),
           textStyle: const TextStyle(
             fontSize: 16,
@@ -134,23 +156,23 @@ class AppTheme {
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(controlBorderRadius),
           borderSide: const BorderSide(color: AppColors.divider),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(controlBorderRadius),
           borderSide: const BorderSide(color: AppColors.divider, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(controlBorderRadius),
           borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(controlBorderRadius),
           borderSide: const BorderSide(color: AppColors.error, width: 1),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(controlBorderRadius),
           borderSide: const BorderSide(color: AppColors.error, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -181,8 +203,9 @@ class AppTheme {
       // SnackBar テーマ
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
+        insetPadding: const EdgeInsets.all(space2),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(controlBorderRadius),
         ),
         contentTextStyle: const TextStyle(fontSize: 14),
       ),
@@ -190,8 +213,27 @@ class AppTheme {
       // Chip テーマ
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(pillBorderRadius),
         ),
+      ),
+
+      // ダイアログ（角丸を統一）
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(dialogBorderRadius),
+        ),
+      ),
+
+      // 画面遷移: フェード + 12dp スライド（全プラットフォーム共通）
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: AppPageTransitionsBuilder(),
+          TargetPlatform.iOS: AppPageTransitionsBuilder(),
+          TargetPlatform.macOS: AppPageTransitionsBuilder(),
+          TargetPlatform.windows: AppPageTransitionsBuilder(),
+          TargetPlatform.linux: AppPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: AppPageTransitionsBuilder(),
+        },
       ),
 
       // FloatingActionButton テーマ

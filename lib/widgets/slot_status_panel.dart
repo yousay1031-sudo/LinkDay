@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/slot_info.dart';
 import '../theme/app_theme.dart';
+import 'motion/state_switcher.dart';
 import 'vacancy_notice_dialog.dart' show kLineGreen;
 
 /// 利用者 ID → 表示名。見つからなければ null。
@@ -205,6 +206,15 @@ class _SlotRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _colorOf(view.state);
+    // 状態遷移（募集中→確定→再募集…）は StateSwitcher で。旧表示は即座に消え、
+    // 新表示は不透明度 0.7 から 250ms で 1.0（確定者名が一瞬も見えなくならない）
+    return StateSwitcher(
+      stateKey: '${view.state}|${view.label}|${view.detail}',
+      child: _buildRow(color),
+    );
+  }
+
+  Widget _buildRow(Color color) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -261,6 +271,13 @@ class SlotChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _colorOf(view.state);
+    return StateSwitcher(
+      stateKey: '${view.state}|${view.label}|${view.detail}',
+      child: _buildChip(color),
+    );
+  }
+
+  Widget _buildChip(Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

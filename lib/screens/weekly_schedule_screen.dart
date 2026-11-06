@@ -6,6 +6,10 @@ import '../services/customer_service.dart';
 import '../services/weekly_schedule_pdf_service.dart';
 import '../services/weekly_schedule_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/skeleton_gate.dart';
+import '../widgets/motion/success_feedback.dart';
+import '../widgets/skeletons/screen_skeletons.dart';
 import '../utils/week_util.dart';
 
 // ── ブレークポイント定数 ──────────────────────────────────────────
@@ -158,7 +162,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('キャンセル'),
           ),
-          ElevatedButton.icon(
+          AppElevatedButton.icon(
             onPressed: () => Navigator.of(ctx).pop(true),
             icon: const Icon(Icons.refresh, size: 16),
             label: const Text('再生成'),
@@ -211,7 +215,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('キャンセル'),
           ),
-          ElevatedButton.icon(
+          AppElevatedButton.icon(
             onPressed: () => Navigator.of(ctx).pop(true),
             icon: const Icon(Icons.content_copy, size: 16),
             label: const Text('コピー'),
@@ -414,7 +418,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.check_circle, color: Colors.white, size: 18),
+            const SuccessCheck(size: 18),
             const SizedBox(width: 8),
             Text(message),
           ],
@@ -517,28 +521,22 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
   }
 
   Widget _buildBody(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: AppColors.error),
-            const SizedBox(height: 16),
-            Text(_errorMessage!),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _loadData,
-              icon: const Icon(Icons.refresh),
-              label: const Text('再試行'),
-            ),
-          ],
+    // 読込中は最終レイアウトと同構造の骨格 → 完了でクロスフェード。
+    // 失敗時は骨格のまま放置せず、エラー＋再試行（SkeletonGate が担当）。
+    return SkeletonGate(
+      loading: _loading,
+      errorMessage: _errorMessage,
+      onRetry: _loadData,
+      skeleton: LayoutBuilder(
+        builder: (ctx, c) => WeeklyScheduleSkeleton(
+          wide: c.maxWidth >= _kTableBreakpoint,
         ),
-      );
-    }
+      ),
+      builder: _buildLoadedBody,
+    );
+  }
 
+  Widget _buildLoadedBody(BuildContext context) {
     return Column(
       children: [
         // ── 週情報ヘッダー

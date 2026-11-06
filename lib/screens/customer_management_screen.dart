@@ -6,6 +6,12 @@ import '../services/customer_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/monthly_usage_chip.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/empty_state.dart';
+import '../widgets/motion/press_scale.dart';
+import '../widgets/motion/skeleton_gate.dart';
+import '../widgets/motion/staggered.dart';
+import '../widgets/skeletons/screen_skeletons.dart';
 import 'customer_edit_screen.dart';
 import 'customer_import_screen.dart';
 import 'transport_location_resolve_screen.dart';
@@ -36,6 +42,10 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   /// 「超過見込みのみ」フィルタ
   bool _showOverProjectedOnly = false;
 
+  /// 初回の利用状況読込中（スケルトン表示）。再集計では立てない（ちらつき防止）
+  bool _initialLoading = true;
+  String? _loadError;
+
   @override
   void initState() {
     super.initState();
@@ -45,12 +55,34 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
 
   /// 当月の利用状況を読み込む（Day 9）
   Future<void> _loadUsage() async {
-    final list = await MonthlyUsageService.instance.getAllUsage(DateTime.now());
-    if (!mounted) return;
+    try {
+      final list =
+          await MonthlyUsageService.instance.getAllUsage(DateTime.now());
+      if (!mounted) return;
+      setState(() {
+        _usage = {for (final u in list) u.customerId: u};
+        _applyFilter();
+        _initialLoading = false;
+        _loadError = null;
+      });
+    } catch (e) {
+      debugPrint('[CustomerManagementScreen] usage load failed: $e');
+      if (!mounted) return;
+      // 初回のみエラー状態＋再試行。再集計の失敗では一覧を潰さない
+      setState(() {
+        _initialLoading = false;
+        if (_usage.isEmpty) _loadError = '顧客情報の読み込みに失敗しました';
+      });
+    }
+  }
+
+  void _retryLoad() {
     setState(() {
-      _usage = {for (final u in list) u.customerId: u};
-      _applyFilter();
+      _initialLoading = true;
+      _loadError = null;
     });
+    _loadCustomers();
+    _loadUsage();
   }
 
   /// 超過見込みの児童数
@@ -85,9 +117,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
 
     // Day 9: 超過見込みのみフィルタ
     if (_showOverProjectedOnly) {
-      base = base
-          .where((c) => _usage[c.id]?.isOverProjected ?? false)
-          .toList();
+      base = base.where((c) => _usage[c.id]?.isOverProjected ?? false).toList();
     }
 
     // Day 9: 残日数が少ない順ソート（実績残 → 見込み残 → 氏名）
@@ -212,10 +242,26 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           _buildSearchBar(),
           _buildUsageFilterBar(),
           if (_expiringCustomers.isNotEmpty) _buildExpiringAlert(),
-          Expanded(child: _buildBody()),
+          Expanded(
+            child: SkeletonGate(
+              loading: _initialLoading,
+              errorMessage: _loadError,
+              onRetry: _retryLoad,
+              skeleton: LayoutBuilder(
+                builder: (context, c) {
+                  final cols = _getColumnCount(c.maxWidth);
+                  return CustomerListSkeleton(
+                    columns: cols,
+                    aspectRatio: _getChildAspectRatio(cols),
+                  );
+                },
+              ),
+              builder: (context) => StaggerScope(child: _buildBody()),
+            ),
+          ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AppExtendedFab(
         onPressed: () => _navigateToEdit(),
         icon: const Icon(Icons.person_add),
         label: const Text('新規登録'),
@@ -257,7 +303,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
         controller: _searchController,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search, color: AppColors.onSurfaceVariant),
+          prefixIcon:
+              const Icon(Icons.search, color: AppColors.onSurfaceVariant),
           hintText: '氏名・ふりがな・電話番号で検索',
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
@@ -288,7 +335,9 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
             onSelected: (_) => _toggleSortByRemaining(),
             avatar: Icon(Icons.sort,
                 size: 15,
-                color: _sortByRemaining ? Colors.white : AppColors.onSurfaceVariant),
+                color: _sortByRemaining
+                    ? Colors.white
+                    : AppColors.onSurfaceVariant),
             label: const Text('残日数が少ない順'),
             labelStyle: TextStyle(
               fontSize: 11.5,
@@ -316,7 +365,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
             label: Text('超過見込みのみ${over > 0 ? '（$over）' : ''}'),
             labelStyle: TextStyle(
               fontSize: 11.5,
-              color: _showOverProjectedOnly ? Colors.white : AppColors.onSurface,
+              color:
+                  _showOverProjectedOnly ? Colors.white : AppColors.onSurface,
               fontWeight: FontWeight.w600,
             ),
             selectedColor: AppColors.error,
@@ -340,7 +390,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           borderRadius: BorderRadius.circular(8),
           border: Border(
             left: BorderSide(
-              color: _showExpiringOnly ? AppColors.error : const Color(0xFFE53935),
+              color:
+                  _showExpiringOnly ? AppColors.error : const Color(0xFFE53935),
               width: 4,
             ),
           ),
@@ -382,20 +433,20 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
       return _buildEmptyState();
     }
     if (_filteredCustomers.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.search_off,
-                size: 64, color: AppColors.onSurfaceVariant),
-            const SizedBox(height: 16),
-            Text(
-              '「${_searchController.text}」に一致する顧客が見つかりません',
-              style: const TextStyle(color: AppColors.onSurfaceVariant),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+      return EmptyState(
+        icon: Icons.search_off,
+        title: '「${_searchController.text}」に一致する顧客が見つかりません',
+        message: '別のキーワードで検索するか、検索を消してください',
+        actions: [
+          AppOutlinedButton.icon(
+            onPressed: () {
+              _searchController.clear();
+              setState(_applyFilter);
+            },
+            icon: const Icon(Icons.clear, size: 16),
+            label: const Text('検索を消す'),
+          ),
+        ],
       );
     }
 
@@ -412,7 +463,11 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           ),
           itemCount: _filteredCustomers.length,
           itemBuilder: (context, index) {
-            return _buildCustomerCard(_filteredCustomers[index], cols);
+            return StaggeredItem(
+              index: index,
+              total: _filteredCustomers.length,
+              child: _buildCustomerCard(_filteredCustomers[index], cols),
+            );
           },
         );
       },
@@ -420,53 +475,22 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.people_outline,
-                size: 80, color: AppColors.onSurfaceVariant),
-            const SizedBox(height: 20),
-            const Text(
-              '顧客がまだ登録されていません',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppColors.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Excelで一括登録するか、\n新規登録ボタンから追加してください',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _navigateToImport,
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text('Excel一括登録'),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  onPressed: () => _navigateToEdit(),
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('新規登録'),
-                ),
-              ],
-            ),
-          ],
+    return EmptyState(
+      icon: Icons.people_outline,
+      title: '顧客がまだ登録されていません',
+      message: 'Excelで一括登録するか、\n新規登録ボタンから追加してください',
+      actions: [
+        AppOutlinedButton.icon(
+          onPressed: _navigateToImport,
+          icon: const Icon(Icons.upload_file),
+          label: const Text('Excel一括登録'),
         ),
-      ),
+        AppElevatedButton.icon(
+          onPressed: () => _navigateToEdit(),
+          icon: const Icon(Icons.person_add),
+          label: const Text('新規登録'),
+        ),
+      ],
     );
   }
 
@@ -498,17 +522,19 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
 
     final isHorizontal = columnCount == 1;
 
-    return Card(
-      child: InkWell(
-        onTap: () => _navigateToEdit(customer: customer),
-        borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: isHorizontal
-              ? _buildCardHorizontal(
-                  customer, remaining, remainingColor, certDays, certColor)
-              : _buildCardVertical(
-                  customer, remaining, remainingColor, certDays, certColor),
+    return PressableScale(
+      child: Card(
+        child: InkWell(
+          onTap: () => _navigateToEdit(customer: customer),
+          borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: isHorizontal
+                ? _buildCardHorizontal(
+                    customer, remaining, remainingColor, certDays, certColor)
+                : _buildCardVertical(
+                    customer, remaining, remainingColor, certDays, certColor),
+          ),
         ),
       ),
     );
@@ -553,9 +579,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           Wrap(
             spacing: 4,
             runSpacing: 4,
-            children: customer.regularDayLabels
-                .map((d) => _buildDayChip(d))
-                .toList(),
+            children:
+                customer.regularDayLabels.map((d) => _buildDayChip(d)).toList(),
           ),
         const Spacer(),
         // 下段: 今月利用 & 受給者証期限
@@ -563,8 +588,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           children: [
             _buildUsageBadge(customer, remaining, remainingColor),
             const Spacer(),
-            if (certDays != null)
-              _buildCertBadge(certDays, certColor),
+            if (certDays != null) _buildCertBadge(certDays, certColor),
           ],
         ),
       ],

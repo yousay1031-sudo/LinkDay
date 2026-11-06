@@ -8,6 +8,10 @@ import '../models/transport_plan.dart';
 import '../services/maps_js_service.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/skeleton_gate.dart';
+import '../widgets/motion/staggered.dart';
+import '../widgets/skeletons/screen_skeletons.dart';
 
 /// 送迎ルート地図表示画面
 ///
@@ -377,11 +381,14 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           ),
 
           // ── ローディング ─────────────────────────────────────
+          // 地図を覆わない（操作・描画を阻害しない）。停留所パネルは骨格、
+          // 地図側は右上の小さな「取得中」表示のみ（IgnorePointer）。
           if (_isLoading)
-            const Positioned.fill(
-              child: ColoredBox(
-                color: Colors.white54,
-                child: Center(child: CircularProgressIndicator()),
+            const Positioned(
+              top: 8,
+              right: 8,
+              child: IgnorePointer(
+                child: _RouteLoadingPill(key: Key('mapLoadingPill')),
               ),
             ),
         ],
@@ -517,12 +524,23 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
 
           // 停留所リスト（出発:事業所 → 各停留所 → 帰着:事業所）
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: stopItems.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, indent: 12),
-              itemBuilder: (ctx, i) => stopItems[i],
+            // 読込中は同寸の骨格 → 完了でクロスフェード（パネル幅は固定 220 なのでずれない）
+            child: SkeletonGate(
+              loading: _isLoading,
+              skeleton: const MapStopPanelSkeleton(),
+              builder: (context) => StaggerScope(
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: stopItems.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, indent: 12),
+                  itemBuilder: (ctx, i) => StaggeredItem(
+                    index: i,
+                    total: stopItems.length,
+                    child: stopItems[i],
+                  ),
+                ),
+              ),
             ),
           ),
 
@@ -531,7 +549,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             padding: const EdgeInsets.all(12),
             child: SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: AppElevatedButton.icon(
                 onPressed: _openGoogleMaps,
                 icon: const Icon(Icons.open_in_new, size: 16),
                 label: const Text('ドライバー用マップ'),
@@ -668,6 +686,43 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           );
         }
       },
+    );
+  }
+}
+
+
+/// 地図の右上に出す小さな「ルート取得中」表示。
+/// 地図を覆わず、タップも吸わない（呼び出し側で IgnorePointer）。
+class _RouteLoadingPill extends StatelessWidget {
+  const _RouteLoadingPill({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.pillBorderRadius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text('ルートを取得中…', style: TextStyle(fontSize: 12)),
+        ],
+      ),
     );
   }
 }

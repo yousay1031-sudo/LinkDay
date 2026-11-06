@@ -10,9 +10,16 @@ import '../services/monthly_usage_service.dart';
 import '../services/slot_service.dart';
 import '../services/customer_service.dart';
 import '../services/vacancy_notification_service.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/attendance_status_badge.dart';
 import '../widgets/attendance_time_chip.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/empty_state.dart';
+import '../widgets/motion/skeleton_gate.dart';
+import '../widgets/motion/staggered.dart';
+import '../widgets/motion/state_switcher.dart';
+import '../widgets/skeletons/screen_skeletons.dart';
 import '../widgets/slot_status_panel.dart';
 import '../widgets/vacancy_notice_dialog.dart';
 import 'notification_history_screen.dart';
@@ -130,8 +137,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   void _loadRecords() {
-    final records =
-        AttendanceService.instance.getRecordsByDate(_selectedDate);
+    final records = AttendanceService.instance.getRecordsByDate(_selectedDate);
     debugPrint('[AttendanceScreen] records loaded: ${records.length}');
     if (!mounted) return;
     setState(() {
@@ -174,8 +180,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (_isPdfGenerating) return;
     setState(() => _isPdfGenerating = true);
     try {
-      await AttendancePdfService.instance
-          .printAttendanceSheet(_selectedDate);
+      await AttendancePdfService.instance.printAttendanceSheet(_selectedDate);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -224,7 +229,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+            const Icon(Icons.warning_amber_rounded,
+                color: Colors.white, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -263,8 +269,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (result == DepartResult.noCheckIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:
-              Text('先に入室を記録してください。入室記録がない場合は退室できません。'),
+          content: Text('先に入室を記録してください。入室記録がない場合は退室できません。'),
           backgroundColor: AppColors.warning,
           duration: Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
@@ -318,8 +323,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('欠席理由を選択してください',
-                    style: TextStyle(fontSize: 13)),
+                const Text('欠席理由を選択してください', style: TextStyle(fontSize: 13)),
                 const SizedBox(height: 12),
                 // 理由選択肢
                 ...kAbsenceReasons.map((reason) {
@@ -637,9 +641,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : Column(
+            Positioned.fill(
+              child: SkeletonGate(
+                loading: _isLoading,
+                skeleton: LayoutBuilder(
+                  builder: (context, c) {
+                    final columns = _columnCount(c.maxWidth);
+                    return AttendanceSkeleton(
+                      columns: columns,
+                      aspectRatio: _aspectRatio(columns),
+                      padding: _gridPadding(c.maxWidth),
+                    );
+                  },
+                ),
+                builder: (context) => StaggerScope(
+                  child: Column(
                     children: [
                       _buildSummaryBar(),
                       // Day 14: 選択日の LINE 応募状況
@@ -652,6 +668,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       Expanded(child: _buildBody()),
                     ],
                   ),
+                ),
+              ),
+            ),
             // Day 11: LINE 通知送信中のオーバーレイ（二重操作をブロック）
             if (_isSendingNotice)
               Positioned.fill(
@@ -689,8 +708,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   PreferredSizeWidget _buildAppBar() {
     final weekdays = ['月', '火', '水', '木', '金', '土', '日'];
     final wd = weekdays[_selectedDate.weekday - 1];
-    final dateStr =
-        '${_selectedDate.month}/${_selectedDate.day}（$wd）';
+    final dateStr = '${_selectedDate.month}/${_selectedDate.day}（$wd）';
 
     return AppBar(
       title: Column(
@@ -743,8 +761,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   /// 集計バー
   Widget _buildSummaryBar() {
-    final summary =
-        AttendanceService.instance.getTodaySummary(_selectedDate);
+    final summary = AttendanceService.instance.getTodaySummary(_selectedDate);
     return Container(
       width: double.infinity,
       color: Colors.white,
@@ -838,14 +855,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
           const SizedBox(width: 6),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(
-              '$count',
+            child: AnimatedCount(
+              value: count,
               style: const TextStyle(
                 fontSize: 12,
                 color: Colors.white,
@@ -865,75 +881,59 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = _columnCount(constraints.maxWidth);
-        final padding = constraints.maxWidth >= 900 ? 16.0 : 12.0;
+        final padding = _gridPadding(constraints.maxWidth);
         return GridView.builder(
           padding: EdgeInsets.all(padding),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: columns == 1 ? 2.0 : 1.15,
+            childAspectRatio: _aspectRatio(columns),
           ),
           itemCount: _records.length,
-          itemBuilder: (ctx, i) => _AttendanceCard(
-            record: _records[i],
-            slotView: _slotViewFor(_records[i]),
-            onMarkPresent: () => _markPresent(_records[i]),
-            onMarkDeparted: () => _markDeparted(_records[i]),
-            onMarkAbsent: () => _showAbsenceDialog(_records[i]),
-            onResetAbsent: () => _resetAbsent(_records[i]),
-            onCheckInChanged: (t) => _onCheckInChanged(_records[i], t),
-            onCheckOutChanged: (t) => _onCheckOutChanged(_records[i], t),
+          itemBuilder: (ctx, i) => StaggeredItem(
+            index: i,
+            total: _records.length,
+            child: _AttendanceCard(
+              record: _records[i],
+              slotView: _slotViewFor(_records[i]),
+              onMarkPresent: () => _markPresent(_records[i]),
+              onMarkDeparted: () => _markDeparted(_records[i]),
+              onMarkAbsent: () => _showAbsenceDialog(_records[i]),
+              onResetAbsent: () => _resetAbsent(_records[i]),
+              onCheckInChanged: (t) => _onCheckInChanged(_records[i], t),
+              onCheckOutChanged: (t) => _onCheckOutChanged(_records[i], t),
+            ),
           ),
         );
       },
     );
   }
 
+  double _aspectRatio(int columns) => columns == 1 ? 2.0 : 1.15;
+
+  double _gridPadding(double width) => width >= 900 ? 16.0 : 12.0;
+
   /// 欠席カード用: その児童の枠の表示内容（無ければ null）
   SlotRowView? _slotViewFor(AttendanceRecord r) {
     if (r.status != AttendanceStatus.absent) return null;
     final slot = _slotForAbsent(r.customerId);
     if (slot == null) return null;
-    return SlotRowView.from(slot,
-        now: DateTime.now(), nameOf: _customerNameOf);
+    return SlotRowView.from(slot, now: DateTime.now(), nameOf: _customerNameOf);
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.event_busy_outlined,
-            size: 72,
-            color: AppColors.onSurfaceVariant.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '本日の利用予定者はいません',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '顧客の定期利用曜日を確認してください',
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 24),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.calendar_today_outlined, size: 16),
-            label: const Text('日付を変更'),
-            onPressed: _changeDate,
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Icons.event_busy_outlined,
+      title: '本日の利用予定者はいません',
+      message: '顧客の定期利用曜日を確認してください',
+      actions: [
+        AppOutlinedButton.icon(
+          icon: const Icon(Icons.calendar_today_outlined, size: 16),
+          label: const Text('日付を変更'),
+          onPressed: _changeDate,
+        ),
+      ],
     );
   }
 
@@ -1001,8 +1001,8 @@ class _AttendanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+      duration: AppMotion.scaled(context, AppMotion.normal),
+      curve: AppMotion.standard,
       decoration: BoxDecoration(
         color: _bgColor,
         borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
@@ -1087,8 +1087,7 @@ class _AttendanceCard extends StatelessWidget {
             if (record.status == AttendanceStatus.absent &&
                 record.absenceReason != null) ...[
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.error.withValues(alpha: 0.07),
                   borderRadius: BorderRadius.circular(6),
@@ -1155,13 +1154,12 @@ class _AttendanceCard extends StatelessWidget {
           flex: 2,
           child: SizedBox(
             height: 34,
-            child: ElevatedButton.icon(
+            child: AppElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2E7D32),
                 foregroundColor: Colors.white,
                 minimumSize: Size.zero,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -1181,12 +1179,11 @@ class _AttendanceCard extends StatelessWidget {
           flex: 2,
           child: SizedBox(
             height: 34,
-            child: OutlinedButton.icon(
+            child: AppOutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.error,
                 minimumSize: Size.zero,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 side: const BorderSide(color: AppColors.error),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1224,13 +1221,12 @@ class _AttendanceCard extends StatelessWidget {
           flex: 2,
           child: SizedBox(
             height: 34,
-            child: ElevatedButton.icon(
+            child: AppElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 minimumSize: Size.zero,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -1253,8 +1249,7 @@ class _AttendanceCard extends StatelessWidget {
   Widget _departedLabel(BuildContext context) {
     return const Row(
       children: [
-        Icon(Icons.check_circle_outline,
-            size: 14, color: Color(0xFF546E7A)),
+        Icon(Icons.check_circle_outline, size: 14, color: Color(0xFF546E7A)),
         SizedBox(width: 4),
         Text(
           '退室完了',
@@ -1273,13 +1268,12 @@ class _AttendanceCard extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: 32,
-      child: OutlinedButton.icon(
+      child: AppOutlinedButton.icon(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.error,
           minimumSize: Size.zero,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          side: BorderSide(
-              color: AppColors.error.withValues(alpha: 0.5)),
+          side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),
@@ -1319,10 +1313,23 @@ class _PulseDotSmallState extends State<_PulseDotSmall>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
+      value: 1.0,
+    );
     _anim = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 減らす設定・テスト用フラグでは点滅させず常時点灯（色は変えない）
+    if (AppMotion.loopingEnabled(context)) {
+      if (!_ctrl.isAnimating) _ctrl.repeat(reverse: true);
+    } else {
+      _ctrl.stop();
+      _ctrl.value = 1.0;
+    }
   }
 
   @override
