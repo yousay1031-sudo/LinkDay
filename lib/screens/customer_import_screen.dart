@@ -13,7 +13,17 @@ import '../widgets/motion/app_spinner.dart';
 /// 遷移: 1. ファイル選択 → 2. プレビュー → 3. 重複確認ダイアログ → 4. 結果
 /// 仕様正本: linkday_customer_sample.xlsx「顧客マスタ」16 列
 class CustomerImportScreen extends StatefulWidget {
-  const CustomerImportScreen({super.key});
+  const CustomerImportScreen({super.key, this.executeOverride});
+
+  /// テスト用: 取り込み実行処理の差し替え（呼び出し回数・例外復帰の検証用）。
+  /// 本番では常に null（CustomerImportService.instance.execute を使用）。
+  @visibleForTesting
+  final Future<CustomerImportResult> Function(
+    ImportPreview preview, {
+    required Future<DuplicateAction?> Function(ParsedCustomerRow row)
+        resolveDuplicate,
+    void Function(int done, int total)? onProgress,
+  })? executeOverride;
 
   @override
   State<CustomerImportScreen> createState() => _CustomerImportScreenState();
@@ -168,7 +178,9 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
       _progressTotal = p.rows.length;
     });
     try {
-      final result = await CustomerImportService.instance.execute(
+      final run =
+          widget.executeOverride ?? CustomerImportService.instance.execute;
+      final result = await run(
         p,
         resolveDuplicate: _resolveDuplicate,
         onProgress: (done, total) {
@@ -190,6 +202,8 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
       debugPrint('[CustomerImportScreen] execute failed: $e');
       if (!mounted) return;
       setState(() {
+        // 途中まで保存されている可能性があるため、戻ったとき一覧を再読込させる
+        _didImport = true;
         _busyKind = _Busy.none;
         _error = '取り込みエラー: $e';
       });
@@ -262,9 +276,13 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       // 取り込み中は戻らせない（途中で閉じて結果を見失わないように）
-      canPop: _busyKind != _Busy.importing,
+      //
+      // 取り込み済み（_didImport）の場合も canPop=false にして、システム戻る
+      // （Android 戻る・ブラウザ戻る）でも _close() 経由で結果(true)を返す。
+      // さもないと戻り値が null になり、顧客一覧が再読込されない。
+      canPop: _busyKind != _Busy.importing && !_didImport,
       onPopInvokedWithResult: (didPop, _) {
-        // Navigator.pop の戻り値は _close() 経由で返す
+        if (!didPop && _busyKind != _Busy.importing) _close();
       },
       child: Scaffold(
         appBar: AppBar(

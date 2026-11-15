@@ -28,7 +28,12 @@ import '../widgets/motion/app_spinner.dart';
 
 /// 当日出席管理画面
 class AttendanceScreen extends StatefulWidget {
-  const AttendanceScreen({super.key});
+  const AttendanceScreen({super.key, this.afterEnsureHook});
+
+  /// テスト用: 当日レコード生成（保存）の直後に挟む処理。読込の保留・失敗の
+  /// 再現に使う。本番では常に null。
+  @visibleForTesting
+  final Future<void> Function(DateTime date)? afterEnsureHook;
 
   @override
   State<AttendanceScreen> createState() => _AttendanceScreenState();
@@ -38,6 +43,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   DateTime _selectedDate = DateTime.now();
   List<AttendanceRecord> _records = [];
   bool _isLoading = true;
+
+  /// 読込（当日レコード生成〜取得）に失敗したときのメッセージ。
+  /// null でなければ SkeletonGate がエラー＋再試行を表示する
+  String? _loadError;
   bool _isPdfGenerating = false;
 
   /// 日付を素早く切り替えたとき、古い日付の読込結果で新しい日付を上書きしない
@@ -129,11 +138,36 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _initializeAndLoad() async {
     final token = _loadSeq.begin();
-    setState(() => _isLoading = true);
-    await _ensureScheduled(_selectedDate);
-    if (!mounted || !_loadSeq.isCurrent(token)) return;
-    _loadRecords();
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    await _loadForSelectedDate(token, _selectedDate);
   }
+
+  /// 指定日のレコードを用意して読み込む。
+  /// - 失敗しても `_isLoading` のまま固まらせず、エラー＋再試行を出す
+  /// - 待機中に日付が変わっていたら結果は捨てる（古い失敗も表示しない）
+  /// - 当日レコード生成（保存）は待機の前に完了させる＝古い表示結果の破棄で
+  ///   保存処理そのものは中断されない
+  Future<void> _loadForSelectedDate(int token, DateTime date) async {
+    try {
+      await _ensureScheduled(date);
+      await widget.afterEnsureHook?.call(date);
+      if (!mounted || !_loadSeq.isCurrent(token)) return;
+      _loadRecords(throwOnError: true);
+    } catch (e) {
+      debugPrint('[AttendanceScreen] load failed: $e');
+      if (!mounted || !_loadSeq.isCurrent(token)) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = '出席情報の読み込みに失敗しました';
+      });
+    }
+  }
+
+  /// エラー表示の「再試行」
+  void _retryLoad() => _initializeAndLoad();
 
   /// 当日対象顧客を scheduled として自動生成
   Future<void> _ensureScheduled(DateTime date) async {
@@ -144,13 +178,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  void _loadRecords() {
-    final records = AttendanceService.instance.getRecordsByDate(_selectedDate);
+  void _loadRecords({bool throwOnError = false}) {
+    final List<AttendanceRecord> records;
+    try {
+      records = AttendanceService.instance.getRecordsByDate(_selectedDate);
+    } catch (e) {
+      if (throwOnError) rethrow;
+      debugPrint('[AttendanceScreen] reload failed: $e');
+      return; // 操作後の再読込失敗では表示中の内容を潰さない
+    }
     debugPrint('[AttendanceScreen] records loaded: ${records.length}');
     if (!mounted) return;
     setState(() {
       _records = records;
       _isLoading = false;
+      _loadError = null;
     });
   }
 
@@ -172,17 +214,23 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
     if (picked == null) return;
     if (!mounted) return;
+    await _selectDate(picked);
+  }
 
+  /// テスト用: 日付ピッカーを介さずに日付を切り替える
+  @visibleForTesting
+  Future<void> debugSelectDate(DateTime picked) => _selectDate(picked);
+
+  Future<void> _selectDate(DateTime picked) async {
     final token = _loadSeq.begin();
     setState(() {
       _selectedDate = picked;
       _isLoading = true;
+      _loadError = null;
     });
     _subscribeSlots();
-    await _ensureScheduled(picked);
     // 待っている間にさらに日付が変わっていたら、この結果は捨てる
-    if (!mounted || !_loadSeq.isCurrent(token)) return;
-    _loadRecords();
+    await _loadForSelectedDate(token, picked);
   }
 
   // ── PDF 出力 ────────────────────────────────────────────────
@@ -656,6 +704,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               child: SkeletonGate(
                 loading: _isLoading,
                 contentKey: _selectedDate,
+                errorMessage: _loadError,
+                onRetry: _retryLoad,
                 skeleton: LayoutBuilder(
                   builder: (context, c) {
                     final columns = _columnCount(c.maxWidth);

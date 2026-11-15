@@ -24,7 +24,13 @@ import 'transport_map_screen.dart';
 
 /// 送迎計画画面
 class TransportScreen extends StatefulWidget {
-  const TransportScreen({super.key});
+  const TransportScreen({super.key, this.scheduledCustomersLoader});
+
+  /// テスト用: 利用予定者の取得処理の差し替え（読込の保留・失敗の再現用）。
+  /// 本番では常に null。
+  @visibleForTesting
+  final Future<List<Customer>> Function(DateTime date)?
+      scheduledCustomersLoader;
 
   @override
   State<TransportScreen> createState() => _TransportScreenState();
@@ -108,7 +114,10 @@ class _TransportScreenState extends State<TransportScreen>
     });
     try {
       // 利用予定者を取得（3段階フォールバック）
-      final customers = await _fetchScheduledCustomers();
+      final loader = widget.scheduledCustomersLoader;
+      final customers = loader != null
+          ? await loader(_selectedDate)
+          : await _fetchScheduledCustomers();
 
       if (!mounted || !_loadSeq.isCurrent(token)) return;
 

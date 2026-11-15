@@ -17,7 +17,12 @@ import 'customer_import_screen.dart';
 import 'transport_location_resolve_screen.dart';
 
 class CustomerManagementScreen extends StatefulWidget {
-  const CustomerManagementScreen({super.key});
+  const CustomerManagementScreen({super.key, this.usageLoader});
+
+  /// テスト用: 月間利用状況の取得処理の差し替え（読込の保留・失敗の再現用）。
+  /// 本番では常に null（MonthlyUsageService を使用）。
+  @visibleForTesting
+  final Future<List<MonthlyUsage>> Function()? usageLoader;
 
   @override
   State<CustomerManagementScreen> createState() =>
@@ -56,8 +61,10 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   /// 当月の利用状況を読み込む（Day 9）
   Future<void> _loadUsage() async {
     try {
-      final list =
-          await MonthlyUsageService.instance.getAllUsage(DateTime.now());
+      final loader = widget.usageLoader;
+      final list = loader != null
+          ? await loader()
+          : await MonthlyUsageService.instance.getAllUsage(DateTime.now());
       if (!mounted) return;
       setState(() {
         _usage = {for (final u in list) u.customerId: u};
