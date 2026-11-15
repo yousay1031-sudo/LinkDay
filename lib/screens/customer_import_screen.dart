@@ -594,7 +594,9 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
                                 _error = null;
                                 _step = _Step.pick;
                               }),
-                      child: const Text('キャンセル'),
+                      // 390px 幅でも 1 行に収める（折り返し・見切れ防止）
+                      style: _compactOutlined,
+                      child: const _OneLineLabel('キャンセル'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -727,8 +729,9 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
                     _error = null;
                     _step = _Step.pick;
                   }),
+                  style: _compactOutlined,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('別のファイル', softWrap: false),
+                  label: const _OneLineLabel('別のファイル'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1099,10 +1102,62 @@ class _Stat extends StatelessWidget {
   }
 }
 
+/// 下部ボタン用: 狭い幅では左右余白を詰める（テーマの他の値は維持）
+final ButtonStyle _compactOutlined = OutlinedButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 8),
+);
+
+/// 下部ボタンのラベル: 折り返さず、入りきらない幅では省略せず縮小して全文を表示する
+class _OneLineLabel extends StatelessWidget {
+  final String text;
+  const _OneLineLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(text, maxLines: 1, softWrap: false),
+    );
+  }
+}
+
 /// サンプル行テーブル（横スクロール・ヘッダー和名）
-class _SampleTable extends StatelessWidget {
+///
+/// Web では日本語グリフ（フォールバックフォント）が後から読み込まれる。
+/// DataTable の列幅は読み込み前の字幅で決まったまま残り、見出し同士が
+/// 重なることがあったため、システムフォント変更の通知で表を作り直す。
+class _SampleTable extends StatefulWidget {
   final List<ParsedCustomerRow> rows;
   const _SampleTable({required this.rows});
+
+  @override
+  State<_SampleTable> createState() => _SampleTableState();
+}
+
+class _SampleTableState extends State<_SampleTable> {
+  int _fontGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    PaintingBinding.instance.systemFonts.addListener(_onSystemFontsChanged);
+  }
+
+  @override
+  void dispose() {
+    PaintingBinding.instance.systemFonts.removeListener(_onSystemFontsChanged);
+    super.dispose();
+  }
+
+  void _onSystemFontsChanged() {
+    if (mounted) setState(() => _fontGeneration++);
+  }
+
+  /// テスト用: フォント変更通知で作り直した回数
+  @visibleForTesting
+  int get debugFontGeneration => _fontGeneration;
+
+  List<ParsedCustomerRow> get rows => widget.rows;
 
   @override
   Widget build(BuildContext context) {
@@ -1116,6 +1171,7 @@ class _SampleTable extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       child: DataTable(
+        key: ValueKey<int>(_fontGeneration),
         headingRowHeight: 36,
         dataRowMinHeight: 32,
         dataRowMaxHeight: 40,

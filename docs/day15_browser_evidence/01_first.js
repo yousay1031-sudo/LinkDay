@@ -1,0 +1,21 @@
+const { launch, instrument, bootState, URL, OUT } = require('./lib');
+(async () => {
+  const browser = await launch();
+  console.log('browser', await browser.version());
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 800 });
+  const log = { console: [], failed: [] };
+  instrument(page, log);
+  const t0 = Date.now();
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.screenshot({ path: `${OUT}/01_loading_start_1280.png` });
+  console.log('t=' + (Date.now() - t0), await bootState(page));
+  await page.waitForFunction(() => !document.getElementById('ld-boot'), { timeout: 60000 }).catch(e => console.log('wait fail', e.message));
+  console.log('boot removed at ms', Date.now() - t0);
+  await new Promise(r => setTimeout(r, 2500));
+  await page.screenshot({ path: `${OUT}/01_after_boot_1280.png` });
+  console.log('state', await bootState(page));
+  console.log('CONSOLE', JSON.stringify(log.console, null, 1));
+  console.log('FAILED', JSON.stringify(log.failed, null, 1));
+  await browser.close();
+})();
