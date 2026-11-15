@@ -332,10 +332,15 @@ class ErrorRetry extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: AppTheme.space2),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              key: const Key('errorRetryMessage'),
+            // 表示と同時にスクリーンリーダーへエラーを通知する
+            Semantics(
+              liveRegion: true,
+              container: true,
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                key: const Key('errorRetryMessage'),
+              ),
             ),
             if (onRetry != null) ...[
               const SizedBox(height: AppTheme.space2),

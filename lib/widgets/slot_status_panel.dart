@@ -186,14 +186,63 @@ class SlotStatusPanel extends StatelessWidget {
               style: const TextStyle(fontSize: 12, color: AppColors.error),
             ),
           ],
-          for (final s in slots) ...[
-            const SizedBox(height: 6),
-            _SlotRow(
-              key: ValueKey('slotRow_${s.id}'),
-              view: SlotRowView.from(s, now: now, nameOf: nameOf),
+          if (slots.isNotEmpty)
+            // 欠席が多い日にパネルが一覧を押し出さないよう、枠の一覧だけ
+            // 高さに上限を設けて内部スクロールにする（枠の情報は省略しない）。
+            _SlotRowsScroller(
+              maxHeight: (MediaQuery.sizeOf(context).height * 0.25)
+                  .clamp(96.0, 260.0),
+              children: [
+                for (final s in slots) ...[
+                  const SizedBox(height: 6),
+                  _SlotRow(
+                    key: ValueKey('slotRow_${s.id}'),
+                    view: SlotRowView.from(s, now: now, nameOf: nameOf),
+                  ),
+                ],
+              ],
             ),
-          ],
         ],
+      ),
+    );
+  }
+}
+
+/// 高さ上限つきの枠一覧。上限以内なら通常の Column と同じ高さ。
+/// 親の PrimaryScrollController（下の一覧）と競合しないよう独自コントローラを使う。
+class _SlotRowsScroller extends StatefulWidget {
+  final double maxHeight;
+  final List<Widget> children;
+  const _SlotRowsScroller({required this.maxHeight, required this.children});
+
+  @override
+  State<_SlotRowsScroller> createState() => _SlotRowsScrollerState();
+}
+
+class _SlotRowsScrollerState extends State<_SlotRowsScroller> {
+  final ScrollController _ctrl = ScrollController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: widget.maxHeight),
+      child: Scrollbar(
+        controller: _ctrl,
+        child: SingleChildScrollView(
+          key: const Key('slotRowsScroll'),
+          controller: _ctrl,
+          primary: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: widget.children,
+          ),
+        ),
       ),
     );
   }

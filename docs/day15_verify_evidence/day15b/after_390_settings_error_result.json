@@ -1,0 +1,22 @@
+{
+ "vp": {
+  "width": 390,
+  "height": 844
+ },
+ "error": {
+  "msg": true,
+  "retry": true,
+  "save": true,
+  "clear": true
+ },
+ "afterClickOnDisabled": {
+  "dialogShown": false,
+  "snack": false
+ },
+ "recovered": {
+  "msg": false,
+  "retry": false,
+  "save": true,
+  "clear": true
+ }
+}

@@ -875,72 +875,13 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
   // ════════════════════════════════════════════════════════════════
 
   Widget _buildTabView(BuildContext context) {
-    const dayLabels = ['月', '火', '水', '木', '金', '土', '日'];
-
     return Column(
       children: [
         // タブバー
-        TabBar(
+        WeeklyDayTabBar(
           controller: _tabController,
-          isScrollable: false,
-          indicatorColor: AppColors.primary,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.onSurfaceVariant,
-          tabs: List.generate(7, (i) {
-            final date = _currentWeekStart.add(Duration(days: i));
-            final count = _schedule?.slotForDay(i + 1)?.activeCount ?? 0;
-            return Tab(
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        dayLabels[i],
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: i == 5
-                              ? const Color(0xFF1565C0)
-                              : i == 6
-                                  ? AppColors.error
-                                  : null,
-                        ),
-                      ),
-                      Text(
-                        '${date.month}/${date.day}',
-                        style: const TextStyle(fontSize: 9),
-                      ),
-                    ],
-                  ),
-                  if (count > 0)
-                    Positioned(
-                      top: -2,
-                      right: -10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '$count',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          }),
+          weekStart: _currentWeekStart,
+          countForDay: (day) => _schedule?.slotForDay(day)?.activeCount ?? 0,
         ),
         // タブコンテンツ
         Expanded(
@@ -1446,6 +1387,102 @@ class _ActionTile extends StatelessWidget {
         style: TextStyle(fontSize: 14, color: color),
       ),
       onTap: () => Navigator.of(context).pop(value),
+    );
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// 曜日ストリップ（< 768px のタブバー）
+// ════════════════════════════════════════════════════════════════
+
+/// 7 日分の曜日タブ。曜日・日付(M/D)・利用人数バッジを出す。
+///
+/// 390px 幅では 1 セルが約 55px。TabBar 既定の左右パディング(16px ×2)だと
+/// 実効幅が約 23px となり「11/16」が「11/1」「6」に折り返していたため、
+/// 左右パディングを詰めて日付を 1 行で表示する（文字は縮小しない）。
+class WeeklyDayTabBar extends StatelessWidget {
+  final TabController? controller;
+  final DateTime weekStart;
+
+  /// 1(月)〜7(日) の利用人数
+  final int Function(int day) countForDay;
+
+  const WeeklyDayTabBar({
+    super.key,
+    required this.controller,
+    required this.weekStart,
+    required this.countForDay,
+  });
+
+  static const dayLabels = ['月', '火', '水', '木', '金', '土', '日'];
+
+  @override
+  Widget build(BuildContext context) {
+    return TabBar(
+      controller: controller,
+      isScrollable: false,
+      // 既定 16px だと 390px 幅で日付が折り返す。バッジ(右へ -10)の逃げ分も残す。
+      labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+      indicatorColor: AppColors.primary,
+      labelColor: AppColors.primary,
+      unselectedLabelColor: AppColors.onSurfaceVariant,
+      tabs: List.generate(7, (i) {
+        final date = weekStart.add(Duration(days: i));
+        final count = countForDay(i + 1);
+        return Tab(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    dayLabels[i],
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: i == 5
+                          ? const Color(0xFF1565C0)
+                          : i == 6
+                              ? AppColors.error
+                              : null,
+                    ),
+                  ),
+                  Text(
+                    '${date.month}/${date.day}',
+                    key: Key('weeklyDayDate$i'),
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                ],
+              ),
+              if (count > 0)
+                Positioned(
+                  top: -2,
+                  right: -10,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }),
     );
   }
 }

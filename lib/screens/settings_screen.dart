@@ -19,7 +19,12 @@ import '../widgets/motion/app_spinner.dart';
 // SettingsScreen
 // ════════════════════════════════════════════════════════════════
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  /// テスト用: APIキーの読込処理を差し替える（読込失敗の再現用）。
+  /// 本番では常に null（SettingsService.loadJsApiKey を使う）。
+  @visibleForTesting
+  final Future<String?> Function()? debugLoadJsApiKey;
+
+  const SettingsScreen({super.key, this.debugLoadJsApiKey});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -64,6 +69,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// API キー（非同期取得）の読込中。ここだけ骨格を出す
   bool _apiKeyLoading = true;
   String? _apiKeyLoadError;
+
+  /// APIキーが「読めている」状態（読込中でも読込失敗でもない）。
+  /// false の間は、読めていない値を空値で上書き・削除しないよう
+  /// APIキーの保存・テスト・クリアを行わない。他の設定項目には影響しない。
+  bool get _apiKeyReady => !_apiKeyLoading && _apiKeyLoadError == null;
 
   @override
   void initState() {
@@ -120,14 +130,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> _loadSettings({bool reapplySettings = true}) async {
     final settings = SettingsService.instance.getSettings();
     String? jsKey;
     try {
       if (VerifyConfig.enabled) {
         await VerifyFaults.apply(VerifyFaults.settings);
       }
-      jsKey = await SettingsService.instance.loadJsApiKey();
+      jsKey = await (widget.debugLoadJsApiKey ??
+          SettingsService.instance.loadJsApiKey)();
     } catch (e) {
       debugPrint('[SettingsScreen] loadJsApiKey failed: $e');
       if (!mounted) return;
@@ -146,7 +157,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'vehicleCount=${settings.vehicleCount}');
 
     setState(() {
-      _applySettingsSync(settings);
+      // 再試行時は、読込失敗中に編集された他の設定項目を上書きしない
+      if (reapplySettings) _applySettingsSync(settings);
       _jsApiKeyCtrl.text = jsKey ?? '';
       _jsApiKeyStatus = (jsKey != null && jsKey.isNotEmpty)
           ? ApiKeyStatus.valid
@@ -161,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _apiKeyLoading = true;
       _apiKeyLoadError = null;
     });
-    _loadSettings();
+    _loadSettings(reapplySettings: false);
   }
 
   void _rebuildVehicleControllers(List<String> names, List<int> caps) {
@@ -202,7 +214,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 住所が変更された場合は自動でジオコーディングを実行
     if (addressChanged && newAddress.isNotEmpty) {
       final jsKey = _jsApiKeyCtrl.text.trim();
-      if (jsKey.isNotEmpty) {
+      if (!_apiKeyReady) {
+        // APIキーが読めていない間は「未設定」と断定しない
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
+        _showSnack(
+          '住所を変更しました。APIキーを読み込めていないため、緯度経度の自動取得は行っていません。',
+          AppColors.warning,
+        );
+      } else if (jsKey.isNotEmpty) {
         // 少し遅延させてスナックバーが表示されてから実行
         await Future.delayed(const Duration(milliseconds: 300));
         if (!mounted) return;
@@ -272,6 +292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── API キー操作（1キー方式） ─────────────────────────────
 
   Future<void> _saveJsApiKey() async {
+    if (!_apiKeyReady) return; // 読込中・読込失敗中は既存値に触れない
     final key = _jsApiKeyCtrl.text.trim();
     if (key.isEmpty) {
       _showSnack('Google Maps API キーを入力してください', AppColors.error);
@@ -284,6 +305,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _testJsApiKey() async {
+    if (!_apiKeyReady) return;
     final key = _jsApiKeyCtrl.text.trim();
     if (key.isEmpty) {
       _showSnack('Google Maps API キーを入力してください', AppColors.error);
@@ -316,6 +338,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _clearJsApiKey() async {
+    if (!_apiKeyReady) return; // 読めていないキーを削除しない
     final confirmed = await _confirmClear('Google Maps API キー');
     if (confirmed != true || !mounted) return;
     await SettingsService.instance.clearJsApiKey();
@@ -721,6 +744,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: AppElevatedButton.icon(
+              key: const Key('saveVehiclesButton'),
               onPressed: _saveVehicles,
               icon: const Icon(Icons.save, size: 18),
               label: const Text('車両設定を保存'),
@@ -928,6 +952,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Google Maps API キー',
             subtitle: '地図表示・ジオコーディング・ルート計算すべてに利用 — HTTPリファラー制限 OK',
             status: _jsApiKeyStatus,
+            loading: _apiKeyLoading,
+            failed: _apiKeyLoadError != null,
           ),
           const SizedBox(height: 8),
           SkeletonGate(
@@ -975,7 +1001,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             runSpacing: 8,
             children: [
               AppElevatedButton.icon(
-                onPressed: _saveJsApiKey,
+                key: const Key('apiKeySaveButton'),
+                onPressed: _apiKeyReady ? _saveJsApiKey : null,
                 icon: const Icon(Icons.save, size: 16),
                 label: const Text('保存'),
                 style: ElevatedButton.styleFrom(
@@ -985,7 +1012,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               AppOutlinedButton.icon(
-                onPressed: _testingJsKey ? null : _testJsApiKey,
+                key: const Key('apiKeyTestButton'),
+                onPressed:
+                    (_testingJsKey || !_apiKeyReady) ? null : _testJsApiKey,
                 icon: _testingJsKey
                     ? const SizedBox(
                         width: 14,
@@ -1002,11 +1031,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               TextButton.icon(
-                onPressed: _clearJsApiKey,
-                icon: const Icon(Icons.delete_outline,
-                    size: 16, color: AppColors.error),
-                label:
-                    const Text('クリア', style: TextStyle(color: AppColors.error)),
+                key: const Key('apiKeyClearButton'),
+                onPressed: _apiKeyReady ? _clearJsApiKey : null,
+                // 無効時は赤のままにせず、ボタン既定の無効色に任せる
+                icon: Icon(Icons.delete_outline,
+                    size: 16, color: _apiKeyReady ? AppColors.error : null),
+                label: Text('クリア',
+                    style: _apiKeyReady
+                        ? const TextStyle(color: AppColors.error)
+                        : null),
                 style: TextButton.styleFrom(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1070,6 +1103,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String title,
     required String subtitle,
     required ApiKeyStatus status,
+    bool loading = false,
+    bool failed = false,
   }) {
     return Row(
       children: [
@@ -1105,7 +1140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
-        _ApiKeyStatusBadge(status: status),
+        _ApiKeyStatusBadge(status: status, loading: loading, failed: failed),
       ],
     );
   }
@@ -1201,13 +1236,29 @@ class _SectionCard extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════
 class _ApiKeyStatusBadge extends StatelessWidget {
   final ApiKeyStatus status;
-  const _ApiKeyStatusBadge({required this.status});
+
+  /// 読込中 / 読込失敗は「未設定」と区別して表示する
+  final bool loading;
+  final bool failed;
+  const _ApiKeyStatusBadge({
+    required this.status,
+    this.loading = false,
+    this.failed = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     late Color color;
     late IconData icon;
     late String label;
+
+    if (failed) {
+      return _buildBadge(AppColors.error, Icons.error_outline, '読込失敗');
+    }
+    if (loading) {
+      return _buildBadge(
+          AppColors.onSurfaceVariant, Icons.hourglass_empty, '読込中');
+    }
 
     switch (status) {
       case ApiKeyStatus.valid:
@@ -1227,7 +1278,12 @@ class _ApiKeyStatusBadge extends StatelessWidget {
         break;
     }
 
+    return _buildBadge(color, icon, label);
+  }
+
+  Widget _buildBadge(Color color, IconData icon, String label) {
     return Container(
+      key: const Key('apiKeyStatusBadge'),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
