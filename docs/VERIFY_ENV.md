@@ -38,3 +38,10 @@ tool/verify/stop_emulators.sh
 - **setSelectionRange InvalidStateError**: ログイン画面の email 入力中にコンソールへ出る（main.dart.js:49400）。原因未確認。画面操作は継続できた。
 - **自動入力で先頭1文字欠落**: Tab 直後の即時入力で発生。500ms 待てば回避。実機での再現は未確認。
 - パスワードに `-` を含めると上記テンキー例外に当たるため、生成パスワードは英数字のみ。
+
+## Day15 追補: 入力不具合の切り分け結果（docs/day15_input_investigation/）
+- 先頭1文字欠落: ログイン画面で Tab 直後に即入力すると、セマンティクスON時のみ再現（待機0/ON: 11/24 失敗、待機100ms/ON: 0/16、待機0/OFF: 0/16）。
+  Tab 後に focusout/focusin が 21〜33ms 遅れて届き、その間の文字が前の入力欄に入る。エンジン側フォーカス遅延と自動入力速度の組合せを示唆。アプリ不具合は未確立。人手入力・日本語IMEは未確認。
+- setSelectionRange 例外: セマンティクスON + type=email の DOM 入力で発生（ON 12/12、OFF 0/12）。コンソールのみ・値と保存は影響なし。
+- テンキー「−」例外: puppeteer press('NumpadSubtract') が keydown location=3 / keyup location=1 を送り、エンジンの kWebLogicalLocationMap が null となり TypeError。CDP の isKeypad:true を両方に付けると発生しない。実機テンキーは未確認。
+- スクリプトは docs/day15_input_investigation/scripts/（認証情報は含まない）。

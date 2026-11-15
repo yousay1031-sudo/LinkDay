@@ -1,0 +1,22 @@
+{
+ "faultReached": true,
+ "logs": [
+  "[SettingsScreen] initState start",
+  "[SettingsScreen] initState end: vehicleCount=3, nameCtrls=3, capCtrls=3",
+  "[SettingsScreen] loadJsApiKey failed: Bad state: [verify] 読込失敗を注入しました: settings"
+ ],
+ "topHasFailText": false,
+ "errorFoundAfterScroll": false,
+ "errorLabel": null,
+ "retryBtn": true,
+ "retryPressed": true,
+ "afterRetry": {
+  "errorGone": true,
+  "apiKeyFieldShown": false
+ },
+ "logsAfter": [
+  "[SettingsScreen] initState end: vehicleCount=3, nameCtrls=3, capCtrls=3",
+  "[SettingsScreen] loadJsApiKey failed: Bad state: [verify] 読込失敗を注入しました: settings",
+  "[SettingsScreen] _loadSettings: apiKey=未設定, facilityLatLng=あり, vehicleCount=3"
+ ]
+}

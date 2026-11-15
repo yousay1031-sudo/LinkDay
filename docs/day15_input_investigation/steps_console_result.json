@@ -1,0 +1,309 @@
+[
+ {
+  "sem": false,
+  "afterEmail": 0,
+  "enter": false,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 0,
+  "enter": false,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 0,
+  "enter": false,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 0,
+  "enter": true,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 0,
+  "enter": true,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "enter:console.error: Failed to load resource: the server responded",
+   "enter:console.error: Failed to load resource: the server responded"
+  ],
+  "stacks": [
+   "console.error: Failed to load resource: the server responded with a status of 400 ()",
+   "console.error: Failed to load resource: the server responded with a status of 400 ()"
+  ]
+ },
+ {
+  "sem": false,
+  "afterEmail": 0,
+  "enter": true,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 200,
+  "enter": false,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "enter:console.error: Failed to load resource: the server responded"
+  ],
+  "stacks": [
+   "console.error: Failed to load resource: the server responded with a status of 400 ()"
+  ]
+ },
+ {
+  "sem": false,
+  "afterEmail": 200,
+  "enter": false,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 200,
+  "enter": false,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 200,
+  "enter": true,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": false,
+  "afterEmail": 200,
+  "enter": true,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "enter:console.error: Failed to load resource: the server responded",
+   "enter:console.error: Failed to load resource: the server responded"
+  ],
+  "stacks": [
+   "console.error: Failed to load resource: the server responded with a status of 400 ()",
+   "console.error: Failed to load resource: the server responded with a status of 400 ()"
+  ]
+ },
+ {
+  "sem": false,
+  "afterEmail": 200,
+  "enter": true,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": []
+ },
+ {
+  "sem": true,
+  "afterEmail": 0,
+  "enter": false,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "enter:console.error: Failed to load resource: the server responded",
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.error: Failed to load resource: the server responded with a status of 400 ()",
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 0,
+  "enter": false,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 0,
+  "enter": false,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 0,
+  "enter": true,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 0,
+  "enter": true,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "enter:console.error: Failed to load resource: the server responded",
+   "click-email:setSelectionRange",
+   "enter:console.error: Failed to load resource: the server responded"
+  ],
+  "stacks": [
+   "console.error: Failed to load resource: the server responded with a status of 400 ()",
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection.",
+   "console.error: Failed to load resource: the server responded with a status of 400 ()"
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 0,
+  "enter": true,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 200,
+  "enter": false,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "enter:console.error: Failed to load resource: the server responded",
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.error: Failed to load resource: the server responded with a status of 400 ()",
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 200,
+  "enter": false,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 200,
+  "enter": false,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 200,
+  "enter": true,
+  "t": 0,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 200,
+  "enter": true,
+  "t": 1,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "enter:console.error: Failed to load resource: the server responded",
+   "click-email:setSelectionRange",
+   "enter:console.error: Failed to load resource: the server responded"
+  ],
+  "stacks": [
+   "console.error: Failed to load resource: the server responded with a status of 400 ()",
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection.",
+   "console.error: Failed to load resource: the server responded with a status of 400 ()"
+  ]
+ },
+ {
+  "sem": true,
+  "afterEmail": 200,
+  "enter": true,
+  "t": 2,
+  "pwOK": true,
+  "pwLen": 16,
+  "errSteps": [
+   "click-email:setSelectionRange"
+  ],
+  "stacks": [
+   "console.log: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+  ]
+ }
+]

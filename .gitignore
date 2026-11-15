@@ -101,3 +101,4 @@ doc/api/
 /build/verify_web/
 firestore-debug.log
 ui-debug.log
+/build/verify_dbg/

@@ -1,0 +1,794 @@
+[
+ {
+  "mode": "fresh",
+  "t": 0,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "6242ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 7,
+  "full": [
+   {
+    "ms": 21,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1261,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3003,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3056,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3059,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3062,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3065,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 6242,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "fresh",
+  "t": 1,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "6377ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 7,
+  "full": [
+   {
+    "ms": 14,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1301,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3191,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3244,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3247,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3249,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3253,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 6377,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "fresh",
+  "t": 2,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "6746ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 7,
+  "full": [
+   {
+    "ms": 22,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1450,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3370,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3425,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3428,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3430,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3433,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 6746,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "fresh",
+  "t": 3,
+  "emailOK": true,
+  "pwOK": false,
+  "pwLen": 15,
+  "events": [
+   "6606ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 7,
+  "full": [
+   {
+    "ms": 21,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1197,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3156,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3206,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3209,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3213,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3216,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 6606,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "fresh",
+  "t": 4,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "6449ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 7,
+  "full": [
+   {
+    "ms": 18,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1315,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3218,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3267,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3269,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3272,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3275,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 6449,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "fresh",
+  "t": 5,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "6412ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 7,
+  "full": [
+   {
+    "ms": 20,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1285,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3149,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3189,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3195,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3199,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3201,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 6412,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "second-visit",
+  "t": 0,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "7856ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 9,
+  "full": [
+   {
+    "ms": 16,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1321,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3211,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3255,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3258,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3261,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3263,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 4442,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5043,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 7856,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "second-visit",
+  "t": 1,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "8084ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 9,
+  "full": [
+   {
+    "ms": 26,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1261,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3151,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3198,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3201,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3205,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3210,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 4477,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5084,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 8084,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "second-visit",
+  "t": 2,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "8176ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 9,
+  "full": [
+   {
+    "ms": 19,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1308,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3211,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3264,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3266,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3269,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3272,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 4510,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5139,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 8176,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "second-visit",
+  "t": 3,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "8478ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 9,
+  "full": [
+   {
+    "ms": 13,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 1343,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3234,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3308,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3313,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3316,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3320,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 4614,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5244,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 8478,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "second-visit",
+  "t": 4,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "8232ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 8,
+  "full": [
+   {
+    "ms": 32,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 2210,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 4150,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5141,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5196,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5199,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5200,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5202,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 8232,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ },
+ {
+  "mode": "second-visit",
+  "t": 5,
+  "emailOK": true,
+  "pwOK": true,
+  "pwLen": 16,
+  "events": [
+   "8592ms click-email console: InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input "
+  ],
+  "navs": 8,
+  "full": [
+   {
+    "ms": 28,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 3103,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 4495,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5508,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5577,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5579,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5581,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 5583,
+    "step": "boot",
+    "kind": "navigated",
+    "msg": "http://127.0.0.1:8765/"
+   },
+   {
+    "ms": 8592,
+    "step": "click-email",
+    "kind": "console",
+    "msg": "InvalidStateError: Failed to execute 'setSelectionRange' on 'HTMLInputElement': The input element's type ('email') does not support selection."
+   }
+  ]
+ }
+]

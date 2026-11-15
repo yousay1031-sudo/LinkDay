@@ -1,0 +1,372 @@
+{
+ "WAIT": 0,
+ "SEM": true,
+ "N": 24,
+ "fails": 11,
+ "out": [
+  {
+   "t": 0,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1426 keydown:d @INPUT/email v=26",
+    "1426 beforeinput:d @INPUT/email v=26",
+    "1427 input:d @INPUT/email v=27",
+    "1481 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1489 keydown:V @INPUT/email v=27",
+    "1489 beforeinput:V @INPUT/email v=27",
+    "1490 input:V @INPUT/email v=28",
+    "1510 focusout @INPUT/email v=28",
+    "1510 focusin @INPUT/password v=0",
+    "1525 keydown:f @INPUT/password v=0",
+    "1525 beforeinput:f @INPUT/password v=0",
+    "1526 input:f @INPUT/password v=1",
+    "1571 keydown:6 @INPUT/password v=1",
+    "1571 beforeinput:6 @INPUT/password v=1",
+    "1572 input:6 @INPUT/password v=2",
+    "1600 keydown:b @INPUT/password v=2",
+    "1600 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 1,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 2,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1361 keydown:d @INPUT/email v=26",
+    "1361 beforeinput:d @INPUT/email v=26",
+    "1362 input:d @INPUT/email v=27",
+    "1387 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1390 keydown:V @INPUT/email v=27",
+    "1390 beforeinput:V @INPUT/email v=27",
+    "1391 input:V @INPUT/email v=28",
+    "1409 focusout @INPUT/email v=28",
+    "1410 focusin @INPUT/password v=0",
+    "1425 keydown:f @INPUT/password v=0",
+    "1425 beforeinput:f @INPUT/password v=0",
+    "1426 input:f @INPUT/password v=1",
+    "1450 keydown:6 @INPUT/password v=1",
+    "1450 beforeinput:6 @INPUT/password v=1",
+    "1451 input:6 @INPUT/password v=2",
+    "1489 keydown:b @INPUT/password v=2",
+    "1489 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 3,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 4,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 5,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 6,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1336 keydown:d @INPUT/email v=26",
+    "1336 beforeinput:d @INPUT/email v=26",
+    "1336 input:d @INPUT/email v=27",
+    "1373 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1378 keydown:V @INPUT/email v=27",
+    "1378 beforeinput:V @INPUT/email v=27",
+    "1378 input:V @INPUT/email v=28",
+    "1394 focusout @INPUT/email v=28",
+    "1394 focusin @INPUT/password v=0",
+    "1402 keydown:f @INPUT/password v=0",
+    "1402 beforeinput:f @INPUT/password v=0",
+    "1402 input:f @INPUT/password v=1",
+    "1442 keydown:6 @INPUT/password v=1",
+    "1442 beforeinput:6 @INPUT/password v=1",
+    "1442 input:6 @INPUT/password v=2",
+    "1484 keydown:b @INPUT/password v=2",
+    "1484 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 7,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1297 keydown:d @INPUT/email v=26",
+    "1297 beforeinput:d @INPUT/email v=26",
+    "1298 input:d @INPUT/email v=27",
+    "1335 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1339 keydown:V @INPUT/email v=27",
+    "1339 beforeinput:V @INPUT/email v=27",
+    "1340 input:V @INPUT/email v=28",
+    "1367 focusout @INPUT/email v=28",
+    "1368 focusin @INPUT/password v=0",
+    "1381 keydown:f @INPUT/password v=0",
+    "1381 beforeinput:f @INPUT/password v=0",
+    "1381 input:f @INPUT/password v=1",
+    "1425 keydown:6 @INPUT/password v=1",
+    "1425 beforeinput:6 @INPUT/password v=1",
+    "1425 input:6 @INPUT/password v=2",
+    "1456 keydown:b @INPUT/password v=2",
+    "1456 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 8,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1310 keydown:d @INPUT/email v=26",
+    "1310 beforeinput:d @INPUT/email v=26",
+    "1311 input:d @INPUT/email v=27",
+    "1347 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1353 keydown:V @INPUT/email v=27",
+    "1354 beforeinput:V @INPUT/email v=27",
+    "1354 input:V @INPUT/email v=28",
+    "1379 focusout @INPUT/email v=28",
+    "1380 focusin @INPUT/password v=0",
+    "1393 keydown:f @INPUT/password v=0",
+    "1393 beforeinput:f @INPUT/password v=0",
+    "1394 input:f @INPUT/password v=1",
+    "1451 keydown:6 @INPUT/password v=1",
+    "1451 beforeinput:6 @INPUT/password v=1",
+    "1452 input:6 @INPUT/password v=2",
+    "1487 keydown:b @INPUT/password v=2",
+    "1487 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 9,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 10,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1294 keydown:d @INPUT/email v=26",
+    "1294 beforeinput:d @INPUT/email v=26",
+    "1295 input:d @INPUT/email v=27",
+    "1329 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1334 keydown:V @INPUT/email v=27",
+    "1334 beforeinput:V @INPUT/email v=27",
+    "1335 input:V @INPUT/email v=28",
+    "1350 focusout @INPUT/email v=28",
+    "1350 focusin @INPUT/password v=0",
+    "1363 keydown:f @INPUT/password v=0",
+    "1363 beforeinput:f @INPUT/password v=0",
+    "1364 input:f @INPUT/password v=1",
+    "1389 keydown:6 @INPUT/password v=1",
+    "1389 beforeinput:6 @INPUT/password v=1",
+    "1390 input:6 @INPUT/password v=2",
+    "1424 keydown:b @INPUT/password v=2",
+    "1424 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 11,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 12,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 13,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1272 keydown:d @INPUT/email v=26",
+    "1272 beforeinput:d @INPUT/email v=26",
+    "1272 input:d @INPUT/email v=27",
+    "1307 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1315 keydown:V @INPUT/email v=27",
+    "1315 beforeinput:V @INPUT/email v=27",
+    "1315 input:V @INPUT/email v=28",
+    "1340 focusout @INPUT/email v=28",
+    "1340 focusin @INPUT/password v=0",
+    "1356 keydown:f @INPUT/password v=0",
+    "1356 beforeinput:f @INPUT/password v=0",
+    "1357 input:f @INPUT/password v=1",
+    "1388 keydown:6 @INPUT/password v=1",
+    "1388 beforeinput:6 @INPUT/password v=1",
+    "1389 input:6 @INPUT/password v=2",
+    "1419 keydown:b @INPUT/password v=2",
+    "1420 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 14,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1330 keydown:d @INPUT/email v=26",
+    "1330 beforeinput:d @INPUT/email v=26",
+    "1331 input:d @INPUT/email v=27",
+    "1369 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1374 keydown:V @INPUT/email v=27",
+    "1374 beforeinput:V @INPUT/email v=27",
+    "1374 input:V @INPUT/email v=28",
+    "1392 focusout @INPUT/email v=28",
+    "1392 focusin @INPUT/password v=0",
+    "1399 keydown:f @INPUT/password v=0",
+    "1399 beforeinput:f @INPUT/password v=0",
+    "1400 input:f @INPUT/password v=1",
+    "1428 keydown:6 @INPUT/password v=1",
+    "1428 beforeinput:6 @INPUT/password v=1",
+    "1429 input:6 @INPUT/password v=2",
+    "1459 keydown:b @INPUT/password v=2",
+    "1459 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 15,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1306 keydown:d @INPUT/email v=26",
+    "1306 beforeinput:d @INPUT/email v=26",
+    "1307 input:d @INPUT/email v=27",
+    "1340 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1345 keydown:V @INPUT/email v=27",
+    "1345 beforeinput:V @INPUT/email v=27",
+    "1345 input:V @INPUT/email v=28",
+    "1363 focusout @INPUT/email v=28",
+    "1363 focusin @INPUT/password v=0",
+    "1375 keydown:f @INPUT/password v=0",
+    "1375 beforeinput:f @INPUT/password v=0",
+    "1376 input:f @INPUT/password v=1",
+    "1401 keydown:6 @INPUT/password v=1",
+    "1401 beforeinput:6 @INPUT/password v=1",
+    "1402 input:6 @INPUT/password v=2",
+    "1431 keydown:b @INPUT/password v=2",
+    "1432 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 16,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 17,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1341 keydown:d @INPUT/email v=26",
+    "1341 beforeinput:d @INPUT/email v=26",
+    "1342 input:d @INPUT/email v=27",
+    "1371 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1375 keydown:V @INPUT/email v=27",
+    "1375 beforeinput:V @INPUT/email v=27",
+    "1377 input:V @INPUT/email v=28",
+    "1393 focusout @INPUT/email v=28",
+    "1393 focusin @INPUT/password v=0",
+    "1403 keydown:f @INPUT/password v=0",
+    "1403 beforeinput:f @INPUT/password v=0",
+    "1404 input:f @INPUT/password v=1",
+    "1448 keydown:6 @INPUT/password v=1",
+    "1449 beforeinput:6 @INPUT/password v=1",
+    "1449 input:6 @INPUT/password v=2",
+    "1516 keydown:b @INPUT/password v=2",
+    "1516 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 18,
+   "ok": false,
+   "pwLen": 15,
+   "firstMismatchIndex": 0,
+   "evAroundPw": [
+    "1290 keydown:d @INPUT/email v=26",
+    "1290 beforeinput:d @INPUT/email v=26",
+    "1291 input:d @INPUT/email v=27",
+    "1319 keydown:Tab @INPUT/email v=27",
+    "--- pw typing starts ---",
+    "1324 keydown:V @INPUT/email v=27",
+    "1324 beforeinput:V @INPUT/email v=27",
+    "1326 input:V @INPUT/email v=28",
+    "1342 focusout @INPUT/email v=28",
+    "1343 focusin @INPUT/password v=0",
+    "1362 keydown:f @INPUT/password v=0",
+    "1362 beforeinput:f @INPUT/password v=0",
+    "1363 input:f @INPUT/password v=1",
+    "1404 keydown:6 @INPUT/password v=1",
+    "1404 beforeinput:6 @INPUT/password v=1",
+    "1405 input:6 @INPUT/password v=2",
+    "1441 keydown:b @INPUT/password v=2",
+    "1441 beforeinput:b @INPUT/password v=2"
+   ]
+  },
+  {
+   "t": 19,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 20,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 21,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 22,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 23,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  }
+ ]
+}

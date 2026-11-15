@@ -1,0 +1,104 @@
+{
+ "WAIT": 0,
+ "SEM": false,
+ "N": 16,
+ "fails": 0,
+ "out": [
+  {
+   "t": 0,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 1,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 2,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 3,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 4,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 5,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 6,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 7,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 8,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 9,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 10,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 11,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 12,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 13,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 14,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  },
+  {
+   "t": 15,
+   "ok": true,
+   "pwLen": 16,
+   "firstMismatchIndex": null
+  }
+ ]
+}

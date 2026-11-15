@@ -1,0 +1,956 @@
+[
+ {
+  "summary": {
+   "sem": false,
+   "delay": 0,
+   "wait": 0,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 0,
+   "wait": 100,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 0,
+   "wait": 500,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 15,
+   "wait": 0,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 15,
+   "wait": 100,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 15,
+   "wait": 500,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 60,
+   "wait": 0,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 60,
+   "wait": 100,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": false,
+   "delay": 60,
+   "wait": 500,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|text",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 0,
+   "wait": 0,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 0,
+   "wait": 100,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 0,
+   "wait": 500,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 15,
+   "wait": 0,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 15,
+   "wait": 100,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 15,
+   "wait": 500,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 60,
+   "wait": 0,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 60,
+   "wait": 100,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ },
+ {
+  "summary": {
+   "sem": true,
+   "delay": 60,
+   "wait": 500,
+   "n": 4,
+   "emailFail": 0,
+   "pwFail": 0,
+   "selErr": 0,
+   "otherErr": 0,
+   "focus2": [
+    "INPUT|password"
+   ]
+  },
+  "trials": [
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   },
+   {
+    "focus1": "INPUT|email",
+    "focus2": "INPUT|password",
+    "emailOK": true,
+    "pwOK": true,
+    "pwLen": 16,
+    "pwFirst": "",
+    "errs": []
+   }
+  ]
+ }
+]
