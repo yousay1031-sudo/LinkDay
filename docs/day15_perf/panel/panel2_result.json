@@ -1,0 +1,30 @@
+{
+ "panelY0": 155,
+ "listY0": 514,
+ "panelYAfterWheel": -127,
+ "listYAfterPanelWheel": 514,
+ "panelYAfterTouchDown": 3,
+ "listYAfterPanelTouch": 514,
+ "panelYAfterTouchUp": -127,
+ "listWheel": {
+  "panelBefore": -127,
+  "panelAfter": -127,
+  "listBefore": 514,
+  "listAfter": 156
+ },
+ "listTouchListY": 132,
+ "listTouchPanelY": -127,
+ "bottomButtons": [
+  "Back@8+40",
+  "日付変更@8+40",
+  "LINE通知の履歴@8+40",
+  "PDF出力@8+40",
+  "入室@200+34",
+  "欠席@200+34",
+  "退室@395+34",
+  "入室@590+34",
+  "欠席@590+34",
+  "欠席を取り消す@787+32"
+ ],
+ "frames": 750
+}

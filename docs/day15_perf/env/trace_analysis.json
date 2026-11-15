@@ -1,0 +1,101 @@
+{
+ "motion9_A": {
+  "main_tasks": 1037,
+  "main_tasks_gt50": [
+   [
+    1037401998,
+    143
+   ],
+   [
+    1037402146,
+    63
+   ],
+   [
+    1037402234,
+    93
+   ],
+   [
+    1037402340,
+    204
+   ]
+  ],
+  "main_busy_ms": 1447,
+  "gpu_task_n": 374,
+  "gpu_busy_ms": 72,
+  "gpu_tasks_gt16": [],
+  "span_ms": 6512
+ },
+ "motion9_B": {
+  "main_tasks": 1152,
+  "main_tasks_gt50": [],
+  "main_busy_ms": 1540,
+  "gpu_task_n": 303,
+  "gpu_busy_ms": 67,
+  "gpu_tasks_gt16": [],
+  "span_ms": 3818
+ },
+ "motion9_C": {
+  "main_tasks": 402,
+  "main_tasks_gt50": [
+   [
+    1037411525,
+    83
+   ]
+  ],
+  "main_busy_ms": 404,
+  "gpu_task_n": 115,
+  "gpu_busy_ms": 20,
+  "gpu_tasks_gt16": [],
+  "span_ms": 3827
+ },
+ "reduce9_A": {
+  "main_tasks": 209,
+  "main_tasks_gt50": [
+   [
+    1037469144,
+    131
+   ],
+   [
+    1037469347,
+    79
+   ],
+   [
+    1037469434,
+    187
+   ]
+  ],
+  "main_busy_ms": 617,
+  "gpu_task_n": 41,
+  "gpu_busy_ms": 14,
+  "gpu_tasks_gt16": [],
+  "span_ms": 6519
+ },
+ "reduce9_B": {
+  "main_tasks": 1243,
+  "main_tasks_gt50": [
+   [
+    1037487464,
+    61
+   ]
+  ],
+  "main_busy_ms": 1626,
+  "gpu_task_n": 314,
+  "gpu_busy_ms": 63,
+  "gpu_tasks_gt16": [],
+  "span_ms": 3911
+ },
+ "reduce9_C": {
+  "main_tasks": 178,
+  "main_tasks_gt50": [
+   [
+    1037477384,
+    78
+   ]
+  ],
+  "main_busy_ms": 324,
+  "gpu_task_n": 45,
+  "gpu_busy_ms": 7,
+  "gpu_tasks_gt16": [],
+  "span_ms": 3892
+ }
+}

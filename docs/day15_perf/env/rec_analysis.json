@@ -1,0 +1,44 @@
+{
+ "motion8_A": {
+  "frames": 102,
+  "changed_frames": 10,
+  "visual_settle_ms_from_first_frame": 773,
+  "max_gap_between_changes_ms": 245,
+  "n_gaps_gt100": 2
+ },
+ "motion8_B": {
+  "frames": 100,
+  "changed_frames": 61,
+  "visual_settle_ms_from_first_frame": 2670,
+  "max_gap_between_changes_ms": 111,
+  "n_gaps_gt100": 1
+ },
+ "motion8_C": {
+  "frames": 19,
+  "changed_frames": 5,
+  "visual_settle_ms_from_first_frame": 481,
+  "max_gap_between_changes_ms": 41,
+  "n_gaps_gt100": 0
+ },
+ "reduce8_A": {
+  "frames": 14,
+  "changed_frames": 5,
+  "visual_settle_ms_from_first_frame": 373,
+  "max_gap_between_changes_ms": 194,
+  "n_gaps_gt100": 1
+ },
+ "reduce8_B": {
+  "frames": 100,
+  "changed_frames": 60,
+  "visual_settle_ms_from_first_frame": 2864,
+  "max_gap_between_changes_ms": 102,
+  "n_gaps_gt100": 1
+ },
+ "reduce8_C": {
+  "frames": 12,
+  "changed_frames": 4,
+  "visual_settle_ms_from_first_frame": 452,
+  "max_gap_between_changes_ms": 93,
+  "n_gaps_gt100": 0
+ }
+}
