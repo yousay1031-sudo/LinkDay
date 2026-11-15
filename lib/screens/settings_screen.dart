@@ -4,6 +4,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_settings.dart';
+import '../verify/verify_config.dart';
+import '../verify/verify_faults.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/app_buttons.dart';
@@ -122,6 +124,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settings = SettingsService.instance.getSettings();
     String? jsKey;
     try {
+      if (VerifyConfig.enabled) {
+        await VerifyFaults.apply(VerifyFaults.settings);
+      }
       jsKey = await SettingsService.instance.loadJsApiKey();
     } catch (e) {
       debugPrint('[SettingsScreen] loadJsApiKey failed: $e');

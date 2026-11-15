@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/customer.dart';
+import '../verify/verify_config.dart';
+import '../verify/verify_faults.dart';
 import '../models/transport_plan.dart';
 import '../services/customer_service.dart';
 import '../services/settings_service.dart';
@@ -113,6 +115,9 @@ class _TransportScreenState extends State<TransportScreen>
       _loadFailed = false;
     });
     try {
+      if (VerifyConfig.enabled) {
+        await VerifyFaults.apply(VerifyFaults.transport);
+      }
       // 利用予定者を取得（3段階フォールバック）
       final loader = widget.scheduledCustomersLoader;
       final customers = loader != null

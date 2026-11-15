@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/customer.dart';
+import '../verify/verify_config.dart';
+import '../verify/verify_faults.dart';
 import '../models/weekly_schedule.dart';
 import '../services/customer_service.dart';
 import '../services/weekly_schedule_pdf_service.dart';
@@ -119,6 +121,9 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
       _errorMessage = null;
     });
     try {
+      if (VerifyConfig.enabled) {
+        await VerifyFaults.apply(VerifyFaults.weekly);
+      }
       final customers = CustomerService.instance.getAllCustomers();
       final schedule = await WeeklyScheduleService.instance.getOrCreateSchedule(
         weekStart,

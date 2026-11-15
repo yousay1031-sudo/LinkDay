@@ -1,0 +1,123 @@
+{
+ "res": {
+  "home": {
+   "hasMenu": true,
+   "title": true
+  },
+  "attendance_skeleton": {
+   "during": {
+    "summaryVisible": false,
+    "cardsVisible": false
+   },
+   "after": {
+    "summaryVisible": true,
+    "cardsVisible": true
+   }
+  },
+  "attendance_scroll_vs_press": {
+   "stillAttendance": true,
+   "scrolledWithoutAction": true,
+   "enterButtonsBefore": 5,
+   "pressOkPresentLabelsAfter": 7
+  },
+  "attendance_error_retry": {
+   "errorShown": true,
+   "recovered": true
+  },
+  "notification_history": {
+   "shown": true,
+   "detailButtons": 16,
+   "detailOpened": true
+  },
+  "customers": {
+   "cardsInViewport": 0
+  },
+  "customers_scroll_vs_press": {
+   "ERROR": "Cannot read properties of undefined (reading 'x')"
+  },
+  "customers_search_keyboard": {
+   "noResultMessage": true,
+   "note": "半角英字は該当なし。日本語IME入力は自動化で不可のため未確認"
+  },
+  "keyboard_focus": {
+   "tabOrder": [
+    "flt-semantics|残日数が少ない順",
+    "flt-semantics|仮\n仮名 一郎\nカメイ イチロウ\n月・金・土\n今",
+    "flt-semantics|仮\n仮名 梅子\nカメイ ウメコ\n月・金・土\n今月",
+    "flt-semantics|仮\n仮名 菊子\nカメイ キクコ\n月・金・土\n今月",
+    "flt-semantics|仮\n仮名 五郎\nカメイ ゴロウ\n月・金・土\n今月",
+    "flt-semantics|新規登録",
+    "flt-semantics|仮\n仮名 三郎\nカメイ サブロウ\n月・金・土\n今",
+    "flt-semantics|新規登録",
+    "flt-semantics|仮\n仮名 四郎\nカメイ シロウ\n月・金・土\n今月"
+   ]
+  },
+  "customer_edit": {
+   "ERROR": "not found: /^仮名 一郎/"
+  },
+  "customers_usage_error_retry": {
+   "errorShown": true,
+   "labels": [
+    "顧客情報の読み込みに失敗しました",
+    "再試行"
+   ]
+  },
+  "import": {
+   "shown": true,
+   "columns": 4
+  },
+  "resolve": {
+   "shown": true,
+   "keyMissingNotice": true,
+   "summary": "Back送迎場所の位置確認帯広市外・粒度不足の採用を解除再読込60 名 / 送迎場所 75 件解決 45 / 7560%30151515自動採用手動採用失敗未解"
+  },
+  "customers_empty": "later",
+  "weekly": {
+   "shown": true,
+   "range": "Back週間利用計画\n2026-W47前の週次の週翌週にコピーPDF出力通常予定を再生成第3週 / 11月2026年11月16日（月）〜 22日（日）翌週総計 ",
+   "during": {
+    "oldRangeStillShown": false,
+    "totalShown": false
+   },
+   "after": {
+    "range": "Back週間利用計画\n2026-W48前の週次の週翌週にコピーPDF出力通常予定を再生成第4週 / 11月2026年11月23日（月）〜 29日（日）総計 17",
+    "total": "Back週間利用計画\n2026-W48前の週次の週翌週にコピーPDF出力通常予定を再生成第4週 / 11月2026年11月23日（月）〜 29日（日）総計 17"
+   },
+   "errorShown": true,
+   "retryBtn": true,
+   "recovered": true
+  },
+  "transport": {
+   "shown": true,
+   "cards": 0,
+   "stillTransport": true,
+   "mapOpenedByScroll": false
+  },
+  "transport_error_retry": {
+   "errorShown": true,
+   "recovered": true
+  },
+  "transport_delay_skeleton": {
+   "cardsDuring": true,
+   "after": true
+  },
+  "settings": {
+   "shown": true
+  },
+  "settings_error_retry": {
+   "errorShown": false,
+   "recovered": true
+  },
+  "recordedFrames": 1367
+ },
+ "log": {
+  "console": [],
+  "failed": [
+   "net::ERR_ABORTED https://www.gstatic.com/flutter-canvaskit/c29809135135e262a912cf583b2c90deb9ded610/chromium/canvaskit.js",
+   "net::ERR_ABORTED http://127.0.0.1:8765/main.dart.js",
+   "net::ERR_ABORTED https://www.gstatic.com/flutter-canvaskit/c29809135135e262a912cf583b2c90deb9ded610/chromium/canvaskit.wasm",
+   "net::ERR_ABORTED http://127.0.0.1:8080/google.firestore.v1.Firestore/Listen/channel?VER=8&database=projects%2Fdemo-linkday%2Fdatabases%2F(default)&RID=rpc&SI",
+   "net::ERR_ABORTED http://127.0.0.1:8080/google.firestore.v1.Firestore/Listen/channel?VER=8&database=projects%2Fdemo-linkday%2Fdatabases%2F(default)&RID=rpc&SI"
+  ]
+ }
+}

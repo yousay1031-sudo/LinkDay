@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/customer.dart';
+import '../verify/verify_config.dart';
+import '../verify/verify_faults.dart';
 import '../services/customer_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../theme/app_theme.dart';
@@ -61,6 +63,9 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   /// 当月の利用状況を読み込む（Day 9）
   Future<void> _loadUsage() async {
     try {
+      if (VerifyConfig.enabled) {
+        await VerifyFaults.apply(VerifyFaults.usage);
+      }
       final loader = widget.usageLoader;
       final list = loader != null
           ? await loader()

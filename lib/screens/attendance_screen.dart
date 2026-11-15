@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/attendance_record.dart';
+import '../verify/verify_config.dart';
+import '../verify/verify_faults.dart';
 import '../models/slot_info.dart';
 import '../services/attendance_pdf_service.dart';
 import '../services/attendance_service.dart';
@@ -154,6 +156,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     try {
       await _ensureScheduled(date);
       await widget.afterEnsureHook?.call(date);
+      // 検証構成限定: 読込の遅延・失敗を再現する（通常ビルドでは消える）
+      if (VerifyConfig.enabled) {
+        await VerifyFaults.apply(VerifyFaults.attendance);
+      }
       if (!mounted || !_loadSeq.isCurrent(token)) return;
       _loadRecords(throwOnError: true);
     } catch (e) {

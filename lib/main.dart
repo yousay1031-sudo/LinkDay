@@ -17,12 +17,26 @@ import 'services/transport_plan_service.dart';
 import 'services/vacancy_notification_service.dart';
 import 'services/weekly_schedule_service.dart';
 import 'theme/app_theme.dart';
+import 'verify/verify_bootstrap.dart';
+import 'verify/verify_config.dart';
+import 'verify/verify_seed.dart';
 import 'widgets/auth_gate.dart';
 import 'widgets/motion/reduced_motion_scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('[Startup] app bootstrap begin');
+
+  // ── 0. 【検証構成のみ】エミュレータへ到達できなければ起動を止める。
+  //    通常ビルドでは VerifyConfig.enabled が const false なので、この分岐は
+  //    出力から消える。本番へはフォールバックしない。
+  if (VerifyConfig.enabled) {
+    final problem = await VerifyBootstrap.preflight();
+    if (problem != null) {
+      runApp(VerifyFailureApp(message: problem));
+      return;
+    }
+  }
 
   // ── 1. Hive 初期化（Web: IndexedDB / Mobile: ファイルシステム）
   await Hive.initFlutter();
@@ -46,9 +60,14 @@ Future<void> main() async {
   Hive.registerAdapter(NotificationStatusAdapter()); // typeId=12
 
   // ── 3. Firebase 初期化
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  if (VerifyConfig.enabled) {
+    // 検証構成: demo プロジェクト + Auth/Firestore エミュレータ（docs/VERIFY_ENV.md）
+    await VerifyBootstrap.initFirebase();
+  } else {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 
   // ── 4. CustomerService の Hive ボックスを開く
   await CustomerService.instance.init();
@@ -66,10 +85,18 @@ Future<void> main() async {
   await TransportPlanService.instance.init();
 
   // ── 9. VacancyNotificationService の Hive ボックスを開く（Day 11）
-  await VacancyNotificationService.instance.init();
+  // 検証構成では LINE 送信・連携コード発行などの外部呼び出しを遮断する
+  // （remoteEnabled=false）。通常ビルドは従来どおり true。
+  await VacancyNotificationService.instance
+      .init(remoteEnabled: !VerifyConfig.enabled);
 
   // ── 10. 日本語ロケールデータ初期化（PDF出力の LocaleDataException 対策）
   await initializeDateFormatting('ja_JP', null);
+
+  // ── 10.5 【検証構成のみ】ダミーデータ投入（URL の ?verify_data= で切替）
+  if (VerifyConfig.enabled) {
+    await VerifySeed.runFromUrl();
+  }
 
   final s = SettingsService.instance.getSettings();
   debugPrint('[Startup] settings: vehicleCount=${s.vehicleCount}, '
@@ -93,8 +120,11 @@ class LinkDayApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
 
       // ── Web の prefers-reduced-motion を MediaQuery.disableAnimations に反映
-      builder: (context, child) =>
-          ReducedMotionScope(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) {
+        final scoped = ReducedMotionScope(child: child ?? const SizedBox.shrink());
+        // 検証構成では細い帯で常に区別できるようにする（通常ビルドでは消える）
+        return VerifyConfig.enabled ? VerifyStrip(child: scoped) : scoped;
+      },
 
       // ── 認証ゲートを home に設定
       // initialRoute / routes は使わず、AuthGate が状態に応じて画面を切り替える。

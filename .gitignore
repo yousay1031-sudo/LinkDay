@@ -96,3 +96,8 @@ doc/api/
 # lib/firebase_options.dart → Web 用 API キー公開可
 #                              (Firebase Console でドメイン制限済み)
 # ============================================================
+
+# Day 15 検証環境
+/build/verify_web/
+firestore-debug.log
+ui-debug.log
