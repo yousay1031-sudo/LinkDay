@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/attendance_record.dart';
-import '../theme/app_motion.dart';
 
 /// ステータスに対応する色定義
 class AttendanceColors {
@@ -101,9 +100,9 @@ class AttendanceStatusBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // present のときは緑の点を追加
+          // present のときは緑の点（静止）を追加
           if (status == AttendanceStatus.present) ...[
-            _PulseDot(color: color),
+            _PresentDot(color: color),
             const SizedBox(width: 5),
           ] else ...[
             Icon(icon, size: 13, color: color),
@@ -123,63 +122,20 @@ class AttendanceStatusBadge extends StatelessWidget {
   }
 }
 
-/// present ステータス用の点滅する緑の点
-class _PulseDot extends StatefulWidget {
+/// present ステータス用の緑の点（静止表示）。
+///
+/// 以前は無限に点滅させていたが、出席画面を開いている間ずっとフレームを
+/// 要求し続けるため静止にした。状態は色と「在室中」の文字で伝わる。
+class _PresentDot extends StatelessWidget {
   final Color color;
-  const _PulseDot({required this.color});
-
-  @override
-  State<_PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<_PulseDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-      value: 1.0,
-    );
-    _anim = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // 減らす設定・テスト用フラグでは点滅させず常時点灯（色は変えない）
-    if (AppMotion.loopingEnabled(context)) {
-      if (!_ctrl.isAnimating) _ctrl.repeat(reverse: true);
-    } else {
-      _ctrl.stop();
-      _ctrl.value = 1.0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  const _PresentDot({required this.color});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: widget.color.withValues(alpha: _anim.value),
-          shape: BoxShape.circle,
-        ),
-      ),
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }

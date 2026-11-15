@@ -852,7 +852,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               color: const Color(0xFF2E7D32),
               bg: const Color(0xFFE8F5E9),
               icon: Icons.login,
-              pulseDot: summary.presentCount > 0,
+              inRoomDot: summary.presentCount > 0,
             ),
             const SizedBox(width: 8),
             _summaryChip(
@@ -896,7 +896,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     required Color color,
     required Color bg,
     required IconData icon,
-    bool pulseDot = false,
+    bool inRoomDot = false,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -908,8 +908,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (pulseDot)
-            _PulseDotSmall(color: color)
+          if (inRoomDot)
+            _InRoomDotSmall(color: color)
           else
             Icon(icon, size: 14, color: color),
           const SizedBox(width: 6),
@@ -1359,65 +1359,21 @@ class _AttendanceCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// 集計バー用の点滅ドット
+// 集計バー用の在室中ドット（静止表示）
 // ─────────────────────────────────────────────────────────────────────
 
-class _PulseDotSmall extends StatefulWidget {
+/// 以前は無限に点滅させていたが、出席画面を開いている間ずっとフレームを
+/// 要求し続けるため静止にした。在室中は色と「在室中」の文字で伝わる。
+class _InRoomDotSmall extends StatelessWidget {
   final Color color;
-  const _PulseDotSmall({required this.color});
-
-  @override
-  State<_PulseDotSmall> createState() => _PulseDotSmallState();
-}
-
-class _PulseDotSmallState extends State<_PulseDotSmall>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-      value: 1.0,
-    );
-    _anim = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // 減らす設定・テスト用フラグでは点滅させず常時点灯（色は変えない）
-    if (AppMotion.loopingEnabled(context)) {
-      if (!_ctrl.isAnimating) _ctrl.repeat(reverse: true);
-    } else {
-      _ctrl.stop();
-      _ctrl.value = 1.0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  const _InRoomDotSmall({required this.color});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: widget.color.withValues(alpha: _anim.value),
-          shape: BoxShape.circle,
-        ),
-      ),
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }

@@ -1,0 +1,142 @@
+{
+ "motion1": {
+  "A_frames": 136,
+  "A_gt16": 7,
+  "A_gt50": 2,
+  "A_gt100": 1,
+  "A_max": 121.7,
+  "A_sum": 986,
+  "A_layout_gt50": [
+   80
+  ],
+  "A_build_gt20": [
+   26
+  ],
+  "A_lt50": 3,
+  "idle_s": 6.01,
+  "idle_frames": 311,
+  "idle_fps": 51.8,
+  "idle_frame_ms_sum": 1391.7,
+  "idle_ms_per_s": 231.7,
+  "idle_max": 8.2,
+  "idle_lt": 0
+ },
+ "motion2": {
+  "A_frames": 119,
+  "A_gt16": 8,
+  "A_gt50": 4,
+  "A_gt100": 4,
+  "A_max": 185,
+  "A_sum": 1157,
+  "A_layout_gt50": [
+   80,
+   152,
+   95,
+   75
+  ],
+  "A_build_gt20": [
+   32
+  ],
+  "A_lt50": 6,
+  "idle_s": 6.0,
+  "idle_frames": 304,
+  "idle_fps": 50.6,
+  "idle_frame_ms_sum": 1367.6,
+  "idle_ms_per_s": 227.8,
+  "idle_max": 11.4,
+  "idle_lt": 0
+ },
+ "motion3": {
+  "A_frames": 118,
+  "A_gt16": 6,
+  "A_gt50": 2,
+  "A_gt100": 2,
+  "A_max": 235.3,
+  "A_sum": 1072,
+  "A_layout_gt50": [
+   94,
+   200
+  ],
+  "A_build_gt20": [
+   28
+  ],
+  "A_lt50": 3,
+  "idle_s": 6.01,
+  "idle_frames": 306,
+  "idle_fps": 50.9,
+  "idle_frame_ms_sum": 1468.0,
+  "idle_ms_per_s": 244.4,
+  "idle_max": 17.5,
+  "idle_lt": 0
+ },
+ "reduce1": {
+  "A_frames": 6,
+  "A_gt16": 3,
+  "A_gt50": 2,
+  "A_gt100": 2,
+  "A_max": 172.8,
+  "A_sum": 371,
+  "A_layout_gt50": [
+   79,
+   143
+  ],
+  "A_build_gt20": [
+   32
+  ],
+  "A_lt50": 3,
+  "idle_s": 6.01,
+  "idle_frames": 0,
+  "idle_fps": 0.0,
+  "idle_frame_ms_sum": 0,
+  "idle_ms_per_s": 0.0,
+  "idle_max": 0,
+  "idle_lt": 0
+ },
+ "reduce2": {
+  "A_frames": 7,
+  "A_gt16": 4,
+  "A_gt50": 2,
+  "A_gt100": 2,
+  "A_max": 206,
+  "A_sum": 437,
+  "A_layout_gt50": [
+   87,
+   172
+  ],
+  "A_build_gt20": [
+   22
+  ],
+  "A_lt50": 3,
+  "idle_s": 6.01,
+  "idle_frames": 0,
+  "idle_fps": 0.0,
+  "idle_frame_ms_sum": 0,
+  "idle_ms_per_s": 0.0,
+  "idle_max": 0,
+  "idle_lt": 0
+ },
+ "reduce3": {
+  "A_frames": 6,
+  "A_gt16": 3,
+  "A_gt50": 3,
+  "A_gt100": 2,
+  "A_max": 190.2,
+  "A_sum": 440,
+  "A_layout_gt50": [
+   95,
+   155
+  ],
+  "A_build_gt20": [
+   28,
+   45
+  ],
+  "A_lt50": 4,
+  "idle_s": 6.01,
+  "idle_frames": 0,
+  "idle_fps": 0.0,
+  "idle_frame_ms_sum": 0,
+  "idle_ms_per_s": 0.0,
+  "idle_max": 0,
+  "idle_lt": 0
+ }
+}

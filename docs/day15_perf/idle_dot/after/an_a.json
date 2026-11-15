@@ -1,0 +1,74 @@
+{
+ "motion1": {
+  "A_frames": 10,
+  "A_gt16": 7,
+  "A_gt50": 2,
+  "A_gt100": 2,
+  "A_max": 197.8,
+  "A_sum": 529,
+  "A_layout_gt50": [
+   93,
+   165
+  ],
+  "A_build_gt20": [
+   21
+  ],
+  "A_lt50": 3,
+  "idle_s": 6.01,
+  "idle_frames": 0,
+  "idle_fps": 0.0,
+  "idle_frame_ms_sum": 0,
+  "idle_ms_per_s": 0.0,
+  "idle_max": 0,
+  "idle_lt": 0
+ },
+ "motion2": {
+  "A_frames": 9,
+  "A_gt16": 6,
+  "A_gt50": 2,
+  "A_gt100": 2,
+  "A_max": 192,
+  "A_sum": 484,
+  "A_layout_gt50": [
+   85,
+   156
+  ],
+  "A_build_gt20": [
+   24
+  ],
+  "A_lt50": 3,
+  "idle_s": 6.0,
+  "idle_frames": 0,
+  "idle_fps": 0.0,
+  "idle_frame_ms_sum": 0,
+  "idle_ms_per_s": 0.0,
+  "idle_max": 0,
+  "idle_lt": 0
+ },
+ "motion3": {
+  "A_frames": 7,
+  "A_gt16": 7,
+  "A_gt50": 5,
+  "A_gt100": 2,
+  "A_max": 156.5,
+  "A_sum": 558,
+  "A_layout_gt50": [
+   81,
+   81,
+   90
+  ],
+  "A_build_gt20": [
+   20,
+   20,
+   20
+  ],
+  "A_lt50": 6,
+  "idle_s": 6.01,
+  "idle_frames": 0,
+  "idle_fps": 0.0,
+  "idle_frame_ms_sum": 0,
+  "idle_ms_per_s": 0.0,
+  "idle_max": 0,
+  "idle_lt": 0
+ }
+}
