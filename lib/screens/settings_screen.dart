@@ -11,6 +11,7 @@ import '../widgets/motion/skeleton_gate.dart';
 import '../widgets/motion/success_feedback.dart';
 import '../widgets/skeletons/screen_skeletons.dart';
 import '../widgets/draggable_marker_map.dart';
+import '../widgets/motion/app_spinner.dart';
 
 // ════════════════════════════════════════════════════════════════
 // SettingsScreen
@@ -565,7 +566,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? const SizedBox(
                         width: 14,
                         height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: AppSpinner(strokeWidth: 2),
                       )
                     : const Icon(Icons.gps_fixed, size: 16),
                 label: Text(_geocoding ? '取得中...' : '座標を取得',
@@ -984,7 +985,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? const SizedBox(
                         width: 14,
                         height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: AppSpinner(strokeWidth: 2),
                       )
                     : const Icon(Icons.network_check, size: 16),
                 label: Text(_testingJsKey ? 'テスト中...' : 'テスト'),

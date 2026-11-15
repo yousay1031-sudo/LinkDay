@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/app_spinner.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,6 +30,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // ─────────────────────────────────────────────
 
   Future<void> _handleLogin() async {
+    // Enter 連打・ボタン連打での二重送信を防ぐ
+    if (_isLoading) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isLoading = true);
@@ -169,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
             boxShadow: [
               BoxShadow(
                 color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 20,
+                blurRadius: 16,
                 offset: const Offset(0, 8),
               ),
             ],
@@ -300,16 +304,27 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildLoginButton() {
     return SizedBox(
       height: AppTheme.buttonHeight,
-      child: ElevatedButton(
+      child: AppElevatedButton(
+        key: const Key('loginButton'),
         onPressed: _isLoading ? null : _handleLogin,
         child: _isLoading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
+            ? const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: AppSpinner(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    'ログイン中…',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                ],
               )
             : const Text(
                 'ログイン',
@@ -508,7 +523,7 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
               ? const SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(
+                  child: AppSpinner(
                     strokeWidth: 2,
                     valueColor:
                         AlwaysStoppedAnimation<Color>(Colors.white),

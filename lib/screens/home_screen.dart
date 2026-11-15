@@ -11,6 +11,9 @@ import 'customer_management_screen.dart';
 import 'settings_screen.dart';
 import 'transport_screen.dart';
 import 'weekly_schedule_screen.dart';
+import '../widgets/motion/app_spinner.dart';
+import '../widgets/motion/press_scale.dart';
+import '../widgets/motion/staggered.dart';
 
 /// メニュー項目データクラス
 class _MenuItem {
@@ -214,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         content: const Text(
-          'Service Worker を unregister して\nページをリロードします。\n\n'  
+          'Service Worker を unregister して\nページをリロードします。\n\n'
           '（開発者向け機能 / DEBUG ビルドのみ）',
           style: TextStyle(height: 1.5),
         ),
@@ -273,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SizedBox(
                 width: 16,
                 height: 16,
-                child: CircularProgressIndicator(
+                child: AppSpinner(
                   strokeWidth: 2,
                   color: Colors.white,
                 ),
@@ -375,8 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(
-      BuildContext context, int expiringCount) {
+  PreferredSizeWidget _buildAppBar(BuildContext context, int expiringCount) {
     return AppBar(
       title: Row(
         children: [
@@ -554,19 +556,28 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildOverProjectedCard(context, padding),
 
             // グリッドメニュー
+            // 入場スタガーは画面を開いた最初の 1 回だけ（StaggerScope の窓）。
+            // 画面幅の変更・バッジ更新などの再ビルドでは再生しない
             Expanded(
-              child: GridView.builder(
-                padding: EdgeInsets.all(padding),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columnCount,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: columnCount == 1 ? 3.0 : 1.1,
+              child: StaggerScope(
+                child: GridView.builder(
+                  padding: EdgeInsets.all(padding),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columnCount,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: columnCount == 1 ? 3.0 : 1.1,
+                  ),
+                  itemCount: _menuItems.length,
+                  itemBuilder: (context, index) {
+                    return StaggeredItem(
+                      index: index,
+                      total: _menuItems.length,
+                      child: _buildMenuCard(
+                          context, _menuItems[index], columnCount),
+                    );
+                  },
                 ),
-                itemCount: _menuItems.length,
-                itemBuilder: (context, index) {
-                  return _buildMenuCard(context, _menuItems[index], columnCount);
-                },
               ),
             ),
           ],
@@ -758,23 +769,28 @@ class _HomeScreenState extends State<HomeScreen> {
     _MenuItem item,
     int columnCount,
   ) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
-      ),
-      child: InkWell(
-        onTap: () => _onMenuTapped(context, item),
-        borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
-        splashColor: item.color.withValues(alpha: 0.1),
-        highlightColor: item.color.withValues(alpha: 0.05),
-        child: Padding(
-          padding: columnCount == 1
-              ? const EdgeInsets.symmetric(horizontal: 20, vertical: 16)
-              : const EdgeInsets.all(16),
-          child: columnCount == 1
-              ? _buildCardContentHorizontal(item)
-              : _buildCardContentVertical(item),
+    // 押下で 0.98 に縮む（transform のみ）。InkWell のタップ・ホバー・
+    // キーボード（Tab でフォーカス → Enter/Space）はそのまま InkWell が処理する
+    return PressableScale(
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
+        ),
+        child: InkWell(
+          key: ValueKey('homeMenu_${item.route}'),
+          onTap: () => _onMenuTapped(context, item),
+          borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
+          splashColor: item.color.withValues(alpha: 0.1),
+          highlightColor: item.color.withValues(alpha: 0.05),
+          child: Padding(
+            padding: columnCount == 1
+                ? const EdgeInsets.symmetric(horizontal: 20, vertical: 16)
+                : const EdgeInsets.all(16),
+            child: columnCount == 1
+                ? _buildCardContentHorizontal(item)
+                : _buildCardContentVertical(item),
+          ),
         ),
       ),
     );

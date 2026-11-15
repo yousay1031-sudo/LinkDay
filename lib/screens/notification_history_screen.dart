@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/notification_log.dart';
 import '../services/vacancy_notification_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/empty_state.dart';
 import '../widgets/vacancy_notice_dialog.dart' show kLineGreen;
 
 /// 空き枠 LINE 通知の送信履歴画面（Day 11）
@@ -24,7 +26,10 @@ class _NotificationHistoryScreenState extends State<NotificationHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    // 端末内 Hive からの同期読込なので初回 build 前に済ませる。
+    // （以前は初回フレーム後に読んでおり、履歴があっても 1 フレームだけ
+    //   「履歴がありません」が出て、空状態と読込中が区別できなかった）
+    _grouped = VacancyNotificationService.instance.getLogsGroupedByDate();
   }
 
   void _load() {
@@ -107,34 +112,23 @@ class _NotificationHistoryScreenState extends State<NotificationHistoryScreen> {
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
+  // 共通の EmptyState（アイコン＋案内文＋次の操作への導線）。
+  // 履歴は端末内 Hive から同期的に読むため「読込中」状態は存在しない
   @override
-  Widget build(BuildContext context) => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.inbox_outlined,
-                  size: 56, color: AppColors.onSurfaceVariant),
-              SizedBox(height: 16),
-              Text(
-                '送信履歴がありません',
-                style: TextStyle(
-                    fontSize: 15, color: AppColors.onSurfaceVariant),
-              ),
-              SizedBox(height: 8),
-              Text(
-                '出席管理画面で欠席を登録すると、\n'
-                '空き枠通知の候補が表示されます。',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 12,
-                    height: 1.6,
-                    color: AppColors.onSurfaceVariant),
-              ),
-            ],
+  Widget build(BuildContext context) => EmptyState(
+        key: const Key('notificationHistoryEmpty'),
+        icon: Icons.inbox_outlined,
+        title: '送信履歴がありません',
+        message: '出席管理画面で欠席を登録すると、\n'
+            '空き枠通知の候補が表示されます。',
+        iconColor: kLineGreen,
+        actions: [
+          AppOutlinedButton.icon(
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back, size: 18),
+            label: const Text('出席管理に戻る'),
           ),
-        ),
+        ],
       );
 }
 

@@ -21,6 +21,7 @@ import '../widgets/motion/success_feedback.dart';
 import '../widgets/skeletons/screen_skeletons.dart';
 import '../widgets/vacancy_notice_dialog.dart'
     show kLineGreen, LinkingCodeDialog;
+import '../widgets/motion/app_spinner.dart';
 
 class CustomerEditScreen extends StatefulWidget {
   final Customer? customer;
@@ -648,7 +649,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                   ? const SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(
+                      child: AppSpinner(
                         strokeWidth: 2,
                         color: Colors.white,
                       ),
@@ -961,7 +962,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                     ? const SizedBox(
                         width: 13,
                         height: 13,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: AppSpinner(strokeWidth: 2),
                       )
                     : const Icon(Icons.qr_code_2, size: 15),
                 label:
@@ -977,7 +978,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                     ? const SizedBox(
                         width: 13,
                         height: 13,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: AppSpinner(strokeWidth: 2),
                       )
                     : const Icon(Icons.sync, size: 15),
                 label: const Text('連携状況を同期', style: TextStyle(fontSize: 11)),
@@ -1444,7 +1445,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           ? const SizedBox(
               width: 12,
               height: 12,
-              child: CircularProgressIndicator(strokeWidth: 2))
+              child: AppSpinner(strokeWidth: 2))
           : Icon(icon, size: 14),
       label: Text(label),
     );

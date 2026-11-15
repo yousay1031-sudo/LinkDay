@@ -6,6 +6,7 @@ import '../models/geocode_candidate.dart';
 import '../services/transport_location_resolver.dart';
 import '../theme/app_theme.dart';
 import 'draggable_marker_map.dart';
+import 'motion/app_spinner.dart';
 
 // ════════════════════════════════════════════════════════════════
 // 送迎場所 解決状態チップ
@@ -650,7 +651,7 @@ class _MapPinPickerDialogState extends State<_MapPinPickerDialog> {
               ? const SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  child: AppSpinner(strokeWidth: 2, color: Colors.white))
               : const Icon(Icons.push_pin, size: 16),
           label: Text(_busy ? '住所を取得中...' : 'この位置に決定'),
         ),

@@ -91,10 +91,22 @@ class _StaggeredItemState extends State<StaggeredItem>
   Timer? _delayTimer;
   bool _decided = false;
 
+  /// テスト用: この要素が入場アニメを行う（行った）か
+  @visibleForTesting
+  bool get debugAnimates => _ctrl != null;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_decided) return;
+    if (_decided) {
+      // 途中で reduce-motion に切り替わったら即座に最終状態へ
+      final c = _ctrl;
+      if (c != null && !c.isCompleted && AppMotion.reduced(context)) {
+        _delayTimer?.cancel();
+        c.value = 1;
+      }
+      return;
+    }
     _decided = true;
 
     final group = StaggerScope.maybeOf(context);

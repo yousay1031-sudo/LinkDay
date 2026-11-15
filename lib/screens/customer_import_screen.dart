@@ -6,6 +6,7 @@ import '../services/customer_import_service.dart';
 import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/file_saver.dart';
+import '../widgets/motion/app_spinner.dart';
 
 /// 利用者インポート（Excel / CSV）
 ///
@@ -23,10 +24,19 @@ enum _Step { pick, preview, result }
 /// 重複ダイアログの「今後すべて〜」一括指定
 enum _BulkMode { ask, overwriteAll, skipAll }
 
+/// 処理中の種類（スケルトンには戻さず、表示中の画面のまま処理中ラベルを出す）
+enum _Busy { none, reading, importing }
+
 class _CustomerImportScreenState extends State<CustomerImportScreen> {
   _Step _step = _Step.pick;
-  bool _busy = false;
+  _Busy _busyKind = _Busy.none;
   String? _error;
+
+  /// 取り込みの進捗（処理済み行 / 全行）。取り込み中のみ有効
+  int _progressDone = 0;
+  int _progressTotal = 0;
+
+  bool get _busy => _busyKind != _Busy.none;
 
   ImportPreview? _preview;
   CustomerImportResult? _result;
@@ -36,8 +46,9 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
   // ── 1. ファイル選択 ───────────────────────────────────────────
 
   Future<void> _pickFile() async {
+    if (_busy) return; // 二重実行防止
     setState(() {
-      _busy = true;
+      _busyKind = _Busy.reading;
       _error = null;
     });
     try {
@@ -47,7 +58,7 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
         withData: true,
       );
       if (picked == null || picked.files.isEmpty) {
-        setState(() => _busy = false);
+        if (mounted) setState(() => _busyKind = _Busy.none);
         return;
       }
       final f = picked.files.single;
@@ -68,13 +79,13 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
         _preview = preview;
         _bulk = _BulkMode.ask;
         _step = _Step.preview;
-        _busy = false;
+        _busyKind = _Busy.none;
       });
     } catch (e) {
       debugPrint('[CustomerImportScreen] parse failed: $e');
       if (!mounted) return;
       setState(() {
-        _busy = false;
+        _busyKind = _Busy.none;
         _error = '読み込みエラー: $e';
       });
     }
@@ -88,7 +99,7 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
       _bulk = _BulkMode.ask;
       _error = null;
       _step = _Step.preview;
-      _busy = false;
+      _busyKind = _Busy.none;
     });
   }
 
@@ -144,30 +155,42 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
   // ── 4. 実行 ──────────────────────────────────────────────────
 
   Future<void> _execute() async {
+    if (_busy) return; // 二重実行防止（連打・Enter 連打）
     final p = _preview;
     if (p == null) return;
     if (p.validRows == 0) {
       _snack('取り込める有効行がありません', isError: true);
       return;
     }
-    setState(() => _busy = true);
+    setState(() {
+      _busyKind = _Busy.importing;
+      _progressDone = 0;
+      _progressTotal = p.rows.length;
+    });
     try {
       final result = await CustomerImportService.instance.execute(
         p,
         resolveDuplicate: _resolveDuplicate,
+        onProgress: (done, total) {
+          if (!mounted) return;
+          setState(() {
+            _progressDone = done;
+            _progressTotal = total;
+          });
+        },
       );
       if (!mounted) return;
       _didImport = result.imported + result.overwritten > 0;
       setState(() {
         _result = result;
         _step = _Step.result;
-        _busy = false;
+        _busyKind = _Busy.none;
       });
     } catch (e) {
       debugPrint('[CustomerImportScreen] execute failed: $e');
       if (!mounted) return;
       setState(() {
-        _busy = false;
+        _busyKind = _Busy.none;
         _error = '取り込みエラー: $e';
       });
     }
@@ -238,7 +261,8 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: true,
+      // 取り込み中は戻らせない（途中で閉じて結果を見失わないように）
+      canPop: _busyKind != _Busy.importing,
       onPopInvokedWithResult: (didPop, _) {
         // Navigator.pop の戻り値は _close() 経由で返す
       },
@@ -247,7 +271,7 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
           title: const Text('利用者インポート'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: _close,
+            onPressed: _busyKind == _Busy.importing ? null : _close,
           ),
           actions: [
             PopupMenuButton<String>(
@@ -316,14 +340,14 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
                     text: _error!,
                   ),
                 ),
+              // 処理中もスケルトン・全面スピナーにはせず、表示中の画面を残す
+              // （ボタン側に処理中ラベル、取り込みは進捗バー）
               Expanded(
-                child: _busy
-                    ? const Center(child: CircularProgressIndicator())
-                    : switch (_step) {
-                        _Step.pick => _buildPickStep(),
-                        _Step.preview => _buildPreviewStep(),
-                        _Step.result => _buildResultStep(),
-                      },
+                child: switch (_step) {
+                  _Step.pick => _buildPickStep(),
+                  _Step.preview => _buildPreviewStep(),
+                  _Step.result => _buildResultStep(),
+                },
               ),
             ],
           ),
@@ -365,9 +389,19 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
                 ),
                 const SizedBox(height: 20),
                 FilledButton.icon(
-                  onPressed: _pickFile,
-                  icon: const Icon(Icons.folder_open),
-                  label: const Text('ファイルを選択'),
+                  key: const Key('importPickButton'),
+                  onPressed: _busy ? null : _pickFile,
+                  icon: _busyKind == _Busy.reading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: AppSpinner(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.folder_open),
+                  label: Text(_busyKind == _Busy.reading
+                      ? 'ファイルを読み込み中…'
+                      : 'ファイルを選択'),
                 ),
               ],
             ),
@@ -524,26 +558,48 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
             color: AppColors.surface,
             border: Border(top: BorderSide(color: AppColors.divider)),
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => setState(() {
-                    _preview = null;
-                    _error = null;
-                    _step = _Step.pick;
-                  }),
-                  child: const Text('キャンセル'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: FilledButton.icon(
-                  onPressed: p.validRows == 0 ? null : _execute,
-                  icon: const Icon(Icons.playlist_add_check),
-                  label: Text('実行（${p.validRows} 件）'),
-                ),
+              if (_busyKind == _Busy.importing) ...[
+                _ImportProgress(done: _progressDone, total: _progressTotal),
+                const SizedBox(height: 10),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() {
+                                _preview = null;
+                                _error = null;
+                                _step = _Step.pick;
+                              }),
+                      child: const Text('キャンセル'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      key: const Key('importExecuteButton'),
+                      onPressed:
+                          (p.validRows == 0 || _busy) ? null : _execute,
+                      icon: _busyKind == _Busy.importing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: AppSpinner(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.playlist_add_check),
+                      label: Text(_busyKind == _Busy.importing
+                          ? '取り込み中…'
+                          : '実行（${p.validRows} 件）'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -674,6 +730,10 @@ class _CustomerImportScreenState extends State<CustomerImportScreen> {
   }
 
   // ── 小部品 ───────────────────────────────────────────────────
+
+  /// テスト用: 取り込み処理中か
+  @visibleForTesting
+  bool get debugIsImporting => _busyKind == _Busy.importing;
 
   Widget _kv(String k, String v) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1125,6 +1185,41 @@ class _SampleTable extends StatelessWidget {
       child: Text(label,
           softWrap: false,
           style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+/// 取り込みの進捗（処理済み行 / 全行）。値が取れるので確定値のバーを出す
+class _ImportProgress extends StatelessWidget {
+  final int done;
+  final int total;
+  const _ImportProgress({required this.done, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = total == 0 ? null : (done / total).clamp(0.0, 1.0);
+    return Semantics(
+      key: const Key('importProgress'),
+      label: '取り込み中 $done / $total 行',
+      liveRegion: true,
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('取り込み中… $done / $total 行',
+                style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: ratio,
+                minHeight: 6,
+                backgroundColor: AppColors.divider,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

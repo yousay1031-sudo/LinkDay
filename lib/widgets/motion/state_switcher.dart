@@ -29,16 +29,22 @@ class StateSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (AppMotion.reduced(context)) {
-      return KeyedSubtree(key: ValueKey(stateKey), child: child);
-    }
+    // reduce-motion でも木の形は変えず、duration だけ 0 にする
+    // （設定の切替で子の State を失わない）
+    final reduced = AppMotion.reduced(context);
     return AnimatedSwitcher(
-      duration: AppMotion.normal,
+      duration: reduced ? Duration.zero : AppMotion.normal,
       reverseDuration: Duration.zero,
       switchInCurve: AppMotion.standard,
       layoutBuilder: (current, previous) => Stack(
         alignment: alignment,
-        children: [...previous, if (current != null) current],
+        children: [
+          // 旧表示は reverseDuration=0 で即座に外れるが、念のため
+          // 残っていても操作・読み上げの対象にしない（確定者名の二重読み上げ防止）
+          for (final p in previous)
+            IgnorePointer(child: ExcludeSemantics(child: p)),
+          if (current != null) current,
+        ],
       ),
       transitionBuilder: (child, animation) {
         final opacity =
@@ -62,6 +68,9 @@ class StateSwitcher extends StatelessWidget {
 
 /// 数値の変化を StateSwitcher で見せる（0.7→1.0 + 4dp）。
 /// 値が変わらない再ビルドでは何も起きない。
+///
+/// 表示専用。数字を 0 から数え上げるような途中値は一切作らない
+/// （表示・読み上げとも常に最終値 [value] のみ）。業務判定には元の値を使うこと。
 class AnimatedCount extends StatelessWidget {
   final int value;
   final TextStyle? style;

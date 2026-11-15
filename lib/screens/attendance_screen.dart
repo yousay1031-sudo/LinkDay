@@ -12,6 +12,7 @@ import '../services/customer_service.dart';
 import '../services/vacancy_notification_service.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../utils/load_sequencer.dart';
 import '../widgets/attendance_status_badge.dart';
 import '../widgets/attendance_time_chip.dart';
 import '../widgets/motion/app_buttons.dart';
@@ -23,6 +24,7 @@ import '../widgets/skeletons/screen_skeletons.dart';
 import '../widgets/slot_status_panel.dart';
 import '../widgets/vacancy_notice_dialog.dart';
 import 'notification_history_screen.dart';
+import '../widgets/motion/app_spinner.dart';
 
 /// 当日出席管理画面
 class AttendanceScreen extends StatefulWidget {
@@ -37,6 +39,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   List<AttendanceRecord> _records = [];
   bool _isLoading = true;
   bool _isPdfGenerating = false;
+
+  /// 日付を素早く切り替えたとき、古い日付の読込結果で新しい日付を上書きしない
+  final LoadSequencer _loadSeq = LoadSequencer();
 
   /// Day 11: LINE 通知の送信中フラグ（二重タップ防止・進捗表示）
   bool _isSendingNotice = false;
@@ -64,6 +69,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   @override
   void dispose() {
+    _loadSeq.invalidate();
     _slotSub?.cancel();
     _slotTick?.cancel();
     super.dispose();
@@ -122,16 +128,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   // ── データ読み込み ──────────────────────────────────────────
 
   Future<void> _initializeAndLoad() async {
+    final token = _loadSeq.begin();
     setState(() => _isLoading = true);
-    await _ensureScheduled();
+    await _ensureScheduled(_selectedDate);
+    if (!mounted || !_loadSeq.isCurrent(token)) return;
     _loadRecords();
   }
 
   /// 当日対象顧客を scheduled として自動生成
-  Future<void> _ensureScheduled() async {
+  Future<void> _ensureScheduled(DateTime date) async {
     final customers = CustomerService.instance.getAllCustomers();
     await AttendanceService.instance.ensureTodayScheduledRecords(
-      _selectedDate,
+      date,
       customers,
     );
   }
@@ -165,12 +173,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (picked == null) return;
     if (!mounted) return;
 
+    final token = _loadSeq.begin();
     setState(() {
       _selectedDate = picked;
       _isLoading = true;
     });
     _subscribeSlots();
-    await _ensureScheduled();
+    await _ensureScheduled(picked);
+    // 待っている間にさらに日付が変わっていたら、この結果は捨てる
+    if (!mounted || !_loadSeq.isCurrent(token)) return;
     _loadRecords();
   }
 
@@ -644,6 +655,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             Positioned.fill(
               child: SkeletonGate(
                 loading: _isLoading,
+                contentKey: _selectedDate,
                 skeleton: LayoutBuilder(
                   builder: (context, c) {
                     final columns = _columnCount(c.maxWidth);
@@ -683,7 +695,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            CircularProgressIndicator(color: kLineGreen),
+                            AppSpinner(color: kLineGreen),
                             SizedBox(height: 16),
                             Text('LINE通知を送信中です…',
                                 style: TextStyle(fontSize: 13)),
@@ -743,7 +755,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 child: SizedBox(
                   width: 24,
                   height: 24,
-                  child: CircularProgressIndicator(
+                  child: AppSpinner(
                     color: Colors.white,
                     strokeWidth: 2,
                   ),

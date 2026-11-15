@@ -5,11 +5,13 @@ import '../models/weekly_schedule.dart';
 import '../services/customer_service.dart';
 import '../services/weekly_schedule_pdf_service.dart';
 import '../services/weekly_schedule_service.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/skeleton_gate.dart';
 import '../widgets/motion/success_feedback.dart';
 import '../widgets/skeletons/screen_skeletons.dart';
+import '../utils/load_sequencer.dart';
 import '../utils/week_util.dart';
 
 // ── ブレークポイント定数 ──────────────────────────────────────────
@@ -77,6 +79,12 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
   List<Customer> _customers = [];
   bool _loading = true;
   String? _errorMessage;
+
+  /// 再生成・翌週コピーの処理中（二重実行防止。表示中の計画はそのまま残す）
+  bool _processing = false;
+
+  /// 週を素早く切り替えたとき、古い週の読込結果で新しい週を上書きしない
+  final LoadSequencer _loadSeq = LoadSequencer();
   late TabController _tabController;
 
 
@@ -95,6 +103,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
 
   @override
   void dispose() {
+    _loadSeq.invalidate();
     _tabController.dispose();
     super.dispose();
   }
@@ -103,6 +112,8 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
 
   Future<void> _loadData() async {
     if (!mounted) return;
+    final token = _loadSeq.begin();
+    final weekStart = _currentWeekStart;
     setState(() {
       _loading = true;
       _errorMessage = null;
@@ -110,17 +121,17 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
     try {
       final customers = CustomerService.instance.getAllCustomers();
       final schedule = await WeeklyScheduleService.instance.getOrCreateSchedule(
-        _currentWeekStart,
+        weekStart,
         customers,
       );
-      if (!mounted) return;
+      if (!mounted || !_loadSeq.isCurrent(token)) return;
       setState(() {
         _customers = customers;
         _schedule = schedule;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadSeq.isCurrent(token)) return;
       setState(() {
         _errorMessage = 'データ読み込み失敗: $e';
         _loading = false;
@@ -170,22 +181,24 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || _processing) return;
 
-    setState(() => _loading = true);
+    setState(() => _processing = true);
+    final weekStart = _currentWeekStart;
     try {
-      final weekKey = WeekUtil.weekKeyFromDate(_currentWeekStart);
+      final weekKey = WeekUtil.weekKeyFromDate(weekStart);
       final updated = await WeeklyScheduleService.instance
           .regenerateFromRegularDays(weekKey, _customers);
       if (!mounted) return;
       setState(() {
-        _schedule = updated;
-        _loading = false;
+        // 処理中に週を移動していたら、表示中の別の週を上書きしない
+        if (weekStart == _currentWeekStart) _schedule = updated;
+        _processing = false;
       });
       _showSaved('通常予定を再生成しました');
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() => _processing = false);
       _showError('再生成に失敗しました: $e');
     }
   }
@@ -223,18 +236,18 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || _processing) return;
 
-    setState(() => _loading = true);
+    setState(() => _processing = true);
     try {
       final weekKey = WeekUtil.weekKeyFromDate(_currentWeekStart);
       await WeeklyScheduleService.instance.copyScheduleToNextWeek(weekKey);
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() => _processing = false);
       _showSaved('翌週にコピーしました');
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() => _processing = false);
       _showError('コピーに失敗しました: $e');
     }
   }
@@ -501,7 +514,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         IconButton(
           icon: const Icon(Icons.content_copy),
           tooltip: '翌週にコピー',
-          onPressed: _onCopyToNextWeek,
+          onPressed: _processing ? null : _onCopyToNextWeek,
         ),
         // PDF出力
         IconButton(
@@ -513,7 +526,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         IconButton(
           icon: const Icon(Icons.sync),
           tooltip: '通常予定を再生成',
-          onPressed: _onRegenerate,
+          onPressed: _processing ? null : _onRegenerate,
         ),
         const SizedBox(width: 4),
       ],
@@ -523,8 +536,11 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
   Widget _buildBody(BuildContext context) {
     // 読込中は最終レイアウトと同構造の骨格 → 完了でクロスフェード。
     // 失敗時は骨格のまま放置せず、エラー＋再試行（SkeletonGate が担当）。
-    return SkeletonGate(
+    // 週が変わったら（contentKey）旧週の表を新しい週として見せない。
+    // 再生成・コピーの処理中は骨格に戻さず、上端の進行バーだけ出す。
+    final gate = SkeletonGate(
       loading: _loading,
+      contentKey: _currentWeekStart,
       errorMessage: _errorMessage,
       onRetry: _loadData,
       skeleton: LayoutBuilder(
@@ -533,6 +549,22 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         ),
       ),
       builder: _buildLoadedBody,
+    );
+    if (!_processing) return gate;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        gate,
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Semantics(
+            label: '処理中',
+            child: RefreshingBar(reduced: AppMotion.reduced(context)),
+          ),
+        ),
+      ],
     );
   }
 

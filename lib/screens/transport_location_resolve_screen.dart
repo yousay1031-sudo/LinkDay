@@ -9,6 +9,10 @@ import '../services/settings_service.dart';
 import '../services/transport_location_resolver.dart';
 import '../theme/app_theme.dart';
 import '../widgets/geocode_candidate_sheet.dart';
+import '../widgets/motion/app_buttons.dart';
+import '../widgets/motion/app_spinner.dart';
+import '../widgets/motion/empty_state.dart';
+import '../widgets/motion/staggered.dart';
 
 /// 解決状況サマリーの record 型
 typedef _Status = ({
@@ -42,6 +46,9 @@ class _TransportLocationResolveScreenState
   List<Customer> _customers = [];
   _Filter _filter = _Filter.all;
   bool _hasApiKey = false;
+
+  /// API キーの有無を確認し終えたか（確認前に「未設定」警告を出さない）
+  bool _apiKeyChecked = false;
   bool _changed = false;
 
   // 一括処理
@@ -57,7 +64,15 @@ class _TransportLocationResolveScreenState
     debugPrint('[ResolveScreen] initState');
     _load();
     SettingsService.instance.loadJsApiKey().then((k) {
-      if (mounted) setState(() => _hasApiKey = (k ?? '').isNotEmpty);
+      if (mounted) {
+        setState(() {
+          _hasApiKey = (k ?? '').isNotEmpty;
+          _apiKeyChecked = true;
+        });
+      }
+    }, onError: (Object e) {
+      debugPrint('[ResolveScreen] api key load failed: $e');
+      if (mounted) setState(() => _apiKeyChecked = true);
     });
   }
 
@@ -450,10 +465,18 @@ class _TransportLocationResolveScreenState
               Expanded(
                 child: cells.isEmpty
                     ? _buildEmpty()
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                        itemCount: _customers.length,
-                        itemBuilder: (_, idx) => _buildCustomerCard(_customers[idx]),
+                    // 利用者は端末内から同期的に読むため骨格は不要。
+                    // 入場スタガーは最初の表示のみ（一括処理中の再ビルドでは再生しない）
+                    : StaggerScope(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                          itemCount: _customers.length,
+                          itemBuilder: (_, idx) => StaggeredItem(
+                            index: idx,
+                            total: _customers.length,
+                            child: _buildCustomerCard(_customers[idx]),
+                          ),
+                        ),
                       ),
               ),
             ],
@@ -554,7 +577,8 @@ class _TransportLocationResolveScreenState
               ),
             ),
           ],
-          if (!_hasApiKey) ...[
+          // 確認が終わるまでは出さない（キー設定済みでも一瞬「未設定」が見える問題の対策）
+          if (_apiKeyChecked && !_hasApiKey) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(8),
@@ -606,7 +630,7 @@ class _TransportLocationResolveScreenState
           Row(
             children: [
               const SizedBox(
-                  width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                  width: 14, height: 14, child: AppSpinner(strokeWidth: 2)),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -719,16 +743,23 @@ class _TransportLocationResolveScreenState
       _Filter.unresolved => '未解決の送迎場所はありません',
       _Filter.failed => '取得失敗の送迎場所はありません',
     };
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(_filter == _Filter.all ? Icons.people_outline : Icons.check_circle_outline,
-              size: 48, color: AppColors.onSurfaceVariant.withValues(alpha: 0.5)),
-          const SizedBox(height: 10),
-          Text(msg, style: const TextStyle(color: AppColors.onSurfaceVariant)),
-        ],
-      ),
+    return EmptyState(
+      key: const Key('resolveEmpty'),
+      icon: _filter == _Filter.all
+          ? Icons.people_outline
+          : Icons.check_circle_outline,
+      iconColor: _filter == _Filter.all ? null : AppColors.success,
+      title: msg,
+      message: _filter == _Filter.all
+          ? '顧客編集で送迎場所（住所）を登録すると、ここで位置を確認できます。'
+          : null,
+      actions: [
+        if (_filter != _Filter.all)
+          AppOutlinedButton(
+            onPressed: () => setState(() => _filter = _Filter.all),
+            child: const Text('すべて表示'),
+          ),
+      ],
     );
   }
 

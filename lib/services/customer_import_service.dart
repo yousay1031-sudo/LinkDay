@@ -255,13 +255,19 @@ class CustomerImportService {
   Future<CustomerImportResult> execute(
     ImportPreview preview, {
     required Future<DuplicateAction?> Function(ParsedCustomerRow row) resolveDuplicate,
+    // 進捗通知（表示専用・任意）。処理済み行数 / 全行数。取り込み内容には影響しない
+    void Function(int done, int total)? onProgress,
   }) async {
     int imported = 0, overwritten = 0, skipped = 0, errorCount = 0;
+    final total = preview.rows.length;
+    int done = 0;
     bool aborted = false;
     final errors = <(int, String)>[];
     final alerts = <(ParsedCustomerRow, CertAlertKind)>[];
 
     for (final row in preview.rows) {
+      if (done > 0) onProgress?.call(done, total);
+      done++;
       if (aborted) {
         skipped++;
         continue;
@@ -344,6 +350,7 @@ class CustomerImportService {
       }
     }
 
+    onProgress?.call(total, total);
     debugPrint('[CustomerImport] done: imported=$imported, overwritten=$overwritten, '
         'skipped=$skipped, errors=$errorCount, aborted=$aborted');
     return CustomerImportResult(

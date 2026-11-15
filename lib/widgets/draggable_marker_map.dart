@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../theme/app_theme.dart';
+import 'motion/app_spinner.dart';
 
 /// ドラッグ可能マーカー付き地図（事業所位置補正 / 送迎場所微調整で共用）
 ///
@@ -158,7 +159,7 @@ class _DraggableMarkerMapState extends State<DraggableMarkerMap> {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      child: AppSpinner(strokeWidth: 2, color: Colors.white))
                   : Icon(widget.actionIcon, size: 18),
               label: Text(widget.actionBusy ? '保存中...' : widget.actionLabel!,
                   style: const TextStyle(fontSize: 14)),

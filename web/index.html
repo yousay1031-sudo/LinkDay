@@ -473,8 +473,152 @@
       }
     })();
   </script>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════
+    起動ローダー（Day 15）
+    ───────────────────────────────────────────────────────────────────
+    - Flutter の初回フレームまでの白画面を、既存ブランド色の簡素なロゴで埋める
+    - 配置は Flutter 側 AuthLoadingScreen と同じ（切替で位置が跳ねない）
+    - Flutter 3.35 のエンジンは初回フレーム描画時に window へ
+      'flutter-first-frame' を dispatch する（engine/platform_dispatcher.dart）。
+      これを受けてローダーを取り除く → HTML と Flutter のローダーは二重に残らない
+    - 起動失敗（スクリプト読込エラー）や長時間の無応答はローダーで隠さず、
+      理由と再読み込みボタンを表示する
+    - prefers-reduced-motion ではスピナー回転・フェードを止める
+    - 外部フォント・画像は使わない（ロゴはインライン SVG）
+    ═══════════════════════════════════════════════════════════════════
+  -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #FFFFFF; }
+    #ld-boot {
+      position: fixed; inset: 0; z-index: 2147483000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: #FFFFFF; color: #212121;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP",
+                   "Yu Gothic UI", Meiryo, sans-serif;
+      opacity: 1; transition: opacity 150ms ease-out;
+    }
+    #ld-boot.ld-hide { opacity: 0; pointer-events: none; }
+    #ld-boot .ld-logo {
+      width: 88px; height: 88px; border-radius: 22px; background: #F57C00;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 10px 16px rgba(245, 124, 0, 0.3);
+    }
+    #ld-boot .ld-logo svg { width: 52px; height: 52px; fill: #FFFFFF; }
+    #ld-boot .ld-title {
+      margin-top: 28px; font-size: 38px; font-weight: 800; color: #F57C00;
+      letter-spacing: 1.5px; line-height: 1.2;
+    }
+    #ld-boot .ld-sub { margin-top: 8px; font-size: 13px; color: #757575; letter-spacing: 0.3px; }
+    #ld-boot .ld-status { margin-top: 56px; min-height: 72px; text-align: center; }
+    #ld-boot .ld-spinner {
+      width: 26px; height: 26px; margin: 0 auto; border-radius: 50%;
+      border: 3px solid rgba(245, 124, 0, 0.2); border-top-color: #F57C00;
+      opacity: 0; animation-name: ld-spin, ld-appear;
+      animation-duration: 0.9s, 150ms; animation-timing-function: linear, ease-out;
+      animation-iteration-count: infinite, 1; animation-delay: 0s, 400ms;
+      animation-fill-mode: none, forwards;
+    }
+    #ld-boot .ld-msg { margin-top: 20px; font-size: 13px; color: #757575; }
+    #ld-boot .ld-fail { display: none; max-width: 320px; padding: 0 24px; }
+    #ld-boot.ld-failed .ld-spinner { display: none; }
+    #ld-boot.ld-failed .ld-fail { display: block; }
+    #ld-boot .ld-fail p { white-space: pre-line; font-size: 13px; line-height: 1.6; color: #C62828; margin: 0 0 16px; }
+    #ld-boot .ld-fail button {
+      min-height: 48px; padding: 0 24px; border: 0; border-radius: 8px;
+      background: #F57C00; color: #FFFFFF; font-size: 15px; font-weight: 700; cursor: pointer;
+    }
+    #ld-boot .ld-fail button:focus-visible { outline: 3px solid #BB4D00; outline-offset: 2px; }
+    @keyframes ld-spin { to { transform: rotate(360deg); } }
+    @keyframes ld-appear { to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      #ld-boot { transition: none; }
+      #ld-boot .ld-spinner { animation: none; opacity: 1; border-color: rgba(245, 124, 0, 0.2); border-top-color: #F57C00; border-right-color: #F57C00; }
+    }
+  </style>
 </head>
 <body>
+  <div id="ld-boot" role="status" aria-live="polite">
+    <div class="ld-logo" aria-hidden="true">
+      <!-- Material Icons "child_care"（Apache License 2.0）-->
+      <svg viewBox="0 0 24 24"><circle cx="14.5" cy="10.5" r="1.25"/><circle cx="9.5" cy="10.5" r="1.25"/><path d="M12 17c2.01 0 3.73-1.25 4.42-3H7.58c.69 1.75 2.41 3 4.42 3zm10.94-4.34c.04-.21.06-.43.06-.66s-.02-.45-.06-.66c-.25-1.51-1.36-2.74-2.81-3.17-.53-1.12-1.28-2.1-2.19-2.91C16.36 3.85 14.28 3 12 3s-4.36.85-5.94 2.26c-.92.81-1.67 1.8-2.19 2.91-1.45.43-2.56 1.65-2.81 3.17-.04.21-.06.43-.06.66s.02.45.06.66c.25 1.51 1.36 2.74 2.81 3.17.52 1.11 1.27 2.09 2.17 2.89C7.62 20.14 9.71 21 12 21s4.38-.86 5.97-2.28c.9-.8 1.65-1.79 2.17-2.89 1.44-.43 2.55-1.65 2.8-3.17zM19 14c-.1 0-.19-.02-.29-.03-.2.67-.49 1.29-.86 1.86C16.6 17.74 14.45 19 12 19s-4.6-1.26-5.85-3.17c-.37-.57-.66-1.19-.86-1.86-.1.01-.19.03-.29.03-1.1 0-2-.9-2-2s.9-2 2-2c.1 0 .19.02.29.03.2-.67.49-1.29.86-1.86C7.4 6.26 9.55 5 12 5s4.6 1.26 5.85 3.17c.37.57.66 1.19.86 1.86.1-.01.19-.03.29-.03 1.1 0 2 .9 2 2s-.9 2-2 2z"/></svg>
+    </div>
+    <div class="ld-title">LinkDay</div>
+    <div class="ld-sub">放課後等デイサービス管理システム</div>
+    <div class="ld-status">
+      <div class="ld-spinner" aria-hidden="true"></div>
+      <div class="ld-msg" id="ld-msg">起動しています…</div>
+      <div class="ld-fail">
+        <p id="ld-fail-text">アプリを読み込めませんでした。</p>
+        <button type="button" id="ld-reload">再読み込み</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    // ── 起動ローダーの制御 ─────────────────────────────────────────
+    (function () {
+      'use strict';
+      var SLOW_MS = 20000; // これを過ぎても初回フレームが来なければ案内を出す
+      var boot = document.getElementById('ld-boot');
+      var done = false;
+      var reduce = window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      function removeLoader() {
+        if (done || !boot) return;
+        done = true;
+        window.__ldBootDone = true;
+        clearTimeout(slowTimer);
+        if (reduce) { boot.remove(); return; }
+        boot.classList.add('ld-hide');
+        setTimeout(function () { boot.remove(); }, 200);
+      }
+
+      // 起動失敗は隠さない: 理由と再読み込みボタンを出す
+      function showFailure(text) {
+        if (done || !boot) return;
+        boot.classList.add('ld-failed');
+        document.getElementById('ld-msg').textContent = '';
+        document.getElementById('ld-fail-text').textContent = text;
+        var btn = document.getElementById('ld-reload');
+        btn.focus();
+      }
+      window.__ldBootFail = showFailure;
+
+      document.getElementById('ld-reload').addEventListener('click', function () {
+        window.location.reload();
+      });
+
+      // Flutter の初回フレーム（3.35 のエンジンが window へ dispatch）
+      window.addEventListener('flutter-first-frame', removeLoader, { once: true });
+
+      // main.dart.js 等のスクリプト読込エラー（capture で <script> の error を拾う）
+      window.addEventListener('error', function (e) {
+        var t = e && e.target;
+        if (done) return;
+        if (t && t.tagName === 'SCRIPT') {
+          showFailure('アプリのファイルを読み込めませんでした。通信状態を確認して再読み込みしてください。');
+          return;
+        }
+        // 起動処理（main）中の未捕捉例外: 3 秒待っても初回フレームが来なければ失敗として表示
+        setTimeout(function () {
+          showFailure('起動中にエラーが発生しました。再読み込みしてください。' +
+            (e && e.message ? '\n(' + String(e.message).slice(0, 120) + ')' : ''));
+        }, 3000);
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        if (done) return;
+        setTimeout(function () {
+          showFailure('起動中にエラーが発生しました。再読み込みしてください。');
+        }, 3000);
+      });
+
+      var slowTimer = setTimeout(function () {
+        showFailure('起動に時間がかかっています。通信状態を確認し、改善しない場合は再読み込みしてください。');
+      }, SLOW_MS);
+    })();
+  </script>
   <!--
     ═══════════════════════════════════════════════════════════════════
     キャッシュバスティング: flutter_bootstrap.js にタイムスタンプを付与
@@ -493,6 +637,11 @@
       //       毎回取得してもパフォーマンス影響は軽微
       script.src = 'flutter_bootstrap.js?v=' + new Date().getTime();
       script.async = true;
+      script.onerror = function () {
+        if (window.__ldBootFail) {
+          window.__ldBootFail('起動ファイル（flutter_bootstrap.js）を読み込めませんでした。再読み込みしてください。');
+        }
+      };
       document.body.appendChild(script);
     })();
   </script>

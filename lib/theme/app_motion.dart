@@ -7,8 +7,11 @@ import 'package:flutter/material.dart';
 ///
 /// パフォーマンス方針（Flutter Web 前提）:
 ///  - アニメ対象は opacity / transform のみ。width・height・padding は動かさない
-///  - BackdropFilter / ImageFilter.blur は使用禁止（test/ui/ui_guard_test.dart で検査）
-///  - OS の「アニメーションを減らす」(MediaQuery.disableAnimations) では全て無効化
+///  - 背景ぼかしフィルタ（BackdropFilter 等）は使用禁止、影の blurRadius は 16 以下
+///    （test/ui/ui_guard_test.dart でコメント・文字列を除いた実コードを検査）
+///  - OS の「アニメーションを減らす」(MediaQuery.disableAnimations) では全て無効化。
+///    Web では Flutter 3.35 のエンジンが prefers-reduced-motion を反映しないため、
+///    ReducedMotionScope（lib/widgets/motion/reduced_motion_scope.dart）で補う
 class AppMotion {
   AppMotion._();
 
@@ -23,6 +26,10 @@ class AppMotion {
 
   /// 成功チェックのみで使う（少しだけ弾む）
   static const Curve emphasized = Curves.easeOutBack;
+
+  // ── 影 ──────────────────────────────────────────────────
+  /// 影の blurRadius の上限（Web の描画負荷対策）
+  static const double maxShadowBlur = 16;
 
   // ── 押下フィードバック ────────────────────────────────────
   static const double buttonPressedScale = 0.97;
@@ -52,8 +59,15 @@ class AppMotion {
       staggerStep * staggerMaxIndex + normal;
 
   // ── スケルトン ───────────────────────────────────────────
-  /// スケルトンの最低表示時間（読込が速すぎても点滅させない）
-  static const Duration skeletonMinDisplay = Duration(milliseconds: 300);
+  /// 読込開始からスケルトンを出すまでの猶予。
+  /// この時間内に読込が終われば骨格は一度も出さず、内容をそのまま表示する
+  /// （Hive など端末内の読込はほぼここで終わる）。
+  static const Duration skeletonShowDelay = Duration(milliseconds: 120);
+
+  /// 一度出した骨格の最低表示時間（出た直後に消えて点滅に見えるのを防ぐ）。
+  /// 骨格の入場フェード（[fast] = 150ms）を終えてから 100ms は静止して見える値。
+  /// 追加待機が発生するのは「120ms〜370ms で読込が終わった」場合だけで、最大 250ms。
+  static const Duration skeletonMinDisplay = Duration(milliseconds: 250);
 
   /// パルス 1 往復の時間
   static const Duration pulsePeriod = Duration(milliseconds: 1100);

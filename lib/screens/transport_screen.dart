@@ -8,7 +8,9 @@ import '../services/settings_service.dart';
 import '../services/transport_pdf_service.dart';
 import '../services/transport_plan_service.dart';
 import '../services/weekly_schedule_service.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../utils/load_sequencer.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/empty_state.dart';
 import '../widgets/motion/press_scale.dart';
@@ -66,6 +68,7 @@ class _TransportScreenState extends State<TransportScreen>
 
   @override
   void dispose() {
+    _loadSeq.invalidate();
     _tabController.dispose();
     super.dispose();
   }
@@ -92,7 +95,12 @@ class _TransportScreenState extends State<TransportScreen>
 
   // ── 全データ読み込み ─────────────────────────────────────────
 
+  /// 日付を素早く切り替えたとき、古い日付の読込結果で新しい日付を上書きしない
+  final LoadSequencer _loadSeq = LoadSequencer();
+
   Future<void> _loadAll() async {
+    final token = _loadSeq.begin();
+    final dateKey = _dateKey;
     setState(() {
       _isLoading = true;
       _initialLoading = true;
@@ -102,9 +110,11 @@ class _TransportScreenState extends State<TransportScreen>
       // 利用予定者を取得（3段階フォールバック）
       final customers = await _fetchScheduledCustomers();
 
+      if (!mounted || !_loadSeq.isCurrent(token)) return;
+
       // ルートを取得
-      final pickup = TransportPlanService.instance.getPickupRoutes(_dateKey);
-      final dropoff = TransportPlanService.instance.getDropoffRoutes(_dateKey);
+      final pickup = TransportPlanService.instance.getPickupRoutes(dateKey);
+      final dropoff = TransportPlanService.instance.getDropoffRoutes(dateKey);
 
       debugPrint('[TransportScreen] _loadAll: customers=${customers.length}, '
           'pickupRoutes=${pickup.length}, dropoffRoutes=${dropoff.length}');
@@ -119,7 +129,7 @@ class _TransportScreenState extends State<TransportScreen>
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && _loadSeq.isCurrent(token)) {
         setState(() {
           _isLoading = false;
           _initialLoading = false;
@@ -567,15 +577,13 @@ class _TransportScreenState extends State<TransportScreen>
           _buildTabBar(),
           // 操作中（最適化・グループ分け等）の細い進行バー。初回読込は骨格が担当
           if (_isLoading && !_initialLoading)
-            const LinearProgressIndicator(
-              minHeight: 3,
-              color: AppColors.primary,
-            ),
+            RefreshingBar(reduced: AppMotion.reduced(context)),
           if (_errorMessage != null && !_loadFailed) _buildErrorBanner(),
           _buildFacilityNotSetBanner(),
           Expanded(
             child: SkeletonGate(
               loading: _initialLoading,
+              contentKey: _dateKey,
               errorMessage: _loadFailed ? _errorMessage : null,
               onRetry: _loadAll,
               skeleton: const TransportSkeleton(),

@@ -18,6 +18,7 @@ import 'services/vacancy_notification_service.dart';
 import 'services/weekly_schedule_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/auth_gate.dart';
+import 'widgets/motion/reduced_motion_scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,6 +91,10 @@ class LinkDayApp extends StatelessWidget {
 
       // ── テーマ
       theme: AppTheme.lightTheme,
+
+      // ── Web の prefers-reduced-motion を MediaQuery.disableAnimations に反映
+      builder: (context, child) =>
+          ReducedMotionScope(child: child ?? const SizedBox.shrink()),
 
       // ── 認証ゲートを home に設定
       // initialRoute / routes は使わず、AuthGate が状態に応じて画面を切り替える。

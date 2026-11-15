@@ -12,6 +12,7 @@ import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/skeleton_gate.dart';
 import '../widgets/motion/staggered.dart';
 import '../widgets/skeletons/screen_skeletons.dart';
+import '../widgets/motion/app_spinner.dart';
 
 /// 送迎ルート地図表示画面
 ///
@@ -717,7 +718,7 @@ class _RouteLoadingPill extends StatelessWidget {
           SizedBox(
             width: 12,
             height: 12,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: AppSpinner(strokeWidth: 2),
           ),
           SizedBox(width: 8),
           Text('ルートを取得中…', style: TextStyle(fontSize: 12)),
