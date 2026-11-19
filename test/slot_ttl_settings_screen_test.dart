@@ -9,6 +9,8 @@ import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/screens/settings_screen.dart';
 import 'package:linkday_app/services/settings_service.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 14: 設定画面「LINE応募の受付時間」の操作テスト
 void main() {
   late Directory tmp;
@@ -22,6 +24,8 @@ void main() {
       Hive.registerAdapter(AppSettingsAdapter());
     }
     await SettingsService.instance.init();
+    // 設定は Firestore（段階7）。偽の保存先と担当者（山田）で接続する
+    await FakeBackend.attachWithStaff();
   });
 
   tearDownAll(() async {

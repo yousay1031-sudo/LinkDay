@@ -1,13 +1,16 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/data_errors.dart';
+import '../data/facility_context.dart';
+import '../data/fs_values.dart';
+import '../data/staff_session.dart';
 import '../models/app_settings.dart';
 import 'maps_js_service.dart';
 import 'maps_loader.dart';
-
-const String _kBoxName = 'app_settings';
-const String _kSettingsKey = 'settings';
 
 // ── SharedPreferences キー ────────────────────────────────────
 /// 旧キー（1キー方式）— マイグレーション用
@@ -20,31 +23,111 @@ const String _kJsApiKeyPref = 'gmaps_js_key';
 const String _kRestApiKeyPref = 'gmaps_rest_key';
 
 /// 設定サービス
-/// - AppSettings は Hive に保存（box: 'app_settings'）
-/// - Google Maps API キーは SharedPreferences に保存（セキュリティ優先）
+/// - AppSettings は Firestore `facilities/{facilityId}/settings/app`（事業所で 1 件）。
+///   ログイン後に [attach] で購読し、端末内に持つ。読み取りは従来どおり同期。
+///   保存先にまだ無い間は既定値（[AppSettings] の既定）で動き、最初の保存で作られる。
+///   他の端末の変更は購読で届き、[ChangeNotifier] で画面へ知らせる。
+/// - 更新は「前回の内容と違う項目だけ」を書く。担当者が必要。
+/// - **Google Maps API キーは SharedPreferences（端末ごと）のまま**。Firestore には置かない。
 ///
 /// 【2キー方式】
 /// - JS API キー  : Maps JavaScript API（地図表示） → リファラー制限 OK
 /// - REST API キー: Geocoding / Directions / Distance Matrix → 制限なし or IP制限
-class SettingsService {
+class SettingsService extends ChangeNotifier {
   SettingsService._();
   static final SettingsService instance = SettingsService._();
 
-  late Box<AppSettings> _box;
+  AppSettings _settings = AppSettings();
+
+  /// 最後に保存先と一致していた内容（null = 保存先にまだ無い）
+  Map<String, dynamic>? _base;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
+  bool _attached = false;
+
+  bool get isAttached => _attached;
+
+  DocumentReference<Map<String, dynamic>> get _doc =>
+      FacilityContext.instance.col(FsPaths.settings).doc(FsPaths.settingsDocId);
 
   // ── 初期化 ──────────────────────────────────────────────────
 
+  /// 起動時（ログイン前）に呼ぶ。端末に保存した API キーの移行だけを行う。
   Future<void> init() async {
-    _box = await Hive.openBox<AppSettings>(_kBoxName);
-    // 初回起動時: デフォルト AppSettings を生成
-    if (!_box.containsKey(_kSettingsKey)) {
-      await _box.put(_kSettingsKey, AppSettings());
-      debugPrint('[SettingsService] initialized with defaults');
-    } else {
-      debugPrint('[SettingsService] loaded existing settings');
-    }
+    debugPrint('[SettingsService] initialized with defaults（ログイン後に事業所の設定を読み込む）');
     // 旧キー（1キー方式）からのマイグレーション
     await _migrateLegacyApiKey();
+  }
+
+  /// ログイン後に呼ぶ。事業所の設定を購読し、最初の読み込みを待つ。
+  Future<void> attach() async {
+    await detach();
+    _attached = true;
+    final first = Completer<void>();
+    _sub = _doc.snapshots().listen((snap) {
+      final data = snap.data();
+      if (data == null) {
+        _base = null;
+      } else {
+        final s = AppSettings.fromFirestore(data);
+        final normalized = s.toFirestoreData();
+        final same = _base != null && fsChangedFields(_base, normalized).isEmpty;
+        _base = normalized;
+        if (!same) {
+          _settings = s;
+          if (first.isCompleted) notifyListeners();
+        }
+      }
+      if (!first.isCompleted) {
+        first.complete();
+        notifyListeners();
+      }
+    }, onError: (Object e) {
+      DataErrors.report('設定を読み込めませんでした（${DataErrors.describe(e)}）');
+      if (!first.isCompleted) first.complete();
+    });
+    await first.future.timeout(const Duration(seconds: 10), onTimeout: () {
+      debugPrint('[SettingsService] first snapshot timeout（オフラインの可能性）');
+    });
+    debugPrint('[SettingsService] attached: ${_base == null ? "既定値（未保存）" : "保存済みの設定"}');
+  }
+
+  Future<void> detach() async {
+    await _sub?.cancel();
+    _sub = null;
+    _base = null;
+    _settings = AppSettings();
+    _attached = false;
+  }
+
+  /// 変わった項目だけを保存する（担当者が必要）
+  Future<void> _save(AppSettings updated, String what) async {
+    final data = updated.toFirestoreData();
+    final changed = fsChangedFields(_base, data);
+    if (_base != null && changed.isEmpty) {
+      _settings = updated;
+      return;
+    }
+    final stamp = await StaffSession.instance.requireStamp();
+    final isNew = _base == null;
+    _settings = updated;
+    _base = data;
+    notifyListeners();
+    if (!FacilityContext.instance.isAttached) return;
+    DataErrors.send(
+      _doc.set(
+        {...(isNew ? data : changed), ...(isNew ? stamp.toCreateFields() : stamp.toFields())},
+        SetOptions(merge: true),
+      ),
+      what: '設定（$what）',
+    );
+  }
+
+  /// テスト用: 保存先を使わずに設定を入れる
+  @visibleForTesting
+  void debugSetSettings(AppSettings settings) {
+    _settings = settings;
+    _base = settings.toFirestoreData();
+    notifyListeners();
   }
 
   /// 旧 'google_maps_api_key' が残っている場合、
@@ -75,9 +158,7 @@ class SettingsService {
   // ── 取得 ────────────────────────────────────────────────────
 
   /// 現在の設定を返す（なければデフォルト）
-  AppSettings getSettings() {
-    return _box.get(_kSettingsKey) ?? AppSettings();
-  }
+  AppSettings getSettings() => _settings;
 
   // ── 更新メソッド ─────────────────────────────────────────────
 
@@ -104,7 +185,7 @@ class SettingsService {
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
     );
-    await _box.put(_kSettingsKey, updated);
+    await _save(updated, '事業所情報');
     debugPrint('[SettingsService] facility updated: $name');
   }
 
@@ -132,7 +213,7 @@ class SettingsService {
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
     );
-    await _box.put(_kSettingsKey, updated);
+    await _save(updated, '車両');
     debugPrint('[SettingsService] vehicles updated: count=$count');
   }
 
@@ -159,7 +240,7 @@ class SettingsService {
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
     );
-    await _box.put(_kSettingsKey, updated);
+    await _save(updated, '運営時間');
     debugPrint('[SettingsService] operating hours updated');
   }
 
@@ -183,7 +264,7 @@ class SettingsService {
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
     );
-    await _box.put(_kSettingsKey, updated);
+    await _save(updated, '事業所の位置');
     debugPrint('[SettingsService] geocode saved: $lat, $lng');
   }
 
@@ -209,7 +290,7 @@ class SettingsService {
       slotTtlHours: AppSettings.clampSlotTtlHours(hours),
       adminLineUserId: current.adminLineUserId,
     );
-    await _box.put(_kSettingsKey, updated);
+    await _save(updated, 'LINE応募の受付時間');
     debugPrint('[SettingsService] slotTtlHours updated: ${updated.slotTtlHours}');
   }
 
@@ -243,7 +324,7 @@ class SettingsService {
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: normalized,
     );
-    await _box.put(_kSettingsKey, updated);
+    await _save(updated, '管理者 LINE userId');
     // 生の userId はログに出さない（設定有無のみ）
     debugPrint(
         '[SettingsService] adminLineUserId ${normalized == null ? "cleared" : "saved"}');
@@ -282,7 +363,7 @@ class SettingsService {
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
     );
-    await _box.put(_kSettingsKey, updated);
+    await _save(updated, '空き枠通知');
     debugPrint('[SettingsService] vacancy notice updated: deadline=$safeDeadline');
   }
 
@@ -388,7 +469,7 @@ class SettingsService {
   /// 事業所住所を Geocoding して座標を保存する（JS Interop 版）
   ///
   /// - 住所文字列を正規化してから geocode する
-  /// - 成功時は必ず Hive に上書き保存する
+  /// - 成功時は必ず設定（Firestore）に上書き保存する
   /// - [address] を指定すると Hive の facilityAddress より優先する
   Future<({double lat, double lng})> geocodeFacility({
     String? address,

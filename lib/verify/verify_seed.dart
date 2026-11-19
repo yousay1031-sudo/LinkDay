@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/app_settings.dart';
 import '../models/customer.dart';
 import '../models/notification_log.dart';
 import '../models/weekly_schedule.dart';
@@ -13,8 +12,9 @@ import 'verify_config.dart';
 /// 検証構成限定のダミーデータ投入（Hive 側）。
 ///
 /// 【Firestore 移行中】顧客（段階3）・週間利用計画（段階4）・出席（段階5）・送迎計画（段階6）は
-/// Firestore へ移した。それらの投入は tool/verify/seed.mjs（[buildCustomer] / [buildDemoWeeks]
-/// と同じ規則・同じ ID）。ここはまだ Hive にある種類（設定・通知履歴）だけを投入する。
+/// Firestore へ移した（設定は段階7）。それらの投入は tool/verify/seed.mjs（[buildCustomer] /
+/// [buildDemoWeeks] と同じ規則・同じ ID）。ここは Hive に残す通知履歴だけを投入する
+/// （通知履歴は端末ごとのまま。設計判断点⑧）。
 ///
 /// 【なぜアプリ内で投入するか】
 /// 顧客・出席・週間計画・設定・送迎計画・通知履歴は **ブラウザの IndexedDB（Hive）**
@@ -77,7 +77,6 @@ class VerifySeed {
   /// 検証用 Hive ボックスを全消去（設定は既定値に戻る）
   static Future<void> clearAll() async {
     await Hive.box<NotificationLog>('notification_logs').clear();
-    await Hive.box<AppSettings>('app_settings').put('settings', AppSettings());
   }
 
   // ── 架空データ ──────────────────────────────────────────────
@@ -250,24 +249,9 @@ class VerifySeed {
     // 退所済み（一覧の「在籍中のみ」確認用）
     customers.add(buildCustomer(customerCount + 1, now)..isActive = false);
 
-    // ── 設定（架空の事業所）──
-    await Hive.box<AppSettings>('app_settings').put(
-      'settings',
-      AppSettings(
-        facilityName: '検証用デイサービス（ダミー）',
-        facilityAddress: '北海道帯広市（検証用ダミー住所）',
-        facilityLat: 42.9236,
-        facilityLng: 143.1946,
-        vehicleCount: 3,
-        vehicleNames: ['車両A', '車両B', '車両C'],
-        vehicleCapacities: [6, 6, 4],
-        maxStudentsPerDay: 20,
-      ),
-    );
-
-    // 週間利用計画（段階4）・出席（段階5）・送迎計画（段階6）は Firestore。
-    // tool/verify/seed.mjs が dummy_schedule.mjs / dummy_attendance.mjs /
-    // dummy_transport.mjs で投入する（[buildDemoWeeks] と同じ規則）。
+    // 設定（段階7）・週間利用計画（段階4）・出席（段階5）・送迎計画（段階6）は Firestore。
+    // tool/verify/seed.mjs が dummy_settings.mjs / dummy_schedule.mjs /
+    // dummy_attendance.mjs / dummy_transport.mjs で投入する。
 
     // ── 通知履歴（過去 6 日・成功/失敗/重複/ID不正）──
     final logBox = Hive.box<NotificationLog>('notification_logs');

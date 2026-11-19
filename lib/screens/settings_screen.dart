@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -6,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/app_settings.dart';
 import '../verify/verify_config.dart';
 import '../verify/verify_faults.dart';
+import '../data/staff_session.dart';
 import '../services/settings_service.dart';
 import '../services/staff_service.dart';
 import '../theme/app_theme.dart';
@@ -91,10 +93,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'nameCtrls=${_vehicleNameCtrls.length}, capCtrls=${_vehicleCapCtrls.length}');
     // API キーは非同期読み込みのため後続フレームで反映
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSettings());
+    SettingsService.instance.addListener(_onSettingsChanged);
+  }
+
+  /// 画面に反映した設定（保存していない入力があるかの判定に使う）
+  AppSettings? _applied;
+
+  /// 入力欄の内容が [s] と同じか（保存していない入力が無いか）
+  bool _formMatches(AppSettings s) {
+    final names = _vehicleNameCtrls.map((c) => c.text.trim()).toList();
+    final caps = _vehicleCapCtrls.map((c) => int.tryParse(c.text) ?? 5).toList();
+    return _facilityNameCtrl.text.trim() == s.facilityName &&
+        _facilityAddressCtrl.text.trim() == s.facilityAddress &&
+        (int.tryParse(_maxStudentsCtrl.text) ?? -1) == s.maxStudentsPerDay &&
+        _vehicleCount == s.vehicleCount.clamp(1, 5) &&
+        listEquals(names, s.vehicleNames.take(_vehicleCount).toList()) &&
+        listEquals(caps, s.vehicleCapacities.take(_vehicleCount).toList()) &&
+        _formatTime(_pickupStart) == s.defaultPickupStart &&
+        _formatTime(_dropoffEnd) == s.defaultDropoffEnd &&
+        _adminLineUserIdCtrl.text.trim() == (s.adminLineUserId ?? '');
+  }
+
+  /// 他の端末（またはこの画面の保存）で設定が変わった
+  void _onSettingsChanged() {
+    if (!mounted) return;
+    final latest = SettingsService.instance.getSettings();
+    if (_formMatches(latest)) {
+      // この画面で保存した内容の反映など: 入力欄はそのまま
+      _applied = latest;
+      setState(() => _slotTtlHours = AppSettings.clampSlotTtlHours(latest.slotTtlHours));
+      return;
+    }
+    final prev = _applied;
+    if (prev == null || _formMatches(prev)) {
+      // 保存していない入力は無い → 開き直さずに最新の内容を表示する
+      setState(() => _applySettingsSync(latest));
+      return;
+    }
+    // 入力中の内容は消さない（保存すると、その項目は入力した内容になる）
+    _showSnack('他の端末で設定が変更されました。保存していない入力があるため、画面には反映していません。',
+        AppColors.warning);
+  }
+
+  /// 担当者の選択を閉じたら保存しない（true = 保存した）
+  Future<bool> _saveWithStaff(Future<void> Function() save) async {
+    try {
+      await save();
+      return true;
+    } on StaffNotSelectedException {
+      return false;
+    }
   }
 
   /// 同期取得できる設定値をコントローラ・状態に反映する（setState なし）
   void _applySettingsSync(AppSettings settings) {
+    _applied = settings;
     _facilityNameCtrl.text = settings.facilityName;
     _facilityAddressCtrl.text = settings.facilityAddress;
     _maxStudentsCtrl.text = settings.maxStudentsPerDay.toString();
@@ -118,6 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    SettingsService.instance.removeListener(_onSettingsChanged);
     _facilityNameCtrl.dispose();
     _adminLineUserIdCtrl.dispose();
     _facilityAddressCtrl.dispose();
@@ -206,11 +260,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prevSettings = SettingsService.instance.getSettings();
     final addressChanged = prevSettings.facilityAddress != newAddress;
 
-    await SettingsService.instance.updateFacility(
-      _facilityNameCtrl.text.trim(),
-      newAddress,
-    );
-    if (!mounted) return;
+    final saved = await _saveWithStaff(() => SettingsService.instance.updateFacility(
+          _facilityNameCtrl.text.trim(),
+          newAddress,
+        ));
+    if (!saved || !mounted) return;
     _showSnack('事業所情報を保存しました', AppColors.success);
 
     // 住所が変更された場合は自動でジオコーディングを実行
@@ -245,27 +299,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final names = _vehicleNameCtrls.map((c) => c.text.trim()).toList();
     final caps =
         _vehicleCapCtrls.map((c) => int.tryParse(c.text) ?? 5).toList();
-    await SettingsService.instance.updateVehicles(_vehicleCount, names, caps);
-    if (!mounted) return;
+    final saved = await _saveWithStaff(
+        () => SettingsService.instance.updateVehicles(_vehicleCount, names, caps));
+    if (!saved || !mounted) return;
     _showSnack('車両設定を保存しました', AppColors.success);
   }
 
   Future<void> _saveOperatingHours() async {
     final maxStudents = int.tryParse(_maxStudentsCtrl.text) ?? 10;
-    await SettingsService.instance.updateOperatingHours(
-      _formatTime(_pickupStart),
-      _formatTime(_dropoffEnd),
-      maxStudents,
-    );
-    if (!mounted) return;
+    final saved = await _saveWithStaff(() => SettingsService.instance.updateOperatingHours(
+          _formatTime(_pickupStart),
+          _formatTime(_dropoffEnd),
+          maxStudents,
+        ));
+    if (!saved || !mounted) return;
     _showSnack('運営時間を保存しました', AppColors.success);
   }
 
   Future<void> _saveSlotTtl(int hours) async {
     final v = AppSettings.clampSlotTtlHours(hours);
     setState(() => _slotTtlHours = v);
-    await SettingsService.instance.updateSlotTtlHours(v);
+    final saved =
+        await _saveWithStaff(() => SettingsService.instance.updateSlotTtlHours(v));
     if (!mounted) return;
+    if (!saved) {
+      // 担当者の選択を閉じた → 表示を保存先の値に戻す
+      setState(() => _slotTtlHours = AppSettings.clampSlotTtlHours(
+          SettingsService.instance.getSettings().slotTtlHours));
+      return;
+    }
     _showSnack('LINE応募の受付時間を$v時間に変更しました（次回の通知から有効）', AppColors.success);
   }
 
@@ -279,9 +341,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     setState(() => _adminLineUserIdError = null);
-    final ok = await SettingsService.instance.updateAdminLineUserId(text);
-    if (!mounted) return;
-    if (!ok) {
+    bool? ok;
+    final saved = await _saveWithStaff(() async {
+      ok = await SettingsService.instance.updateAdminLineUserId(text);
+    });
+    if (!saved || !mounted) return;
+    if (ok != true) {
       _showSnack('管理者 userId を保存できませんでした', AppColors.error);
       return;
     }

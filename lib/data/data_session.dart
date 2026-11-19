@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/attendance_service.dart';
 import '../services/customer_service.dart';
+import '../services/settings_service.dart';
 import '../services/staff_service.dart';
 import '../services/transport_plan_service.dart';
 import '../services/weekly_schedule_service.dart';
@@ -87,6 +88,7 @@ class DataSession extends ChangeNotifier {
       FacilityContext.instance.attach(d, fid);
       await StaffService.instance.attach();
       await StaffSession.instance.restore(fid);
+      await SettingsService.instance.attach();
       await CustomerService.instance.attach();
       await WeeklyScheduleService.instance.attach();
       await AttendanceService.instance.attach();
@@ -122,6 +124,7 @@ class DataSession extends ChangeNotifier {
   }
 
   Future<void> _detachAll() async {
+    await SettingsService.instance.detach();
     await TransportPlanService.instance.detach();
     await AttendanceService.instance.detach();
     await WeeklyScheduleService.instance.detach();

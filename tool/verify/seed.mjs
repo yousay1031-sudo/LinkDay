@@ -15,6 +15,7 @@ import { buildCustomer, CUSTOMER_COUNT, toFsFields } from './dummy_customers.mjs
 import { buildDemoWeeks, scheduleDocs } from './dummy_schedule.mjs';
 import { buildDemoAttendance } from './dummy_attendance.mjs';
 import { buildDemoTransport } from './dummy_transport.mjs';
+import { buildDemoSettings } from './dummy_settings.mjs';
 
 await assertLocalEmulator();
 
@@ -236,6 +237,14 @@ if (dataMode === 'empty') {
     if (ok) routeCreated++;
   }
   console.log(`[seed] 送迎計画: 新規 ${routeCreated} 件 / 既存 ${routes.length - routeCreated} 件`);
+
+  // ── 設定（Firestore 移行ステップ7）: 事業所で 1 件。無いときだけ作る
+  const settingsCreated = await createIfMissing(
+    `facilities/${FACILITY_ID}/settings/app`,
+    { ...toFsFields(buildDemoSettings()), ...audit },
+    '設定の投入'
+  );
+  console.log(`[seed] 設定: ${settingsCreated ? '新規' : '既存のまま（触らない）'}`);
 }
 
 // ── Firestore: slots（出席画面の「LINE応募」表示用）

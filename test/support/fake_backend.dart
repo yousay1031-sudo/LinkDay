@@ -7,6 +7,7 @@ import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/models/staff.dart';
 import 'package:linkday_app/services/attendance_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
+import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/staff_service.dart';
 import 'package:linkday_app/services/transport_plan_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
@@ -42,6 +43,7 @@ class FakeBackend {
     FacilityContext.instance.attach(db, facilityId);
     await StaffService.instance.attach();
     StaffSession.instance.debugSet(facilityId: facilityId, staffId: currentStaffId);
+    await SettingsService.instance.attach();
     await CustomerService.instance.attach();
     await WeeklyScheduleService.instance.attach();
     await AttendanceService.instance.attach();

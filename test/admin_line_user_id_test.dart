@@ -17,6 +17,8 @@ import 'package:linkday_app/screens/settings_screen.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/vacancy_notification_service.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 15: 管理者 LINE userId（AppSettings field16）
 ///
 /// 過去 2 回（Day 10, 11）、AppSettings を再構築する箇所で新フィールドの
@@ -37,6 +39,8 @@ void main() {
       Hive.registerAdapter(AppSettingsAdapter());
     }
     await SettingsService.instance.init();
+    // 設定は Firestore（段階7）。偽の保存先と担当者（山田）で接続する
+    await FakeBackend.attachWithStaff();
   });
 
   tearDownAll(() async {

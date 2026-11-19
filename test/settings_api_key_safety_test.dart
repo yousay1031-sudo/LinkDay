@@ -11,6 +11,8 @@ import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/screens/settings_screen.dart';
 import 'package:linkday_app/services/settings_service.dart';
 
+import 'support/fake_backend.dart';
+
 /// 回帰テスト: APIキーの読込に失敗している間、読めていない既存値を
 /// 空値で上書き・削除しないこと。他の設定項目は引き続き保存できること。
 /// （値そのものは出力しない。ダミー文字列のみ使用）
@@ -27,6 +29,8 @@ void main() {
       Hive.registerAdapter(AppSettingsAdapter());
     }
     await SettingsService.instance.init();
+    // 設定は Firestore（段階7）。偽の保存先と担当者（山田）で接続する
+    await FakeBackend.attachWithStaff();
   });
 
   tearDownAll(() async {

@@ -1,5 +1,8 @@
 import 'package:hive/hive.dart';
 
+import '../data/audit.dart' show readTimestamp;
+import '../data/fs_values.dart';
+
 part 'app_settings.g.dart';
 
 /// アプリ設定モデル
@@ -86,6 +89,10 @@ class AppSettings extends HiveObject {
   @HiveField(16)
   String? adminLineUserId;
 
+  /// 担当者の切り替えに 4 桁の暗証番号を求めるか（予約。このステップでは常に false。
+  /// 職員ごとの暗証番号は staff/{id} の pinHash / pinSalt。Firestore のみ）
+  bool staffPinEnabled;
+
   AppSettings({
     this.facilityName = 'ココスタディ',
     this.facilityAddress = '北海道帯広市西5条南21丁目8 2階',
@@ -104,6 +111,7 @@ class AppSettings extends HiveObject {
     String? vacancyMessageTemplate,
     int? slotTtlHours,
     String? adminLineUserId,
+    this.staffPinEnabled = false,
   })  : slotTtlHours = clampSlotTtlHours(slotTtlHours),
         adminLineUserId = normalizeAdminLineUserId(adminLineUserId),
         vacancyReplyDeadline =
@@ -143,6 +151,7 @@ class AppSettings extends HiveObject {
       vacancyMessageTemplate: vacancyMessageTemplate,
       slotTtlHours: slotTtlHours,
       adminLineUserId: adminLineUserId,
+      staffPinEnabled: staffPinEnabled,
     );
   }
 
@@ -217,5 +226,54 @@ class AppSettings extends HiveObject {
   String get geocodeLabel {
     if (!hasGeocode) return '未取得';
     return '${facilityLat!.toStringAsFixed(6)}, ${facilityLng!.toStringAsFixed(6)}';
+  }
+
+  // ── Firestore（facilities/{facilityId}/settings/app）──────────────
+  // Maps の API キー（jsApiKeyLegacy / restApiKeyLegacy）は保存しない。
+  // キーは SharedPreferences（端末ごと）に置く。
+
+  /// 業務データの項目（記録欄・作成日時を除く）
+  Map<String, dynamic> toFirestoreData() => {
+        'facilityName': facilityName,
+        'facilityAddress': facilityAddress,
+        'facilityLat': facilityLat,
+        'facilityLng': facilityLng,
+        'vehicleCount': vehicleCount,
+        'vehicleNames': List<String>.from(vehicleNames),
+        'vehicleCapacities': List<int>.from(vehicleCapacities),
+        'maxStudentsPerDay': maxStudentsPerDay,
+        'defaultPickupStart': defaultPickupStart,
+        'defaultDropoffEnd': defaultDropoffEnd,
+        'vacancyReplyDeadline': vacancyReplyDeadline,
+        'vacancyMessageTemplate': vacancyMessageTemplate,
+        'slotTtlHours': slotTtlHours,
+        'adminLineUserId': adminLineUserId,
+        'staffPinEnabled': staffPinEnabled,
+      };
+
+  factory AppSettings.fromFirestore(Map<String, dynamic> d) {
+    final defaults = AppSettings();
+    return AppSettings(
+      facilityName: readString(d['facilityName']) ?? defaults.facilityName,
+      facilityAddress: readString(d['facilityAddress']) ?? defaults.facilityAddress,
+      facilityLat: readDouble(d['facilityLat']),
+      facilityLng: readDouble(d['facilityLng']),
+      vehicleCount: readInt(d['vehicleCount'], defaults.vehicleCount),
+      vehicleNames: d['vehicleNames'] is List
+          ? readStringList(d['vehicleNames'])
+          : null,
+      vehicleCapacities: d['vehicleCapacities'] is List
+          ? readIntList(d['vehicleCapacities'])
+          : null,
+      maxStudentsPerDay: readInt(d['maxStudentsPerDay'], defaults.maxStudentsPerDay),
+      defaultPickupStart: readString(d['defaultPickupStart']) ?? defaults.defaultPickupStart,
+      defaultDropoffEnd: readString(d['defaultDropoffEnd']) ?? defaults.defaultDropoffEnd,
+      updatedAt: readTimestamp(d['updatedAt']),
+      vacancyReplyDeadline: readString(d['vacancyReplyDeadline']),
+      vacancyMessageTemplate: readString(d['vacancyMessageTemplate']),
+      slotTtlHours: d['slotTtlHours'] is num ? (d['slotTtlHours'] as num).toInt() : null,
+      adminLineUserId: readString(d['adminLineUserId']),
+      staffPinEnabled: d['staffPinEnabled'] == true,
+    );
   }
 }

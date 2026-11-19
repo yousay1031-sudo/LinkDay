@@ -88,7 +88,8 @@ Future<void> main() async {
 
   // ── 6. 出席は Firestore（ログイン後に DataSession が購読を始める）
 
-  // ── 7. SettingsService の Hive ボックスを開く（Day 6）
+  // ── 7. 設定は Firestore（ログイン後に DataSession が購読を始める）。
+  //    ここでは端末に保存した Maps API キーの移行だけを行う
   await SettingsService.instance.init();
 
   // ── 8. 送迎計画は Firestore（ログイン後に DataSession が購読を始める）
