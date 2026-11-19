@@ -6,8 +6,9 @@
 //   node tool/verify/seed.mjs --reset    # エミュレータ内の Auth/Firestore を全消去して再投入
 //   node tool/verify/seed.mjs --clear    # エミュレータ内を全消去のみ
 //
-// 顧客・出席・週間計画・設定・送迎・通知履歴は Hive(IndexedDB) 側なので、
-// ここでは投入しない（検証ビルドが起動時に投入する。docs/VERIFY_ENV.md）。
+// 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / slots
+// 顧客・出席・週間計画・設定・送迎・通知履歴は、Firestore 移行の各段階で
+// こちらへ移すまでは Hive(IndexedDB) 側（検証ビルドが起動時に投入する。docs/VERIFY_ENV.md）。
 import { assertLocalEmulator, PROJECT, HOST, AUTH_PORT, FS_PORT, loadOrCreateCredentials } from './guard.mjs';
 
 await assertLocalEmulator();
@@ -44,17 +45,100 @@ const signUp = await fetch(`${authBase}/identitytoolkit.googleapis.com/v1/accoun
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ email: cred.email, password: cred.password, returnSecureToken: false }),
 });
+let uid;
 if (signUp.ok) {
+  uid = (await signUp.json()).localId;
   console.log('[seed] 認証ユーザーを作成しました（資格情報は ~/.linkday_verify/credentials.json、表示しません）');
 } else {
   const body = await signUp.json().catch(() => ({}));
   if (body?.error?.message === 'EMAIL_EXISTS') {
+    // uid を得るためにサインインする（資格情報は表示しない）
+    const signIn = await must(
+      await fetch(`${authBase}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo-api-key`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: cred.email, password: cred.password, returnSecureToken: false }),
+      }),
+      '認証ユーザーの uid 取得'
+    );
+    uid = (await signIn.json()).localId;
     console.log('[seed] 認証ユーザーは作成済みです');
   } else {
     console.error(`[seed] 認証ユーザー作成に失敗: HTTP ${signUp.status}`);
     process.exit(1);
   }
 }
+if (!uid) {
+  console.error('[seed] 認証ユーザーの uid を取得できませんでした');
+  process.exit(1);
+}
+
+// ── Firestore 共通（書込はエミュレータの管理者トークン 'owner'。rules は緩めない）
+const docUrl = (p) => `${fsBase}/v1/projects/${PROJECT}/databases/(default)/documents/${p}`;
+const fsHeaders = { 'content-type': 'application/json', authorization: 'Bearer owner' };
+const nowTs = () => ({ timestampValue: new Date().toISOString() });
+
+/** 上書き投入 */
+async function putDoc(p, fields, what) {
+  await must(
+    await fetch(docUrl(p), { method: 'PATCH', headers: fsHeaders, body: JSON.stringify({ fields }) }),
+    what
+  );
+}
+
+/** 無いときだけ作る（検証中に画面で変えた内容を再投入で戻さない） */
+async function createIfMissing(p, fields, what) {
+  const res = await fetch(`${docUrl(p)}?currentDocument.exists=false`, {
+    method: 'PATCH',
+    headers: fsHeaders,
+    body: JSON.stringify({ fields }),
+  });
+  if (res.ok) return true;
+  if (res.status === 409 || res.status === 400) return false; // 既にある
+  console.error(`[seed] ${what} に失敗: HTTP ${res.status}`);
+  process.exit(1);
+}
+
+// ── 事業所・所属・職員（Firestore 移行ステップ2）
+// 検証用の事業所 ID。アプリは memberships/{uid}.facilityId からこれを解決する。
+const FACILITY_ID = 'demo-facility';
+const audit = {
+  createdAt: nowTs(),
+  updatedAt: nowTs(),
+  updatedByStaffId: { nullValue: null },
+  updatedByStaffName: { stringValue: '検証データ' },
+};
+await putDoc(`facilities/${FACILITY_ID}`, { name: { stringValue: '検証用事業所' } }, '事業所の投入');
+await putDoc(
+  `memberships/${uid}`,
+  { facilityId: { stringValue: FACILITY_ID }, createdAt: nowTs() },
+  '所属(memberships)の投入'
+);
+// 架空の職員（実在の人物ではない）。ダミー顧客（検証 花子 など）と名前が重ならないようにする
+const staff = [
+  ['dummy-s001', '職員 春子'],
+  ['dummy-s002', '職員 夏男'],
+  ['dummy-s003', '職員 秋子'],
+];
+let staffCreated = 0;
+for (const [id, name] of staff) {
+  const created = await createIfMissing(
+    `facilities/${FACILITY_ID}/staff/${id}`,
+    {
+      name: { stringValue: name },
+      isActive: { booleanValue: true },
+      deactivatedAt: { nullValue: null },
+      pinHash: { nullValue: null },
+      pinSalt: { nullValue: null },
+      ...audit,
+    },
+    `職員 ${id} の投入`
+  );
+  if (created) staffCreated++;
+}
+console.log(
+  `[seed] 事業所 ${FACILITY_ID} と所属を投入しました。職員: 新規 ${staffCreated} 件 / 既存 ${staff.length - staffCreated} 件`
+);
 
 // ── Firestore: slots（出席画面の「LINE応募」表示用）
 // 書込はエミュレータの管理者トークン('owner')で行う（クライアントの rules は緩めない）。

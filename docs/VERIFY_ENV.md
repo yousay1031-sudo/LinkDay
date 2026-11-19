@@ -14,6 +14,13 @@ tool/verify/stop_emulators.sh
 - 顧客・出席・週間計画・設定・送迎計画・通知履歴は Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（顧客 60 件 + 非在籍 1 件）。
 - 外部公開しない: エミュレータ・配信とも 127.0.0.1 のみ。共有プレビューが必要なときだけ `BIND=0.0.0.0` と GetServiceUrl を使う。
 
+### Firestore 移行（作業中）で増えたもの
+- `seed.mjs` は、事業所 `demo-facility`、検証ユーザーの所属 `memberships/{uid}`、架空の職員3名（職員 春子／夏男／秋子）も投入する。職員は無いときだけ作る（画面で変えた内容は再投入で戻らない。全消去は `--reset`）。
+- ログイン後は所属事業所を確認してからホーム画面に進む。所属が無いアカウントは「事業所に登録されていません」画面になる。
+- 画面上部の帯で担当者を選ぶ（端末ごとに保存）。未選択で記録を変える操作をすると選択を求められる。
+- ルールのテスト: `tool/verify/test_rules.sh`（起動中のエミュレータに別プロジェクトID `demo-linkday-rules` で接続。検証データは消さない）。
+- まだ Firestore に移していない種類（顧客・出席・週間計画・設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
+
 ## 2. 本番へ誤接続しない仕組み
 - 切替は `--dart-define=LINKDAY_VERIFY=true`（コンパイル時。debug 限定ではなく release/profile 可）。通常ビルドは `const false` で検証コードは tree-shake される。
 - プロジェクトIDは `demo-*` 必須・`linkday-proud` 拒否・ホストはループバックのみ（`VerifyConfig.validate`）。
@@ -33,6 +40,7 @@ tool/verify/stop_emulators.sh
 | Firestore側エラー | Firestore エミュレータを停止 |
 
 ## 4. 既知の問題（原因未確定のものは断定しない）
+- **【要対応・安全装置の穴】再読み込みで認証が本番エンドポイントへ出る**（2026-11-19 確認。main=bc3ca0c の検証ビルドでも再現）: ログイン済みでページを再読み込みすると、保存済みセッションの確認 `accounts:lookup` が `identitytoolkit.googleapis.com`（本物の Google）へ送られ 400 で失敗し、ログアウト状態になる。その後に再ログインすると `accounts:signInWithPassword` も同じく本物へ送られる（検証用のダミー資格情報）。`demo-api-key` のため受理はされないが「ループバックのみ」の前提に反する。Firebase.initializeApp 時に Auth が保存済みセッションの確認を始め、その後の useAuthEmulator が効かないためと見られる（原因は未確定）。**対応方針が決まるまで、検証構成では再読み込み後に再ログインしない。**
 - **Service Worker 初回再読込**: 新規プロファイルの初回訪問で canvaskit.js / canvaskit.wasm / main.dart.js が `ERR_ABORTED` になり再読込される。記録のみ。根拠なく削除・改修しない。
 - **テンキー「−」例外**: keydown key='-' code='NumpadSubtract' location=3 で `TypeError: Cannot read properties of null (reading 'toString')`。スタック: main.dart.js:45055 ← 44913 ← 45075 ← 51302 ← 45009 ← 45021 ← 44943/44949 ← 7433。エンジン側マップ `[45,null,null,8589935149]` が関与する可能性はあるが、原因は未確定でエンジン不具合とは断定しない。
 - **setSelectionRange InvalidStateError**: ログイン画面の email 入力中にコンソールへ出る（main.dart.js:49400）。原因未確認。画面操作は継続できた。

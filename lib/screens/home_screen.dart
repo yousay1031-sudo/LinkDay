@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/attendance_service.dart';
 import '../services/monthly_usage_service.dart';
-import '../services/auth_service.dart';
 import '../services/customer_service.dart';
 import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
@@ -14,6 +13,7 @@ import 'weekly_schedule_screen.dart';
 import '../widgets/motion/app_spinner.dart';
 import '../widgets/motion/press_scale.dart';
 import '../widgets/motion/staggered.dart';
+import '../widgets/logout_flow.dart';
 
 /// メニュー項目データクラス
 class _MenuItem {
@@ -343,20 +343,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.of(dialogContext).pop();
-              try {
-                await AuthService.instance.signOut();
-                // AuthGate の StreamBuilder が自動で LoginScreen に切り替えるため
-                // Navigator による手動遷移は不要
-              } on AuthException catch (e) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(e.message),
-                    backgroundColor: AppColors.error,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
+              // 未送信の記録を確認 → キャッシュ消去 → サインアウト（logout_flow.dart）。
+              // 未送信が残っていれば警告してログアウトを止める。
+              if (!context.mounted) return;
+              await runLogout(context);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,

@@ -1,10 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../screens/home_screen.dart';
+import '../data/data_session.dart';
 import '../screens/login_screen.dart';
 import '../services/auth_service.dart';
 import 'auth_loading_screen.dart';
+import 'facility_gate.dart';
 
 /// Firebase 認証状態に応じて表示する画面を切り替えるゲートウィジェット
 ///
@@ -33,12 +34,16 @@ class AuthGate extends StatelessWidget {
           return _ErrorScreen(error: snapshot.error.toString());
         }
 
-        // ── 3. ログイン済み → ホーム画面
+        // ── 3. ログイン済み → 所属事業所の確認・購読開始 → ホーム画面
         if (snapshot.hasData && snapshot.data != null) {
-          return const HomeScreen();
+          return FacilityGate(uid: snapshot.data!.uid);
         }
 
-        // ── 4. 未ログイン → ログイン画面
+        // ── 4. 未ログイン → ログイン画面（購読が残っていれば止める）
+        if (DataSession.instance.status != DataSessionStatus.idle) {
+          WidgetsBinding.instance.addPostFrameCallback(
+              (_) => DataSession.instance.stop());
+        }
         return const LoginScreen();
       },
     );

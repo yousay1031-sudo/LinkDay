@@ -7,7 +7,9 @@ import '../models/app_settings.dart';
 import '../verify/verify_config.dart';
 import '../verify/verify_faults.dart';
 import '../services/settings_service.dart';
+import '../services/staff_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/staff_minimal_section.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/skeleton_gate.dart';
 import '../widgets/motion/success_feedback.dart';
@@ -532,6 +534,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               _buildFacilitySection(),
               const SizedBox(height: 16),
+              // 担当者選択用の職員（ログイン後のみ表示。未接続なら空）
+              const StaffMinimalSection(),
+              if (StaffService.instance.isAttached) const SizedBox(height: 16),
               _buildVehicleSection(),
               const SizedBox(height: 16),
               _buildOperatingHoursSection(),
