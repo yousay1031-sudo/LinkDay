@@ -1,57 +1,38 @@
 import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
-import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/audit.dart' show readTimestamp;
 import '../data/fs_values.dart';
 
-part 'transport_plan.g.dart';
-
 // ── TransportType ────────────────────────────────────────────
 /// 送迎区分
-/// Hive Type ID: 10
-@HiveType(typeId: 10)
 enum TransportType {
-  @HiveField(0)
   pickup, // お迎え（利用者宅→事業所）
 
-  @HiveField(1)
   dropoff, // お送り（事業所→利用者宅）
 }
 
 // ── TransportStop ────────────────────────────────────────────
 /// ルート上の1停留所（利用者1名分）
-/// Hive Type ID: 9
-@HiveType(typeId: 9)
-class TransportStop extends HiveObject {
-  @HiveField(0)
+class TransportStop {
   String customerId;
 
-  @HiveField(1)
   String customerName; // スナップショット
 
-  @HiveField(2)
   String address; // 送迎先住所
 
-  @HiveField(3)
   double? lat;
 
-  @HiveField(4)
   double? lng;
 
-  @HiveField(5)
   int orderIndex; // ルート内の順番（0始まり）
 
-  @HiveField(6)
   String? scheduledTime; // "HH:mm" 形式の予定時刻
 
-  @HiveField(7)
   int? distanceFromPrevMeters; // 前停留所からの距離（m）
 
-  @HiveField(8)
   int? durationFromPrevSeconds; // 前停留所からの所要時間（秒）
 
-  @HiveField(9)
   String? note;
 
   TransportStop({
@@ -114,43 +95,29 @@ class TransportStop extends HiveObject {
 
 // ── TransportVehicleRoute ─────────────────────────────────────
 /// 1台の車のルート
-/// Hive Type ID: 8
-@HiveType(typeId: 8)
-class TransportVehicleRoute extends HiveObject {
-  @HiveField(0)
+class TransportVehicleRoute {
   final String id;
 
-  @HiveField(1)
   String vehicleName; // "車両A"
 
-  @HiveField(2)
   int vehicleIndex; // 0始まり
 
-  @HiveField(3)
   TransportType transportType;
 
-  @HiveField(4)
   String dateKey; // "2026-06-16"
 
-  @HiveField(5)
   List<TransportStop> stops; // 順番に並んだ停留所リスト
 
-  @HiveField(6)
   int capacity; // 乗車定員
 
-  @HiveField(7)
   String? googleMapsUrl; // ドライバー用のGoogleマップURL
 
-  @HiveField(8)
   int? totalDistanceMeters; // 総走行距離
 
-  @HiveField(9)
   int? totalDurationSeconds; // 総所要時間
 
-  @HiveField(10)
   DateTime? optimizedAt; // 最適化実行日時
 
-  @HiveField(11)
   String? note;
 
   TransportVehicleRoute({

@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/screens/settings_screen.dart';
 import 'package:linkday_app/services/settings_service.dart';
 
@@ -30,9 +29,6 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     tmp = await Directory.systemTemp.createTemp('linkday_settings_test_');
     Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(7)) {
-      Hive.registerAdapter(AppSettingsAdapter());
-    }
     await SettingsService.instance.init();
   });
 

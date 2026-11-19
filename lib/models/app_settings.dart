@@ -1,46 +1,30 @@
-import 'package:hive/hive.dart';
 
 import '../data/audit.dart' show readTimestamp;
 import '../data/fs_values.dart';
 
-part 'app_settings.g.dart';
-
 /// アプリ設定モデル
-/// Hive Type ID: 7
 /// box: 'app_settings'  key: 'settings'
-@HiveType(typeId: 7)
-class AppSettings extends HiveObject {
-  @HiveField(0)
+class AppSettings {
   String facilityName;
 
-  @HiveField(1)
   String facilityAddress;
 
-  @HiveField(2)
   double? facilityLat; // Geocoding 結果キャッシュ
 
-  @HiveField(3)
   double? facilityLng;
 
-  @HiveField(4)
   int vehicleCount; // 1〜5
 
-  @HiveField(5)
   List<String> vehicleNames; // ["車両A", "車両B", ...]
 
-  @HiveField(6)
   List<int> vehicleCapacities; // [5, 5, ...]（人数）
 
-  @HiveField(7)
   int maxStudentsPerDay; // 1日最大利用者数
 
-  @HiveField(8)
   String defaultPickupStart; // "08:30"
 
-  @HiveField(9)
   String defaultDropoffEnd; // "16:30"
 
-  @HiveField(10)
   DateTime updatedAt;
 
   // ── Day 6 patch: 2キー方式 ───────────────────────────────────
@@ -49,11 +33,9 @@ class AppSettings extends HiveObject {
   /// Maps JavaScript API 用キー（リファラー制限 OK）
   /// Hive には保存せず SharedPreferences に移動したため、
   /// このフィールドは互換のみ保持（常に null）
-  @HiveField(11)
   String? jsApiKeyLegacy; // reserved / unused
 
   /// REST API 用キー legacy storage（SharedPreferences に移行済み）
-  @HiveField(12)
   String? restApiKeyLegacy; // reserved / unused
 
   // ── Day 11: 空き枠 LINE 通知 ─────────────────────────────────
@@ -63,12 +45,10 @@ class AppSettings extends HiveObject {
 
   /// 空き枠通知の回答期限時刻（"HH:mm"）
   /// 文面に「○○時までにご連絡ください」として差し込む。
-  @HiveField(13)
   String vacancyReplyDeadline;
 
   /// 空き枠通知の文面テンプレート
   /// プレースホルダ: {facility} {date} {deadline} {child}
-  @HiveField(14)
   String vacancyMessageTemplate;
 
   // ── Day 14: 空き枠の応募受付時間 ─────────────────────────────
@@ -76,7 +56,6 @@ class AppSettings extends HiveObject {
 
   /// 空き枠の応募受付時間（時間）。通知送信時から何時間で締め切るか。
   /// サーバー側でも 1〜24 に丸められる（Functions clampSlotTtlHours）。
-  @HiveField(15)
   int slotTtlHours;
 
   // ── Day 15: 管理者 LINE userId ───────────────────────────────
@@ -86,7 +65,6 @@ class AppSettings extends HiveObject {
   /// 設定されていれば、応募の確定・取り消し時に管理者へ LINE 通知する。
   /// null = 未設定（通知しない。確定処理には影響しない）。
   /// 形式は 'U' + 32桁 16進（[isValidLineUserId]）。
-  @HiveField(16)
   String? adminLineUserId;
 
   /// 担当者の切り替えに 4 桁の暗証番号を求めるか（予約。このステップでは常に false。
@@ -217,7 +195,6 @@ class AppSettings extends HiveObject {
         .replaceAll('{deadline}', vacancyReplyDeadline)
         .replaceAll('{child}', childName);
   }
-
 
   /// 事業所の緯度経度が取得済みかどうか
   bool get hasGeocode => facilityLat != null && facilityLng != null;

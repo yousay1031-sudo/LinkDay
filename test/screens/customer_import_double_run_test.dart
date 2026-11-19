@@ -71,7 +71,6 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     tmp = await Directory.systemTemp.createTemp('linkday_import_dbl_');
     Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(CustomerAdapter());
     await FakeBackend.attachWithStaff();
     // Hive の実ファイル I/O は FakeAsync 内で行うと詰まるため、投入は 1 度だけここで行う
     await FakeBackend.resetCustomers();

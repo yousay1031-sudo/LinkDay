@@ -27,23 +27,6 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     tmp = await Directory.systemTemp.createTemp('linkday_day9_');
     Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(CustomerAdapter());
-    if (!Hive.isAdapterRegistered(1)) {
-      Hive.registerAdapter(AttendanceRecordAdapter());
-    }
-    if (!Hive.isAdapterRegistered(2)) {
-      Hive.registerAdapter(AttendanceStatusAdapter());
-    }
-    if (!Hive.isAdapterRegistered(3)) {
-      Hive.registerAdapter(WeeklyScheduleAdapter());
-    }
-    if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(DailySlotAdapter());
-    if (!Hive.isAdapterRegistered(5)) {
-      Hive.registerAdapter(ScheduleStatusAdapter());
-    }
-    if (!Hive.isAdapterRegistered(6)) {
-      Hive.registerAdapter(ScheduleEntryAdapter());
-    }
     await FakeBackend.attachWithStaff();
     // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）

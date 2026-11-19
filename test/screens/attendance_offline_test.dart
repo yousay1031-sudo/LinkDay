@@ -7,7 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/models/attendance_record.dart';
 import 'package:linkday_app/screens/attendance_screen.dart';
 import 'package:linkday_app/services/attendance_service.dart';
@@ -44,7 +43,6 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     tmp = await Directory.systemTemp.createTemp('linkday_att_offline_');
     Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(AppSettingsAdapter());
     await FakeBackend.attachWithStaff();
     await SettingsService.instance.init();
     SlotService.instance.remoteEnabled = false;

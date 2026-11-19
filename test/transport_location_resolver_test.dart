@@ -1,12 +1,8 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 // ignore_for_file: implementation_imports
-import 'package:hive/src/binary/binary_reader_impl.dart';
-import 'package:hive/src/binary/binary_writer_impl.dart';
-import 'package:hive/src/hive_impl.dart';
 
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/models/geocode_candidate.dart';
@@ -17,7 +13,6 @@ import 'support/fake_backend.dart';
 
 /// Day 8: 送迎場所ジオコーディング
 ///   - Customer モデル往復（coords 含む save/load）
-///   - 旧データ（HiveField 19-21 なし）読込の後方互換
 ///   - Resolver のロジック（自動採用 / 複数候補 / 失敗 / API 節約）
 void main() {
   late Directory tmp;
@@ -26,7 +21,6 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     tmp = await Directory.systemTemp.createTemp('linkday_day8_');
     Hive.init(tmp.path);
-    Hive.registerAdapter(CustomerAdapter());
     await FakeBackend.attachWithStaff();
   });
 
@@ -88,31 +82,6 @@ void main() {
       expect(r.isTransportResolved(1), isTrue);
       // 既存フィールドも維持
       expect(r.transportLocations, ['北海道帯広市東1条南3丁目', '帯広駅前']);
-    });
-
-    test('後方互換: 旧フォーマット（field 19-21 なし）のバイナリを読める', () async {
-      // 旧 CustomerAdapter (19 fields) と同じ形式で手書きシリアライズ
-      final writer = _OldFormatWriter();
-      final bytes = writer.writeOldCustomer(
-        id: 'old-1',
-        name: '旧 太郎',
-        nameKana: 'キュウ タロウ',
-        transportLocations: ['北海道帯広市西4条南10丁目', '緑ヶ丘公園前', '西帯広駅'],
-      );
-      final reader = BinaryReaderImpl(bytes, Hive as HiveImpl);
-      final c = CustomerAdapter().read(reader);
-      expect(c.id, 'old-1');
-      expect(c.name, '旧 太郎');
-      expect(c.transportLocations.length, 3);
-      // 新フィールドはデフォルト補完
-      expect(c.transportLocationLats, [null, null, null]);
-      expect(c.transportLocationLngs, [null, null, null]);
-      expect(c.transportLocationStatus, ['unresolved', 'unresolved', 'unresolved']);
-      expect(c.isTransportResolved(0), isFalse);
-      // そのまま保存 → 再読込できる（新フォーマット）
-      await CustomerService.instance.addCustomer(c);
-      final again = CustomerService.instance.getCustomerById('old-1')!;
-      expect(again.transportLocationStatus.length, 3);
     });
 
     test('copyWith は coords を引き継ぐ', () {
@@ -1013,58 +982,4 @@ void main() {
       expect(best.preferenceScore, greaterThan(worst.preferenceScore));
     });
   });
-}
-
-/// 旧 CustomerAdapter（HiveField 0〜18 のみ）と同一のバイナリを生成する
-class _OldFormatWriter {
-  Uint8List writeOldCustomer({
-    required String id,
-    required String name,
-    required String nameKana,
-    required List<String> transportLocations,
-  }) {
-    final w = BinaryWriterImpl(Hive as HiveImpl);
-    final now = DateTime(2026, 1, 1);
-    w
-      ..writeByte(19)
-      ..writeByte(0)
-      ..write(id)
-      ..writeByte(1)
-      ..write(name)
-      ..writeByte(2)
-      ..write(nameKana)
-      ..writeByte(3)
-      ..write(null)
-      ..writeByte(4)
-      ..write('男児')
-      ..writeByte(5)
-      ..write(null)
-      ..writeByte(6)
-      ..write(null)
-      ..writeByte(7)
-      ..write(null)
-      ..writeByte(8)
-      ..write(null)
-      ..writeByte(9)
-      ..write('1234567890')
-      ..writeByte(10)
-      ..write(null)
-      ..writeByte(11)
-      ..write(23)
-      ..writeByte(12)
-      ..write(0)
-      ..writeByte(13)
-      ..write([1, 3, 5])
-      ..writeByte(14)
-      ..write(transportLocations)
-      ..writeByte(15)
-      ..write(null)
-      ..writeByte(16)
-      ..write(now)
-      ..writeByte(17)
-      ..write(now)
-      ..writeByte(18)
-      ..write(true);
-    return w.toBytes();
-  }
 }

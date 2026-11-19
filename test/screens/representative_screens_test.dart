@@ -6,11 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/models/attendance_record.dart';
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/models/transport_plan.dart';
-import 'package:linkday_app/models/weekly_schedule.dart';
 import 'package:linkday_app/screens/attendance_screen.dart';
 import 'package:linkday_app/screens/customer_management_screen.dart';
 import 'package:linkday_app/screens/transport_screen.dart';
@@ -95,21 +93,7 @@ void main() {
     Hive.init(tmp.path);
     // 型引数を保つため 1 つずつ登録する（List<TypeAdapter<dynamic>> 経由だと
     // Hive が全て dynamic として登録してしまう）
-    void reg<T>(TypeAdapter<T> a) {
-      if (!Hive.isAdapterRegistered(a.typeId)) Hive.registerAdapter<T>(a);
-    }
 
-    reg(CustomerAdapter());
-    reg(AttendanceRecordAdapter());
-    reg(AttendanceStatusAdapter());
-    reg(WeeklyScheduleAdapter());
-    reg(DailySlotAdapter());
-    reg(ScheduleStatusAdapter());
-    reg(ScheduleEntryAdapter());
-    reg(AppSettingsAdapter());
-    reg(TransportVehicleRouteAdapter());
-    reg(TransportStopAdapter());
-    reg(TransportTypeAdapter());
     await FakeBackend.attachWithStaff();
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）

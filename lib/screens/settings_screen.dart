@@ -1235,7 +1235,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.storage, size: 20),
             title: Text('データストレージ'),
-            trailing: Text('Hive (IndexedDB)',
+            // 業務データは Firestore（事業所で共有。ステップ1で移行）
+            trailing: Text('Firestore（事業所で共有）',
                 style: TextStyle(color: AppColors.onSurfaceVariant)),
           ),
           Divider(height: 1),

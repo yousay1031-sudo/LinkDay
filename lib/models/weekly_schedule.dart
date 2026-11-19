@@ -1,49 +1,32 @@
-import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
-part 'weekly_schedule.g.dart';
-
 // ── ScheduleStatus ──────────────────────────────────────────
-/// Hive Type ID: 5
-@HiveType(typeId: 5)
 enum ScheduleStatus {
   /// 通常予定（regularDays から自動生成）
-  @HiveField(0)
   planned,
 
   /// 追加（イレギュラーで増やした）
-  @HiveField(1)
   additional,
 
   /// キャンセル（regularDays 対象だが今週は休む）
-  @HiveField(2)
   cancelled,
 }
 
 // ── ScheduleEntry ────────────────────────────────────────────
 /// 1利用者の1日分のエントリ
-/// Hive Type ID: 6
-@HiveType(typeId: 6)
-class ScheduleEntry extends HiveObject {
-  @HiveField(0)
+class ScheduleEntry {
   String customerId;
 
-  @HiveField(1)
   String customerName; // スナップショット
 
-  @HiveField(2)
   ScheduleStatus status;
 
-  @HiveField(3)
   String? plannedStartTime; // "09:00" 形式
 
-  @HiveField(4)
   String? plannedEndTime; // "15:00" 形式
 
-  @HiveField(5)
   int? transportLocationIndex; // Customer.transportLocations のインデックス
 
-  @HiveField(6)
   String? note;
 
   ScheduleEntry({
@@ -94,16 +77,11 @@ class ScheduleEntry extends HiveObject {
 
 // ── DailySlot ────────────────────────────────────────────────
 /// 1日分のスロット（複数利用者のエントリを保持）
-/// Hive Type ID: 4
-@HiveType(typeId: 4)
-class DailySlot extends HiveObject {
-  @HiveField(0)
+class DailySlot {
   DateTime date;
 
-  @HiveField(1)
   int dayOfWeek; // 1=月〜7=日
 
-  @HiveField(2)
   List<ScheduleEntry> entries;
 
   DailySlot({
@@ -128,29 +106,20 @@ class DailySlot extends HiveObject {
 
 // ── WeeklySchedule ───────────────────────────────────────────
 /// 週間利用計画
-/// Hive Type ID: 3
 /// キー: weekKey（例: "2026-W25"）
-@HiveType(typeId: 3)
-class WeeklySchedule extends HiveObject {
-  @HiveField(0)
+class WeeklySchedule {
   final String id; // UUID
 
-  @HiveField(1)
   DateTime weekStartDate; // 月曜日 0:00
 
-  @HiveField(2)
   String weekKey; // "2026-W25"
 
-  @HiveField(3)
   List<DailySlot> dailySlots; // 7日分
 
-  @HiveField(4)
   DateTime createdAt;
 
-  @HiveField(5)
   DateTime updatedAt;
 
-  @HiveField(6)
   String? note;
 
   WeeklySchedule({

@@ -1,33 +1,52 @@
-# ローカル検証環境（Day 15 / エミュレータ方式）
+# ローカル検証環境（Day 15 / エミュレータ方式。2026-11-19 Firestore 移行に合わせて更新）
 
 本番の認証・データ・Hosting に一切触れず、通常のログイン画面を通して画面を確認するための構成。
 
 ## 1. 起動・データ投入・終了
 ```bash
 tool/verify/start_emulators.sh          # Auth 127.0.0.1:9099 / Firestore 127.0.0.1:8080（Java 17 + firebase-tools）
-node tool/verify/seed.mjs               # ローカル認証ユーザー + Firestore slots（認証情報は ~/.linkday_verify/credentials.json、表示しない）
+node tool/verify/seed.mjs               # 認証ユーザー + 事業所・所属・職員・業務データ・slots（認証情報は ~/.linkday_verify/credentials.json、表示しない）
+node tool/verify/seed.mjs --reset       # エミュレータ内の Auth/Firestore を全消去して入れ直す
+node tool/verify/seed.mjs --reset --data empty   # 業務データなし（空の状態の確認用。事業所・所属・職員は入る）
 tool/verify/build_verify.sh             # build/verify_web に出力（MODE=profile も可）
 tool/verify/serve_verify.sh             # 127.0.0.1:8765（標準 Chrome で開けるポート。5060 は不可）
-# 終了
+tool/verify/test_rules.sh               # ルールテスト（最初に、エミュレータが今の firestore.rules で判定しているか確かめる）
+# 終了（配信 8765 も止まる）
 tool/verify/stop_emulators.sh
 ```
-- 顧客は Firestore（段階3〜）。`seed.mjs` がエミュレータへ投入する（在籍中 60 名 + 在籍終了 1 名。無いときだけ作る）。
-- 週間利用計画も Firestore（段階4〜）。`seed.mjs` が先週・今週・来週を投入する（週の目印 `scheduleWeeks` が既にある週は触らない）。
-- 出席も Firestore（段階5〜）。`seed.mjs` が直近 5 日の実績と今日の混在（予定/在室/退室済/欠席）を投入する（`tool/verify/dummy_attendance.mjs`）。
-- 設定・送迎計画・通知履歴はまだ Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（同じ顧客 ID・氏名・今日の予定を使う。`lib/verify/verify_seed.dart` と `tool/verify/dummy_customers.mjs`・`dummy_schedule.mjs` は同じ規則で作るので、片方を変えたらもう片方も変える）。
 - 外部公開しない: エミュレータ・配信とも 127.0.0.1 のみ。共有プレビューが必要なときだけ `BIND=0.0.0.0` と GetServiceUrl を使う。
 
-### Firestore 移行（作業中）で増えたもの
-- `seed.mjs` は、事業所 `demo-facility`、検証ユーザーの所属 `memberships/{uid}`、架空の職員3名（職員 春子／夏男／秋子）も投入する。職員は無いときだけ作る（画面で変えた内容は再投入で戻らない。全消去は `--reset`）。
+### 保存先（すべて Firestore、`facilities/{facilityId}/` の下）
+| 種類 | ドキュメント | 備考 |
+|---|---|---|
+| 顧客 | `customers/{顧客ID}` | 在籍終了 = `isActive:false`（削除しない）。「在籍終了の顧客」から在籍に戻せる |
+| 週間利用計画 | `scheduleEntries/{YYYY-MM-DD}_{顧客ID}`、`scheduleWeeks/{weekKey}` | マス 1 件 = 1 ドキュメント。週の目印があれば作り直さない。まだ無い週は開いたときに「自動」で作る（通信できなければ作らず再試行） |
+| 出席 | `attendance/{YYYY-MM-DD}_{顧客ID}` | 入室・退室・欠席・欠席の取り消しはトランザクション。通信できなければ記録せず「再試行」 |
+| 送迎計画 | `transportRoutes/{YYYY-MM-DD}_{pickup|dropoff}_{車両番号}` | 停留所の並びはルートの中 |
+| 設定 | `settings/app` | Maps の API キーは置かない（端末の SharedPreferences） |
+| 職員 | `staff/{職員ID}` | 担当者の選択用。在籍終了 = `isActive:false` |
+
+- 最上位: 事業所 `facilities/demo-facility`、検証ユーザーの所属 `memberships/{uid}`（クライアントからは書けない）。
+- すべての書き込みに `updatedAt`（サーバー時刻）・`updatedByStaffId`・`updatedByStaffName` が付く。自動処理は「自動」、最初の職員登録は「初期設定」、`seed.mjs` の投入は「検証データ」。
+- **Hive に残るのは通知履歴（`notification_logs`、端末ごと）だけ**。検証アプリが起動時に投入する（`lib/verify/verify_seed.dart`）。
+
+### seed.mjs が投入するもの（無いときだけ作る。画面で変えた内容は再投入で戻らない）
+- 事業所・所属・架空の職員 3 名（職員 春子／夏男／秋子）
+- 顧客 61 名（在籍中 60 + 在籍終了 1）… `tool/verify/dummy_customers.mjs`
+- 週間利用計画（先週・今週・来週）… `dummy_schedule.mjs`
+- 出席（直近 5 日の実績 + 今日の予定/在室/退室済/欠席）… `dummy_attendance.mjs`
+- 送迎計画（今日のお迎え 3 台・お送り 2 台）… `dummy_transport.mjs`
+- 設定（架空の事業所）… `dummy_settings.mjs`
+- Firestore の slots（出席画面の「LINE応募」表示用）
+- 規則は `lib/verify/verify_seed.dart` の `buildCustomer` / `buildDemoWeeks` と同じ（ID・氏名・今日の予定がそろう）。片方を変えたらもう片方も変える。
+
+### 画面での動き
 - ログイン後は所属事業所を確認してからホーム画面に進む。所属が無いアカウントは「事業所に登録されていません」画面になる。
-- 画面上部の帯で担当者を選ぶ（端末ごとに保存）。未選択で記録を変える操作をすると選択を求められる。
+- 画面上部の帯で担当者を選ぶ。選んだ担当者は「選んだ日」と一緒に端末へ保存し、日付が変わると未選択に戻る。ログアウトすると端末の保存も消える。未選択で記録を変える操作をすると選択を求められ、選ばなければ何も保存しない。
+- 他の端末の変更は、画面を開き直さずに届く。
+- ログアウト時、まだ送信されていない記録があればログアウトを止めて知らせる（黙って消さない）。送信済みなら端末内の Firestore キャッシュも消す。
 - ルールのテスト: `tool/verify/test_rules.sh`（起動中のエミュレータに別プロジェクトID `demo-linkday-rules` で接続。検証データは消さない）。
   - 最初に `tool/verify/check_rules_loaded.mjs` が、いまの firestore.rules を検証用（demo-linkday）とテスト用（demo-linkday-rules）の両方に読み込ませ、検証用で「所属は読める／所属なし・未認証は拒否／担当者の記録がない書き込みは拒否」を実際に試す。古いルールのままなら NG で止まり、ルールテストは実行しない。判定だけ試すときは `--check-only`。
-- まだ Firestore に移していない種類（設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
-- 出席（段階5）: `attendance/{YYYY-MM-DD}_{顧客ID}`。入室・退室・欠席・欠席の取り消しはトランザクションで、通信できないときは記録せず「再試行」を出す。画面に出ていた状態と保存先の状態が違えば記録しない（他の端末の操作を逆戻りさせない）。
-- 週間利用計画（段階4）: マス 1 件 = `scheduleEntries/{YYYY-MM-DD}_{顧客ID}`、週の目印 = `scheduleWeeks/{weekKey}`。まだ無い週は画面を開いたときに「自動」で作られる（2 台が同時に開いても 1 回だけ）。
-- 顧客（段階3）: `seed.mjs --data empty` で顧客なし（空の状態）。`?verify_data=empty` は Hive 側だけを空にする（顧客は消えない）。
-- 担当者の選択は「選んだ日」と一緒に端末へ保存する。日付が変わると未選択に戻り、ログアウトすると端末の保存も消える。
 
 ## 2. 本番へ誤接続しない仕組み
 - 切替は `--dart-define=LINKDAY_VERIFY=true`（コンパイル時。debug 限定ではなく release/profile 可）。通常ビルドは `const false` で検証コードは tree-shake される。
@@ -41,8 +60,9 @@ tool/verify/stop_emulators.sh
 ## 3. 状態の再現手順
 | 状態 | 手順 |
 |---|---|
-| 通常 | 既定 / `?verify_data=normal`（全消去して再投入） |
-| 空 | `?verify_data=empty` |
+| 通常 | `node tool/verify/seed.mjs --reset`（業務データは Firestore。`?verify_data=normal` は Hive の通知履歴だけを入れ直す） |
+| 空 | `node tool/verify/seed.mjs --reset --data empty`（`?verify_data=empty` は Hive の通知履歴だけを空にする） |
+| 通信が切れた状態 | Chrome の開発者ツールでオフライン（入室・退室・まだ無い週の作成は「再試行」になる。顧客・週間計画などの編集は端末に残り、通信が戻ると送られる） |
 | 読込（スケルトン） | localStorage `flutter.verify_delay_ms` = `3000` |
 | エラー | localStorage `flutter.verify_faults` = `"attendance"`（他: usage / weekly / transport / settings）。解除してから「再試行」 |
 | Firestore側エラー | Firestore エミュレータを停止 |

@@ -10,7 +10,6 @@ import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/models/attendance_record.dart';
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/models/notification_log.dart';
-import 'package:linkday_app/models/weekly_schedule.dart';
 import 'package:linkday_app/services/attendance_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
@@ -42,26 +41,6 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     tmp = await Directory.systemTemp.createTemp('linkday_day11_');
     Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(CustomerAdapter());
-    if (!Hive.isAdapterRegistered(1)) {
-      Hive.registerAdapter(AttendanceRecordAdapter());
-    }
-    if (!Hive.isAdapterRegistered(2)) {
-      Hive.registerAdapter(AttendanceStatusAdapter());
-    }
-    if (!Hive.isAdapterRegistered(3)) {
-      Hive.registerAdapter(WeeklyScheduleAdapter());
-    }
-    if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(DailySlotAdapter());
-    if (!Hive.isAdapterRegistered(5)) {
-      Hive.registerAdapter(ScheduleStatusAdapter());
-    }
-    if (!Hive.isAdapterRegistered(6)) {
-      Hive.registerAdapter(ScheduleEntryAdapter());
-    }
-    if (!Hive.isAdapterRegistered(7)) {
-      Hive.registerAdapter(AppSettingsAdapter());
-    }
     if (!Hive.isAdapterRegistered(11)) {
       Hive.registerAdapter(NotificationLogAdapter());
     }

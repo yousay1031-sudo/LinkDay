@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 
-import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/screens/customer_import_screen.dart';
 
 import 'support/fake_backend.dart';
@@ -25,9 +24,6 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     tmp = await Directory.systemTemp.createTemp('linkday_import_screen_test_');
     Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(0)) {
-      Hive.registerAdapter(CustomerAdapter());
-    }
     await FakeBackend.attachWithStaff();
   });
 

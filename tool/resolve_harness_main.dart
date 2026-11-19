@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/screens/customer_edit_screen.dart';
 import 'package:linkday_app/screens/transport_location_resolve_screen.dart';
@@ -21,7 +20,6 @@ Future<void> main() async {
   // ignore: invalid_use_of_visible_for_testing_member
   SharedPreferences.setMockInitialValues({});
   await Hive.initFlutter('linkday_harness2');
-  Hive.registerAdapter(AppSettingsAdapter());
   await Hive.deleteBoxFromDisk('app_settings');
   await attachHarnessBackend();
   await SettingsService.instance.init();

@@ -17,10 +17,9 @@ import 'verify_config.dart';
 /// （通知履歴は端末ごとのまま。設計判断点⑧）。
 ///
 /// 【なぜアプリ内で投入するか】
-/// 顧客・出席・週間計画・設定・送迎計画・通知履歴は **ブラウザの IndexedDB（Hive）**
-/// に保存され、Firestore には無い（firestore.rules 冒頭の方針）。そのため
-/// Node スクリプトからは投入できず、画面が実際に読む Hive へ、検証構成の
-/// アプリ自身が書き込む。Firestore 側（slots など）は tool/verify/seed_firestore.mjs。
+/// 通知履歴（notification_logs）だけは Hive（ブラウザの IndexedDB、端末ごと）に残すため、
+/// Node スクリプトからは投入できず、検証構成のアプリ自身が書き込む。
+/// Firestore 側（事業所・顧客・週間計画・出席・送迎・設定・slots）は tool/verify/seed.mjs。
 ///
 /// 【安全】
 ///  - `VerifyConfig.enabled` のときだけ呼ばれる（通常ビルドでは到達不能）。
@@ -29,8 +28,8 @@ import 'verify_config.dart';
 ///
 /// 【切替】URL クエリ `?verify_data=` :
 ///  - なし    : 未投入なら normal を投入。投入済みなら何もしない（編集内容を保持）
-///  - normal  : 全消去して通常データを再投入（顧客 60 件超）
-///  - empty   : 全消去して空にする（空状態の確認用）
+///  - normal  : 通知履歴を全消去して再投入（業務データは seed.mjs --reset）
+///  - empty   : 通知履歴を空にする（業務データは seed.mjs --reset --data empty）
 class VerifySeed {
   VerifySeed._();
 

@@ -1,15 +1,8 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-// ignore: implementation_imports
-import 'package:hive/src/binary/binary_reader_impl.dart';
-// ignore: implementation_imports
-import 'package:hive/src/binary/binary_writer_impl.dart';
-// ignore: implementation_imports
-import 'package:hive/src/hive_impl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:linkday_app/models/app_settings.dart';
@@ -35,9 +28,6 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     tmp = await Directory.systemTemp.createTemp('linkday_admin_uid_');
     Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(7)) {
-      Hive.registerAdapter(AppSettingsAdapter());
-    }
     await SettingsService.instance.init();
     // 設定は Firestore（段階7）。偽の保存先と担当者（山田）で接続する
     await FakeBackend.attachWithStaff();
@@ -94,32 +84,19 @@ void main() {
     });
   });
 
-  group('Hive 永続化とバイナリ互換', () {
-    test('書いて読むと値が保持される（field16）', () async {
-      final box = await Hive.openBox<AppSettings>('t_roundtrip');
-      await box.put('k', AppSettings(adminLineUserId: _admin, slotTtlHours: 9));
-      final back = box.get('k')!;
+  // 段階8: 設定の保存先を Firestore に移したため、Hive の往復は保存先（Firestore）の往復に
+  // 置き換えた。旧 Hive バイナリの互換テストは、Hive のアダプターが無くなったので削除。
+  group('保存先（Firestore）への往復', () {
+    test('書いて読むと値が保持される（adminLineUserId）', () async {
+      final back = AppSettings.fromFirestore(
+          AppSettings(adminLineUserId: _admin, slotTtlHours: 9).toFirestoreData());
       expect(back.adminLineUserId, _admin);
       expect(back.slotTtlHours, 9);
-      await box.close();
     });
 
     test('未設定(null)も往復できる', () async {
-      final box = await Hive.openBox<AppSettings>('t_roundtrip_null');
-      await box.put('k', AppSettings());
-      expect(box.get('k')!.adminLineUserId, isNull);
-      await box.close();
-    });
-
-    test('旧データ(field16 を持たない16フィールド)を読んでも落ちず未設定になる', () async {
-      // 旧アダプタ相当: field 0..15 だけを書いたバイト列を作り、現アダプタで読む。
-      final adapter = AppSettingsAdapter();
-      final bytes = _legacyBytes(AppSettings(slotTtlHours: 7));
-      final reader = BinaryReaderImpl(bytes, Hive as HiveImpl);
-      final read = adapter.read(reader);
-      expect(read.adminLineUserId, isNull);
-      expect(read.slotTtlHours, 7);
-      expect(read.facilityName, isNotEmpty);
+      expect(AppSettings.fromFirestore(AppSettings().toFirestoreData()).adminLineUserId,
+          isNull);
     });
   });
 
@@ -354,48 +331,4 @@ void main() {
       await settle(tester);
     });
   });
-}
-
-// ── 旧形式(16フィールド)のバイト列を作るためのヘルパ ─────────────────
-//
-// Hive の BinaryWriter/Reader を直接使い、field 16 を含まない旧レイアウトを再現する。
-Uint8List _legacyBytes(AppSettings o) {
-  {
-    final w = BinaryWriterImpl(Hive as HiveImpl);
-    w
-      ..writeByte(16)
-      ..writeByte(0)
-      ..write(o.facilityName)
-      ..writeByte(1)
-      ..write(o.facilityAddress)
-      ..writeByte(2)
-      ..write(o.facilityLat)
-      ..writeByte(3)
-      ..write(o.facilityLng)
-      ..writeByte(4)
-      ..write(o.vehicleCount)
-      ..writeByte(5)
-      ..write(o.vehicleNames)
-      ..writeByte(6)
-      ..write(o.vehicleCapacities)
-      ..writeByte(7)
-      ..write(o.maxStudentsPerDay)
-      ..writeByte(8)
-      ..write(o.defaultPickupStart)
-      ..writeByte(9)
-      ..write(o.defaultDropoffEnd)
-      ..writeByte(10)
-      ..write(o.updatedAt)
-      ..writeByte(11)
-      ..write(o.jsApiKeyLegacy)
-      ..writeByte(12)
-      ..write(o.restApiKeyLegacy)
-      ..writeByte(13)
-      ..write(o.vacancyReplyDeadline)
-      ..writeByte(14)
-      ..write(o.vacancyMessageTemplate)
-      ..writeByte(15)
-      ..write(o.slotTtlHours);
-    return w.toBytes();
-  }
 }

@@ -1,85 +1,59 @@
-import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/audit.dart' show readTimestamp;
 import '../data/fs_values.dart';
 
-part 'customer.g.dart';
-
 /// 顧客（児童）モデル
 ///
 /// 保存先: Firestore facilities/{facilityId}/customers/{id}（[toFirestoreData] /
 /// [Customer.fromFirestore]）。Hive の注釈は段階8で削除する（現在は未使用）。
-@HiveType(typeId: 0)
-class Customer extends HiveObject {
-  @HiveField(0)
+class Customer {
   final String id;
 
-  @HiveField(1)
   String name; // 氏名（必須）
 
-  @HiveField(2)
   String nameKana; // ふりがな（カタカナで保存・必須）
 
-  @HiveField(3)
   DateTime? birthday; // 生年月日
 
-  @HiveField(4)
   String? gender; // 性別: '男児' / '女児'
 
-  @HiveField(5)
   String? phone; // 電話番号
 
-  @HiveField(6)
   String? lineUserId; // LINE通知用ID
 
-  @HiveField(7)
   String? guardianName; // 保護者氏名
 
-  @HiveField(8)
   String? guardianPhone; // 保護者電話番号
 
-  @HiveField(9)
   String? recipientCertNumber; // 受給者証番号
 
-  @HiveField(10)
   DateTime? recipientCertExpiry; // 受給者証有効期限
 
-  @HiveField(11)
   int monthlyAvailableDays; // 月間支給量（デフォルト23）
 
-  @HiveField(12)
   int currentMonthUsedDays; // 当月利用日数（デフォルト0）
 
-  @HiveField(13)
   List<int> regularDays; // 定期利用曜日: 1=月, 2=火, 3=水, 4=木, 5=金, 6=土
 
-  @HiveField(14)
   List<String> transportLocations; // 送迎場所（最大3箇所）
 
-  @HiveField(15)
   String? notes; // 備考
 
-  @HiveField(16)
   DateTime createdAt;
 
-  @HiveField(17)
   DateTime updatedAt;
 
-  @HiveField(18)
   bool isActive; // 在籍中フラグ（デフォルト true）
 
   // ── Day 8: 送迎場所ジオコーディング ─────────────────────────────
   // transportLocations[i] に対応。長さは transportLocations と同期させる。
   // Hive には primitive のみ保存（record 型はシリアライズ不可のため分割）。
 
-  @HiveField(19)
   List<double?> transportLocationLats; // 採用済み緯度（未解決は null）
 
-  @HiveField(20)
   List<double?> transportLocationLngs; // 採用済み経度（未解決は null）
 
-  @HiveField(21)
   List<String> transportLocationStatus; // 'unresolved' / 'resolved' / 'manual' / 'failed'
 
   // ── Day 8 修正: 採用根拠メタデータ ───────────────────────────────
@@ -87,10 +61,8 @@ class Customer extends HiveObject {
   // 採用した候補の formattedAddress と types を保持する。
   // 旧データ（未保存）は null → 「根拠不明の自動採用」として扱う。
 
-  @HiveField(22)
   List<String?> transportLocationFormatted; // 採用候補の formattedAddress
 
-  @HiveField(23)
   List<String?> transportLocationTypes; // 採用候補の types（カンマ区切り）
 
   /// 在籍終了にした日時（在籍中・未記録は null）。Firestore のみ。

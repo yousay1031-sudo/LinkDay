@@ -32,13 +32,6 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     tmp = await Directory.systemTemp.createTemp('linkday_cross_');
     Hive.init(tmp.path);
-    Hive.registerAdapter(CustomerAdapter());
-    Hive.registerAdapter(AttendanceRecordAdapter());
-    Hive.registerAdapter(AttendanceStatusAdapter());
-    Hive.registerAdapter(WeeklyScheduleAdapter());
-    Hive.registerAdapter(DailySlotAdapter());
-    Hive.registerAdapter(ScheduleStatusAdapter());
-    Hive.registerAdapter(ScheduleEntryAdapter());
     await FakeBackend.attachWithStaff();
     // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）

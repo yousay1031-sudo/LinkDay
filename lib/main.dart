@@ -10,12 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'data/data_errors.dart';
 import 'data/staff_session.dart';
 import 'firebase_options.dart';
-import 'models/app_settings.dart';
-import 'models/attendance_record.dart';
-import 'models/customer.dart';
 import 'models/notification_log.dart';
-import 'models/transport_plan.dart';
-import 'models/weekly_schedule.dart';
 import 'services/settings_service.dart';
 import 'services/vacancy_notification_service.dart';
 import 'theme/app_theme.dart';
@@ -42,24 +37,12 @@ Future<void> main() async {
     }
   }
 
-  // ── 1. Hive 初期化（Web: IndexedDB / Mobile: ファイルシステム）
+  // ── 1. Hive 初期化（空き枠 LINE 通知の送信記録用。Web: IndexedDB / Mobile: ファイル）
   await Hive.initFlutter();
 
   // ── 2. Hive アダプター登録（Firebase 初期化の前に行う）
-  Hive.registerAdapter(CustomerAdapter());          // typeId=0
-  Hive.registerAdapter(AttendanceRecordAdapter());  // typeId=1
-  Hive.registerAdapter(AttendanceStatusAdapter());  // typeId=2
-  // Day 5: 週間利用計画
-  Hive.registerAdapter(WeeklyScheduleAdapter());    // typeId=3
-  Hive.registerAdapter(DailySlotAdapter());         // typeId=4
-  Hive.registerAdapter(ScheduleStatusAdapter());    // typeId=5
-  Hive.registerAdapter(ScheduleEntryAdapter());     // typeId=6
-  // Day 6: 設定・送迎計画
-  Hive.registerAdapter(AppSettingsAdapter());       // typeId=7
-  Hive.registerAdapter(TransportVehicleRouteAdapter()); // typeId=8
-  Hive.registerAdapter(TransportStopAdapter());     // typeId=9
-  Hive.registerAdapter(TransportTypeAdapter());     // typeId=10
-  // Day 11: 空き枠 LINE 通知の送信記録
+  // 業務データ（顧客・出席・週間計画・設定・送迎計画）は Firestore に移した。
+  // Hive に残すのは空き枠 LINE 通知の送信記録（端末ごと）だけ。
   Hive.registerAdapter(NotificationLogAdapter());   // typeId=11
   Hive.registerAdapter(NotificationStatusAdapter()); // typeId=12
 

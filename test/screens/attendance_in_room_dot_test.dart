@@ -4,10 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/models/attendance_record.dart';
-import 'package:linkday_app/models/customer.dart';
-import 'package:linkday_app/models/weekly_schedule.dart';
 import 'package:linkday_app/screens/attendance_screen.dart';
 import 'package:linkday_app/widgets/attendance_status_badge.dart';
 import 'package:linkday_app/services/attendance_service.dart';
@@ -61,18 +58,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     tmp = await Directory.systemTemp.createTemp('linkday_inroom_dot_');
     Hive.init(tmp.path);
-    void reg<T>(TypeAdapter<T> a) {
-      if (!Hive.isAdapterRegistered(a.typeId)) Hive.registerAdapter<T>(a);
-    }
 
-    reg(CustomerAdapter());
-    reg(AttendanceRecordAdapter());
-    reg(AttendanceStatusAdapter());
-    reg(WeeklyScheduleAdapter());
-    reg(DailySlotAdapter());
-    reg(ScheduleStatusAdapter());
-    reg(ScheduleEntryAdapter());
-    reg(AppSettingsAdapter());
     await FakeBackend.attachWithStaff();
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）

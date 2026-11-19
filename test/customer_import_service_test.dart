@@ -23,7 +23,6 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     tmp = await Directory.systemTemp.createTemp('linkday_import_');
     Hive.init(tmp.path);
-    Hive.registerAdapter(CustomerAdapter());
     await FakeBackend.attachWithStaff();
   });
 

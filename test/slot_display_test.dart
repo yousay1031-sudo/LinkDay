@@ -11,7 +11,6 @@ import 'package:linkday_app/models/attendance_record.dart';
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/models/notification_log.dart';
 import 'package:linkday_app/models/slot_info.dart';
-import 'package:linkday_app/models/weekly_schedule.dart';
 import 'package:linkday_app/screens/attendance_screen.dart';
 import 'package:linkday_app/services/attendance_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
@@ -64,14 +63,6 @@ void main() {
       if (!Hive.isAdapterRegistered(id)) Hive.registerAdapter(a);
     }
 
-    reg(0, CustomerAdapter());
-    reg(1, AttendanceRecordAdapter());
-    reg(2, AttendanceStatusAdapter());
-    reg(3, WeeklyScheduleAdapter());
-    reg(4, DailySlotAdapter());
-    reg(5, ScheduleStatusAdapter());
-    reg(6, ScheduleEntryAdapter());
-    reg(7, AppSettingsAdapter());
     reg(11, NotificationLogAdapter());
     reg(12, NotificationStatusAdapter());
     await FakeBackend.attachWithStaff();
