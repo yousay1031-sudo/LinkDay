@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 // Flutter 3.50 で material.dart 全体が非推奨（既存画面と同じ読み込みに揃える）
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
@@ -16,9 +17,13 @@ import 'auth_loading_screen.dart';
 ///   error     → 理由＋再試行＋ログアウト
 ///   ready     → HomeScreen
 class FacilityGate extends StatefulWidget {
-  const FacilityGate({super.key, required this.uid});
+  const FacilityGate({super.key, required this.uid, this.db});
 
   final String uid;
+
+  /// テスト用の保存先（省略時は FirebaseFirestore.instance）
+  @visibleForTesting
+  final FirebaseFirestore? db;
 
   @override
   State<FacilityGate> createState() => _FacilityGateState();
@@ -28,13 +33,24 @@ class _FacilityGateState extends State<FacilityGate> {
   @override
   void initState() {
     super.initState();
-    DataSession.instance.start(widget.uid);
+    _startAfterBuild();
   }
 
   @override
   void didUpdateWidget(covariant FacilityGate oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.uid != widget.uid) DataSession.instance.start(widget.uid);
+    if (oldWidget.uid != widget.uid) _startAfterBuild();
+  }
+
+  /// start() はその場で状態変化を通知する。画面の組み立て中に通知すると、
+  /// 上位の担当者帯（StaffBarScope）が更新されないことがある
+  /// （再読み込み直後に帯が出なかった不具合）。組み立てが終わってから始める。
+  void _startAfterBuild() {
+    final uid = widget.uid;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.uid != uid) return;
+      DataSession.instance.start(uid, db: widget.db);
+    });
   }
 
   @override
