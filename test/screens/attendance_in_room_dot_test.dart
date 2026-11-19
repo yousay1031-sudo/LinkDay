@@ -13,7 +13,6 @@ import 'package:linkday_app/widgets/attendance_status_badge.dart';
 import 'package:linkday_app/services/attendance_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/slot_service.dart';
-import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
 
 import '../support/fake_backend.dart';
@@ -75,7 +74,7 @@ void main() {
     reg(ScheduleEntryAdapter());
     reg(AppSettingsAdapter());
     await FakeBackend.attachWithStaff();
-    await WeeklyScheduleService.instance.init();
+    // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     await AttendanceService.instance.init();
     await SettingsService.instance.init();
     SlotService.instance.remoteEnabled = false;

@@ -18,7 +18,6 @@ import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/slot_service.dart';
 import 'package:linkday_app/services/vacancy_notification_service.dart';
-import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/widgets/slot_status_panel.dart';
 
 import 'support/fake_backend.dart';
@@ -77,7 +76,7 @@ void main() {
     reg(12, NotificationStatusAdapter());
     await FakeBackend.attachWithStaff();
     await AttendanceService.instance.init();
-    await WeeklyScheduleService.instance.init();
+    // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     await SettingsService.instance.init();
     await VacancyNotificationService.instance.init(remoteEnabled: false);
   });
@@ -316,7 +315,7 @@ void main() {
     setUp(() async {
       await FakeBackend.resetCustomers();
       await Hive.box<AttendanceRecord>('attendance_records').clear();
-      await Hive.box<WeeklySchedule>('weekly_schedules').clear();
+      await FakeBackend.resetSchedules();
       for (final (id, name) in [('absent1', '山田 太郎'), ('taker1', '佐藤 花子')]) {
         await CustomerService.instance.addCustomer(Customer(
           id: id,

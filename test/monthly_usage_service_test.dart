@@ -46,7 +46,7 @@ void main() {
     }
     await FakeBackend.attachWithStaff();
     await AttendanceService.instance.init();
-    await WeeklyScheduleService.instance.init();
+    // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
   });
 
   tearDownAll(() async {
@@ -57,7 +57,7 @@ void main() {
   setUp(() async {
     await FakeBackend.resetCustomers();
     await Hive.box<AttendanceRecord>('attendance_records').clear();
-    await Hive.box<WeeklySchedule>('weekly_schedules').clear();
+    await FakeBackend.resetSchedules();
   });
 
   // ── ヘルパー ─────────────────────────────────────────────────

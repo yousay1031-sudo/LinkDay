@@ -192,6 +192,8 @@ class _TransportScreenState extends State<TransportScreen>
 
     // ── 優先度 1: 週間利用計画 ──────────────────────────────
     try {
+      // 選んだ日の週を読み込んでから参照する（Firestore。読み込み済みの週だけを持つ）
+      await WeeklyScheduleService.instance.ensureRange(_selectedDate, _selectedDate);
       final entries =
           WeeklyScheduleService.instance.getEntriesForDate(_selectedDate);
       // planned + additional (cancelled 除外済み)

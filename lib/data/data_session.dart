@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/customer_service.dart';
 import '../services/staff_service.dart';
+import '../services/weekly_schedule_service.dart';
 import 'data_errors.dart';
 import 'facility_context.dart';
 import 'staff_session.dart';
@@ -85,6 +86,7 @@ class DataSession extends ChangeNotifier {
       await StaffService.instance.attach();
       await StaffSession.instance.restore(fid);
       await CustomerService.instance.attach();
+      await WeeklyScheduleService.instance.attach();
       if (_uid != uid) return;
       _status = DataSessionStatus.ready;
     } catch (e) {
@@ -116,6 +118,7 @@ class DataSession extends ChangeNotifier {
   }
 
   Future<void> _detachAll() async {
+    await WeeklyScheduleService.instance.detach();
     await CustomerService.instance.detach();
     await StaffService.instance.detach();
     StaffSession.instance.reset();

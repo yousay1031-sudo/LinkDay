@@ -12,7 +12,8 @@ tool/verify/serve_verify.sh             # 127.0.0.1:8765（標準 Chrome で開�
 tool/verify/stop_emulators.sh
 ```
 - 顧客は Firestore（段階3〜）。`seed.mjs` がエミュレータへ投入する（在籍中 60 名 + 在籍終了 1 名。無いときだけ作る）。
-- 出席・週間計画・設定・送迎計画・通知履歴はまだ Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（同じ顧客 ID・氏名を使う。`lib/verify/verify_seed.dart` と `tool/verify/dummy_customers.mjs` は同じ規則で作るので、片方を変えたらもう片方も変える）。
+- 週間利用計画も Firestore（段階4〜）。`seed.mjs` が先週・今週・来週を投入する（週の目印 `scheduleWeeks` が既にある週は触らない）。
+- 出席・設定・送迎計画・通知履歴はまだ Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（同じ顧客 ID・氏名・今日の予定を使う。`lib/verify/verify_seed.dart` と `tool/verify/dummy_customers.mjs`・`dummy_schedule.mjs` は同じ規則で作るので、片方を変えたらもう片方も変える）。
 - 外部公開しない: エミュレータ・配信とも 127.0.0.1 のみ。共有プレビューが必要なときだけ `BIND=0.0.0.0` と GetServiceUrl を使う。
 
 ### Firestore 移行（作業中）で増えたもの
@@ -20,7 +21,8 @@ tool/verify/stop_emulators.sh
 - ログイン後は所属事業所を確認してからホーム画面に進む。所属が無いアカウントは「事業所に登録されていません」画面になる。
 - 画面上部の帯で担当者を選ぶ（端末ごとに保存）。未選択で記録を変える操作をすると選択を求められる。
 - ルールのテスト: `tool/verify/test_rules.sh`（起動中のエミュレータに別プロジェクトID `demo-linkday-rules` で接続。検証データは消さない）。
-- まだ Firestore に移していない種類（出席・週間計画・設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
+- まだ Firestore に移していない種類（出席・設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
+- 週間利用計画（段階4）: マス 1 件 = `scheduleEntries/{YYYY-MM-DD}_{顧客ID}`、週の目印 = `scheduleWeeks/{weekKey}`。まだ無い週は画面を開いたときに「自動」で作られる（2 台が同時に開いても 1 回だけ）。
 - 顧客（段階3）: `seed.mjs --data empty` で顧客なし（空の状態）。`?verify_data=empty` は Hive 側だけを空にする（顧客は消えない）。
 - 担当者の選択は「選んだ日」と一緒に端末へ保存する。日付が変わると未選択に戻り、ログアウトすると端末の保存も消える。
 

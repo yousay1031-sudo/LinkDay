@@ -7,6 +7,7 @@ import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/models/staff.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/staff_service.dart';
+import 'package:linkday_app/services/weekly_schedule_service.dart';
 
 /// テスト用の保存先（エミュレータ不要のメモリ上の Firestore）。
 ///
@@ -40,6 +41,7 @@ class FakeBackend {
     await StaffService.instance.attach();
     StaffSession.instance.debugSet(facilityId: facilityId, staffId: currentStaffId);
     await CustomerService.instance.attach();
+    await WeeklyScheduleService.instance.attach();
     _current = backend;
     return backend;
   }
@@ -76,6 +78,27 @@ class FakeBackend {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     await CustomerService.instance.detach();
     await CustomerService.instance.attach();
+  }
+
+  /// 週間利用計画を空にする（旧 Hive の weekly_schedules.clear() の代わり）
+  static Future<void> resetSchedules() async {
+    final b = current;
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    for (final name in [FsPaths.scheduleEntries, FsPaths.scheduleWeeks]) {
+      final col = b.db.collection(FsPaths.facilities).doc(b.facilityId).collection(name);
+      for (final d in (await col.get()).docs) {
+        await d.reference.delete();
+      }
+    }
+    await WeeklyScheduleService.instance.detach();
+    await WeeklyScheduleService.instance.attach();
+  }
+
+  /// 購読をやり直して、保存先から週間利用計画を読み直す
+  static Future<void> reloadSchedules() async {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await WeeklyScheduleService.instance.detach();
+    await WeeklyScheduleService.instance.attach();
   }
 
   /// 端末内の顧客（在籍終了を含む）の件数

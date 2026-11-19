@@ -84,6 +84,10 @@ class AttendanceService {
   ) async {
     final dateKey = AttendanceRecord.makeDateKey(date);
 
+    // 週間利用計画（Firestore）をこの日の週まで読み込んでから判定する。
+    // 読み込む前に判定すると「計画なし」と誤って定期利用曜日から作ってしまう。
+    await WeeklyScheduleService.instance.ensureRange(date, date);
+
     // ── 週間利用計画から当日エントリを取得
     final weeklyEntries =
         WeeklyScheduleService.instance.getEntriesForDate(date);

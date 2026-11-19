@@ -6,6 +6,7 @@ import '../verify/verify_faults.dart';
 import '../models/weekly_schedule.dart';
 import '../services/customer_service.dart';
 import '../services/weekly_schedule_pdf_service.dart';
+import '../data/staff_session.dart';
 import '../services/weekly_schedule_service.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -101,10 +102,18 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
     _tabController = TabController(length: 7, vsync: this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+    WeeklyScheduleService.instance.addListener(_onScheduleChanged);
+  }
+
+  /// 他の端末（またはこの端末の別の画面）で計画が変わった: 開き直さずに反映する
+  void _onScheduleChanged() {
+    if (!mounted || _loading) return;
+    _reloadSchedule();
   }
 
   @override
   void dispose() {
+    WeeklyScheduleService.instance.removeListener(_onScheduleChanged);
     _loadSeq.invalidate();
     _tabController.dispose();
     super.dispose();
@@ -201,6 +210,8 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         _processing = false;
       });
       _showSaved('通常予定を再生成しました');
+    } on StaffNotSelectedException {
+      if (mounted) setState(() => _processing = false); // 担当者の選択を閉じた
     } catch (e) {
       if (!mounted) return;
       setState(() => _processing = false);
@@ -250,6 +261,8 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
       if (!mounted) return;
       setState(() => _processing = false);
       _showSaved('翌週にコピーしました');
+    } on StaffNotSelectedException {
+      if (mounted) setState(() => _processing = false); // 担当者の選択を閉じた
     } catch (e) {
       if (!mounted) return;
       setState(() => _processing = false);
@@ -304,6 +317,26 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
 
     if (!mounted || result == null) return;
 
+    try {
+      await _applyAction(result, weekKey, dayOfWeek, customer, existingEntry);
+    } on StaffNotSelectedException {
+      // 担当者の選択を閉じた → 保存しない（画面は保存先の内容に戻る）
+      await _reloadSchedule();
+      return;
+    }
+
+    if (!mounted) return;
+    await _reloadSchedule();
+    _showSaved('保存しました');
+  }
+
+  Future<void> _applyAction(
+    String result,
+    String weekKey,
+    int dayOfWeek,
+    Customer customer,
+    ScheduleEntry existingEntry,
+  ) async {
     switch (result) {
       case 'planned':
         await WeeklyScheduleService.instance.updateEntryStatus(
@@ -341,10 +374,6 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         await _editTime(weekKey, dayOfWeek, customer.id, existingEntry);
         break;
     }
-
-    if (!mounted) return;
-    await _reloadSchedule();
-    _showSaved('保存しました');
   }
 
   Future<void> _addEntry(
@@ -352,15 +381,19 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
     int dayOfWeek,
     Customer customer,
   ) async {
-    await WeeklyScheduleService.instance.addEntry(
-      weekKey,
-      dayOfWeek,
-      ScheduleEntry(
-        customerId: customer.id,
-        customerName: customer.name,
-        status: ScheduleStatus.additional,
-      ),
-    );
+    try {
+      await WeeklyScheduleService.instance.addEntry(
+        weekKey,
+        dayOfWeek,
+        ScheduleEntry(
+          customerId: customer.id,
+          customerName: customer.name,
+          status: ScheduleStatus.additional,
+        ),
+      );
+    } on StaffNotSelectedException {
+      return; // 担当者の選択を閉じた → 追加しない
+    }
     if (!mounted) return;
     await _reloadSchedule();
     _showSaved('${customer.name} を追加しました');
@@ -425,6 +458,8 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
     final updated = WeeklyScheduleService.instance.getScheduleByWeekKey(weekKey);
     if (updated != null && mounted) {
       setState(() => _schedule = updated);
+    } else if (mounted) {
+      setState(() {}); // 同じオブジェクトの中身が変わった
     }
   }
 

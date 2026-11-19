@@ -14,9 +14,9 @@ import 'verify_config.dart';
 
 /// 検証構成限定のダミーデータ投入（Hive 側）。
 ///
-/// 【Firestore 移行中】顧客は段階3で Firestore へ移した。顧客の投入は
-/// tool/verify/seed.mjs（[buildCustomer] と同じ規則・同じ ID）。ここは
-/// まだ Hive にある種類（出席・週間計画・設定・送迎・通知履歴）だけを投入する。
+/// 【Firestore 移行中】顧客（段階3）と週間利用計画（段階4）は Firestore へ移した。
+/// それらの投入は tool/verify/seed.mjs（[buildCustomer] / [buildDemoWeeks] と同じ規則・
+/// 同じ ID）。ここはまだ Hive にある種類（出席・設定・送迎・通知履歴）だけを投入する。
 ///
 /// 【なぜアプリ内で投入するか】
 /// 顧客・出席・週間計画・設定・送迎計画・通知履歴は **ブラウザの IndexedDB（Hive）**
@@ -79,7 +79,6 @@ class VerifySeed {
   /// 検証用 Hive ボックスを全消去（設定は既定値に戻る）
   static Future<void> clearAll() async {
     await Hive.box<AttendanceRecord>('attendance_records').clear();
-    await Hive.box<WeeklySchedule>('weekly_schedules').clear();
     await Hive.box<TransportVehicleRoute>('transport_plans').clear();
     await Hive.box<NotificationLog>('notification_logs').clear();
     await Hive.box<AppSettings>('app_settings').put('settings', AppSettings());
@@ -191,6 +190,58 @@ class VerifySeed {
     );
   }
 
+  /// 先週・今週・来週の週間利用計画（tool/verify/dummy_schedule.mjs と同じ規則）。
+  ///
+  /// 定期利用曜日から作り、見た目確認用の時刻を入れ、今日のスロットに最低 14 件
+  /// （日曜など定期利用が無い日も画面を埋める）を「追加」で足し、最後の 1 件を
+  /// 「キャンセル」にする。
+  static List<WeeklySchedule> buildDemoWeeks(
+    DateTime today,
+    List<Customer> active,
+  ) {
+    final monday = WeekUtil.weekStartFromDate(today);
+    final weeks = <WeeklySchedule>[];
+    for (final off in [-7, 0, 7]) {
+      final ws = DateTime(monday.year, monday.month, monday.day + off);
+      final sched = WeeklyScheduleService.buildFromRegularDays(
+          ws, WeekUtil.weekKeyFromDate(ws), active);
+      // 見た目確認用の時刻・追加・キャンセルを混ぜる
+      for (final slot in sched.dailySlots) {
+        var i = 0;
+        for (final e in slot.entries) {
+          e.plannedStartTime ??= i.isEven ? '10:00' : '13:30';
+          e.plannedEndTime ??= i.isEven ? '16:00' : '17:30';
+          i++;
+        }
+      }
+      weeks.add(sched);
+    }
+    final slot = weeks[1].slotForDate(today)!;
+    final have = slot.entries.map((e) => e.customerId).toSet();
+    final mustHave = <String>{
+      for (final n in todayAbsentNumbers) customerId(n),
+    };
+    var added = 0;
+    for (final c in active) {
+      if (slot.entries.length >= 14 && mustHave.every(have.contains)) break;
+      if (have.contains(c.id)) continue;
+      if (slot.entries.length >= 14 && !mustHave.contains(c.id)) continue;
+      slot.entries.add(ScheduleEntry(
+        customerId: c.id,
+        customerName: c.name,
+        status: ScheduleStatus.additional,
+        plannedStartTime: added.isEven ? '10:00' : '13:30',
+        plannedEndTime: added.isEven ? '16:00' : '17:30',
+      ));
+      have.add(c.id);
+      added++;
+    }
+    if (slot.entries.length > 3) {
+      slot.entries[slot.entries.length - 1].status = ScheduleStatus.cancelled;
+    }
+    return weeks;
+  }
+
   static Future<void> seedNormal(DateTime now) async {
     final today = DateTime(now.year, now.month, now.day);
 
@@ -219,50 +270,12 @@ class VerifySeed {
     );
 
     // ── 週間利用計画（先週・今週・来週）──
+    // 週間利用計画は Firestore（段階4〜）。tool/verify/seed.mjs が同じ規則
+    // （[buildDemoWeeks]）でエミュレータへ投入する。ここでは出席・送迎を
+    // 作るために同じ週を組み立てるだけ。
     final active = customers.where((c) => c.isActive).toList();
-    final monday = WeekUtil.weekStartFromDate(today);
-    for (final off in [-7, 0, 7]) {
-      final ws = DateTime(monday.year, monday.month, monday.day + off);
-      final sched = await WeeklyScheduleService.instance
-          .getOrCreateSchedule(ws, active);
-      // 見た目確認用の時刻・追加・キャンセルを混ぜる
-      for (final slot in sched.dailySlots) {
-        var i = 0;
-        for (final e in slot.entries) {
-          e.plannedStartTime ??= i.isEven ? '10:00' : '13:30';
-          e.plannedEndTime ??= i.isEven ? '16:00' : '17:30';
-          i++;
-        }
-      }
-      await WeeklyScheduleService.instance.saveSchedule(sched);
-    }
-    // 今日のスロットに最低 14 件（日曜など定期利用がない日も画面を埋める）
-    final sched = WeeklyScheduleService.instance
-        .getScheduleByWeekKey(WeekUtil.weekKeyFromDate(today))!;
-    final slot = sched.slotForDate(today)!;
-    final have = slot.entries.map((e) => e.customerId).toSet();
-    final mustHave = <String>{
-      for (final n in todayAbsentNumbers) customerId(n),
-    };
-    var added = 0;
-    for (final c in active) {
-      if (slot.entries.length >= 14 && mustHave.every(have.contains)) break;
-      if (have.contains(c.id)) continue;
-      if (slot.entries.length >= 14 && !mustHave.contains(c.id)) continue;
-      slot.entries.add(ScheduleEntry(
-        customerId: c.id,
-        customerName: c.name,
-        status: ScheduleStatus.additional,
-        plannedStartTime: added.isEven ? '10:00' : '13:30',
-        plannedEndTime: added.isEven ? '16:00' : '17:30',
-      ));
-      have.add(c.id);
-      added++;
-    }
-    if (slot.entries.length > 3) {
-      slot.entries[slot.entries.length - 1].status = ScheduleStatus.cancelled;
-    }
-    await WeeklyScheduleService.instance.saveSchedule(sched);
+    final weeks = buildDemoWeeks(today, active);
+    final slot = weeks[1].slotForDate(today)!;
 
     // ── 出席: 直近 5 日の実績 + 今日の混在 ──
     final attBox = Hive.box<AttendanceRecord>('attendance_records');

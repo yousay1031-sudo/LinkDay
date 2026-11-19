@@ -174,6 +174,7 @@ class MonthlyUsageService {
     DateTime? today,
     bool reconcileCache = true,
   }) async {
+    await _ensureMonthLoaded(yearMonth);
     final customer = CustomerService.instance.getCustomerById(customerId);
     final usage = _compute(
       customerId: customerId,
@@ -198,6 +199,7 @@ class MonthlyUsageService {
     bool reconcileCache = true,
   }) async {
     final base = today ?? DateTime.now();
+    await _ensureMonthLoaded(yearMonth);
     // getAllCustomers() は既定で isActive のみ返すため、
     // activeOnly=false のときは includeInactive で退所児童も取得する。
     final customers = CustomerService.instance
@@ -345,6 +347,13 @@ class MonthlyUsageService {
       availableFallback: isAvailableFallback(rawAvailable),
       rawAvailable: rawAvailable,
     );
+  }
+
+  /// 対象月の週間利用計画（Firestore）を読み込んでから集計する
+  Future<void> _ensureMonthLoaded(DateTime yearMonth) {
+    final start = monthStart(yearMonth);
+    final end = DateTime(start.year, start.month, lastDayOfMonth(start));
+    return WeeklyScheduleService.instance.ensureRange(start, end);
   }
 
   /// Customer.currentMonthUsedDays（キャッシュ）と実績の差異を検出・補正する

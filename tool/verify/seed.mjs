@@ -7,11 +7,12 @@
 //   node tool/verify/seed.mjs --clear    # エミュレータ内を全消去のみ
 //   node tool/verify/seed.mjs --reset --data empty   # 顧客なし（空の状態の確認用）
 //
-// 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / 顧客 / slots
-// 出席・週間計画・設定・送迎・通知履歴は、Firestore 移行の各段階で
+// 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / 顧客 / 週間利用計画 / slots
+// 出席・設定・送迎・通知履歴は、Firestore 移行の各段階で
 // こちらへ移すまでは Hive(IndexedDB) 側（検証ビルドが起動時に投入する。docs/VERIFY_ENV.md）。
 import { assertLocalEmulator, PROJECT, HOST, AUTH_PORT, FS_PORT, loadOrCreateCredentials } from './guard.mjs';
 import { buildCustomer, CUSTOMER_COUNT, toFsFields } from './dummy_customers.mjs';
+import { buildDemoWeeks, scheduleDocs } from './dummy_schedule.mjs';
 
 await assertLocalEmulator();
 
@@ -174,6 +175,34 @@ if (dataMode === 'empty') {
   }
   console.log(
     `[seed] 顧客: 新規 ${created} 件 / 既存 ${CUSTOMER_COUNT + 1 - created} 件（在籍中 ${CUSTOMER_COUNT} + 在籍終了 1）`
+  );
+
+  // ── 週間利用計画（Firestore 移行ステップ4）: 先週・今週・来週。無いときだけ作る
+  // 週の目印が既にある週は、マスも含めて触らない（画面で編集した内容を戻さない）
+  const { markers, entries } = scheduleDocs(buildDemoWeeks(now));
+  const skipWeeks = new Set();
+  for (const m of markers) {
+    const ok = await createIfMissing(
+      `facilities/${FACILITY_ID}/scheduleWeeks/${m.id}`,
+      { ...toFsFields(m.data), ...audit },
+      `週の目印 ${m.id} の投入`
+    );
+    if (!ok) skipWeeks.add(m.id);
+  }
+  const todo = entries.filter((e) => !skipWeeks.has(e.data.weekKey));
+  for (let i = 0; i < todo.length; i += 25) {
+    await Promise.all(
+      todo.slice(i, i + 25).map((e) =>
+        createIfMissing(
+          `facilities/${FACILITY_ID}/scheduleEntries/${e.id}`,
+          { ...toFsFields(e.data), ...audit },
+          `利用予定 ${e.id} の投入`
+        )
+      )
+    );
+  }
+  console.log(
+    `[seed] 週間利用計画: 新規 ${markers.length - skipWeeks.size} 週・${todo.length} マス / 既存 ${skipWeeks.size} 週（触らない）`
   );
 }
 

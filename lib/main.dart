@@ -20,7 +20,6 @@ import 'services/attendance_service.dart';
 import 'services/settings_service.dart';
 import 'services/transport_plan_service.dart';
 import 'services/vacancy_notification_service.dart';
-import 'services/weekly_schedule_service.dart';
 import 'theme/app_theme.dart';
 import 'verify/verify_bootstrap.dart';
 import 'verify/verify_config.dart';
@@ -87,8 +86,7 @@ Future<void> main() async {
 
   // ── 4. 顧客は Firestore（ログイン後に DataSession が購読を始める）
 
-  // ── 5. WeeklyScheduleService の Hive ボックスを開く（AttendanceService より先に）
-  await WeeklyScheduleService.instance.init();
+  // ── 5. 週間利用計画は Firestore（ログイン後に DataSession が購読を始める）
 
   // ── 6. AttendanceService の Hive ボックスを開く
   await AttendanceService.instance.init();

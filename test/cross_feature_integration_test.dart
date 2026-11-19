@@ -41,7 +41,7 @@ void main() {
     Hive.registerAdapter(ScheduleEntryAdapter());
     await FakeBackend.attachWithStaff();
     await AttendanceService.instance.init();
-    await WeeklyScheduleService.instance.init();
+    // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
   });
 
   tearDownAll(() async {
