@@ -55,6 +55,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   /// 日付を素早く切り替えたとき、古い日付の読込結果で新しい日付を上書きしない
   final LoadSequencer _loadSeq = LoadSequencer();
 
+  /// 保存中（トランザクションの応答待ち）の児童。カードに「処理中」を出し、ボタンを押せなくする
+  final Set<String> _busyIds = {};
+
   /// Day 11: LINE 通知の送信中フラグ（二重タップ防止・進捗表示）
   bool _isSendingNotice = false;
 
@@ -280,7 +283,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     String what,
     Future<void> Function() op, {
     required VoidCallback retry,
+    required String customerId,
   }) async {
+    // 保存中（最長 10 秒待つ）は同じ児童の操作を受け付けない（二度押し防止）
+    if (_busyIds.contains(customerId)) return false;
+    setState(() => _busyIds.add(customerId));
     try {
       await op();
       return true;
@@ -301,6 +308,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       }
       return false;
     } on AttendanceUnavailableException catch (e) {
+      _busyIds.remove(customerId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -318,6 +326,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         );
       }
       return false;
+    } finally {
+      if (mounted) {
+        setState(() => _busyIds.remove(customerId));
+      } else {
+        _busyIds.remove(customerId);
+      }
     }
   }
 
@@ -333,6 +347,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         expected: record.status,
       ),
       retry: () => _markPresent(record),
+      customerId: record.customerId,
     );
     if (!ok) return;
     _reload();
@@ -405,6 +420,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         );
       },
       retry: () => _markDeparted(record),
+      customerId: record.customerId,
     );
     if (!ok || !mounted) return;
 
@@ -575,6 +591,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         expected: record.status,
       ),
       retry: () => _saveAbsent(record, reason),
+      customerId: record.customerId,
     );
     if (!ok || !mounted) return;
 
@@ -755,6 +772,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         date: _selectedDate,
       ),
       retry: () => _doResetAbsent(record),
+      customerId: record.customerId,
     );
     if (!ok) return;
     _reload();
@@ -777,6 +795,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         date: _selectedDate,
       ),
       retry: () => _doResetAbsent(record),
+      customerId: record.customerId,
     );
     if (!ok) return;
     _reload();
@@ -1079,6 +1098,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             total: _records.length,
             child: _AttendanceCard(
               record: _records[i],
+              busy: _busyIds.contains(_records[i].customerId),
               slotView: _slotViewFor(_records[i]),
               onMarkPresent: () => _markPresent(_records[i]),
               onMarkDeparted: () => _markDeparted(_records[i]),
@@ -1144,8 +1164,12 @@ class _AttendanceCard extends StatelessWidget {
   final Future<void> Function(DateTime) onCheckInChanged;
   final Future<void> Function(DateTime) onCheckOutChanged;
 
+  /// 保存中（応答待ち）。ボタンの代わりに「処理中」を出し、押せなくする
+  final bool busy;
+
   const _AttendanceCard({
     required this.record,
+    this.busy = false,
     this.slotView,
     required this.onMarkPresent,
     required this.onMarkDeparted,
@@ -1317,6 +1341,7 @@ class _AttendanceCard extends StatelessWidget {
   }
 
   Widget _buildButtons(BuildContext context) {
+    if (busy) return _busyRow();
     switch (record.status) {
       case AttendanceStatus.scheduled:
         return _scheduledButtons(context);
@@ -1327,6 +1352,26 @@ class _AttendanceCard extends StatelessWidget {
       case AttendanceStatus.absent:
         return _absentButtons(context);
     }
+  }
+
+  /// 保存中: 「処理中…」（ボタンは出さない＝二度押しできない）
+  Widget _busyRow() {
+    return const SizedBox(
+      key: Key('attendanceCardBusy'),
+      height: 34,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text('処理中…', style: TextStyle(fontSize: 13)),
+        ],
+      ),
+    );
   }
 
   /// scheduled: 「入室」「欠席」

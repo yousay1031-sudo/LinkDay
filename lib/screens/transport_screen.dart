@@ -8,6 +8,7 @@ import '../models/transport_plan.dart';
 import '../services/customer_service.dart';
 import '../services/settings_service.dart';
 import '../services/transport_pdf_service.dart';
+import '../data/staff_session.dart';
 import '../services/transport_plan_service.dart';
 import '../services/weekly_schedule_service.dart';
 import '../theme/app_motion.dart';
@@ -71,11 +72,19 @@ class _TransportScreenState extends State<TransportScreen>
     _tabController = TabController(length: 2, vsync: this);
     _loadSettings();
     _loadAll();
+    TransportPlanService.instance.addListener(_onRoutesChanged);
     debugPrint('[TransportScreen] initState end');
+  }
+
+  /// 他の端末（またはこの端末の別の画面）で送迎計画が変わった: 開き直さずに反映する
+  void _onRoutesChanged() {
+    if (!mounted || _initialLoading) return;
+    _loadRoutes();
   }
 
   @override
   void dispose() {
+    TransportPlanService.instance.removeListener(_onRoutesChanged);
     _loadSeq.invalidate();
     _tabController.dispose();
     super.dispose();
@@ -124,6 +133,8 @@ class _TransportScreenState extends State<TransportScreen>
           ? await loader(_selectedDate)
           : await _fetchScheduledCustomers();
 
+      // 選んだ日の送迎計画（Firestore）を読み込んでから参照する
+      await TransportPlanService.instance.ensureDate(dateKey);
       if (!mounted || !_loadSeq.isCurrent(token)) return;
 
       // ルートを取得
@@ -506,11 +517,15 @@ class _TransportScreenState extends State<TransportScreen>
       ),
     );
     if (confirmed == true) {
-      await TransportPlanService.instance.deleteRoute(
-        route.dateKey,
-        route.vehicleIndex,
-        route.transportType,
-      );
+      try {
+        await TransportPlanService.instance.deleteRoute(
+          route.dateKey,
+          route.vehicleIndex,
+          route.transportType,
+        );
+      } on StaffNotSelectedException {
+        return; // 担当者の選択を閉じた → 削除しない
+      }
       await _loadRoutes();
       _showSnack('${route.vehicleName} を削除しました');
     }
@@ -530,7 +545,11 @@ class _TransportScreenState extends State<TransportScreen>
     route.stops
       ..clear()
       ..addAll(stops);
-    await TransportPlanService.instance.saveRoute(route);
+    try {
+      await TransportPlanService.instance.saveRoute(route);
+    } on StaffNotSelectedException {
+      // 担当者の選択を閉じた → 保存しない（ルートは保存先の内容に戻る）
+    }
     await _loadRoutes();
   }
 
@@ -544,7 +563,11 @@ class _TransportScreenState extends State<TransportScreen>
     route.stops
       ..clear()
       ..addAll(stops);
-    await TransportPlanService.instance.saveRoute(route);
+    try {
+      await TransportPlanService.instance.saveRoute(route);
+    } on StaffNotSelectedException {
+      // 担当者の選択を閉じた → 保存しない（ルートは保存先の内容に戻る）
+    }
     await _loadRoutes();
   }
 

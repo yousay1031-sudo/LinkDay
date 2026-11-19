@@ -14,6 +14,7 @@ import { assertLocalEmulator, PROJECT, HOST, AUTH_PORT, FS_PORT, loadOrCreateCre
 import { buildCustomer, CUSTOMER_COUNT, toFsFields } from './dummy_customers.mjs';
 import { buildDemoWeeks, scheduleDocs } from './dummy_schedule.mjs';
 import { buildDemoAttendance } from './dummy_attendance.mjs';
+import { buildDemoTransport } from './dummy_transport.mjs';
 
 await assertLocalEmulator();
 
@@ -222,6 +223,19 @@ if (dataMode === 'empty') {
     attCreated += res.filter(Boolean).length;
   }
   console.log(`[seed] 出席: 新規 ${attCreated} 件 / 既存 ${att.length - attCreated} 件`);
+
+  // ── 送迎計画（Firestore 移行ステップ6）: 今日のお迎え 3 台・お送り 2 台。無いときだけ作る
+  const routes = buildDemoTransport(now);
+  let routeCreated = 0;
+  for (const r of routes) {
+    const ok = await createIfMissing(
+      `facilities/${FACILITY_ID}/transportRoutes/${r.id}`,
+      { ...toFsFields(r.data), ...audit },
+      `送迎計画 ${r.id} の投入`
+    );
+    if (ok) routeCreated++;
+  }
+  console.log(`[seed] 送迎計画: 新規 ${routeCreated} 件 / 既存 ${routes.length - routeCreated} 件`);
 }
 
 // ── Firestore: slots（出席画面の「LINE応募」表示用）

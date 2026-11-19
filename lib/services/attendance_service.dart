@@ -93,9 +93,15 @@ class AttendanceService extends ChangeNotifier {
   @visibleForTesting
   Object? debugTransactionError;
 
-  Future<T> _runTransaction<T>(TransactionHandler<T> handler) {
+  /// テスト用: トランザクションの前に待つ処理（応答待ちの状態の再現）
+  @visibleForTesting
+  Future<void> Function()? debugBeforeTransaction;
+
+  Future<T> _runTransaction<T>(TransactionHandler<T> handler) async {
     final e = debugTransactionError;
-    if (e != null) return Future<T>.error(e);
+    if (e != null) throw e;
+    final wait = debugBeforeTransaction;
+    if (wait != null) await wait();
     return FacilityContext.instance.db
         .runTransaction<T>(handler)
         .timeout(transactionTimeout);

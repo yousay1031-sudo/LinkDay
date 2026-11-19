@@ -8,6 +8,7 @@ import 'package:linkday_app/models/staff.dart';
 import 'package:linkday_app/services/attendance_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/staff_service.dart';
+import 'package:linkday_app/services/transport_plan_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
 
 /// テスト用の保存先（エミュレータ不要のメモリ上の Firestore）。
@@ -44,6 +45,7 @@ class FakeBackend {
     await CustomerService.instance.attach();
     await WeeklyScheduleService.instance.attach();
     await AttendanceService.instance.attach();
+    await TransportPlanService.instance.attach();
     _current = backend;
     return backend;
   }
@@ -106,6 +108,25 @@ class FakeBackend {
     }
     await AttendanceService.instance.detach();
     await AttendanceService.instance.attach();
+  }
+
+  /// 送迎計画を空にする（旧 Hive の transport_plans.clear() の代わり）
+  static Future<void> resetTransport() async {
+    final b = current;
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final col = b.db.collection(FsPaths.facilities).doc(b.facilityId).collection(FsPaths.transportRoutes);
+    for (final d in (await col.get()).docs) {
+      await d.reference.delete();
+    }
+    await TransportPlanService.instance.detach();
+    await TransportPlanService.instance.attach();
+  }
+
+  /// 購読をやり直して、保存先から送迎計画を読み直す
+  static Future<void> reloadTransport() async {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await TransportPlanService.instance.detach();
+    await TransportPlanService.instance.attach();
   }
 
   /// 購読をやり直して、保存先から出席を読み直す

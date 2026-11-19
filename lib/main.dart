@@ -17,7 +17,6 @@ import 'models/notification_log.dart';
 import 'models/transport_plan.dart';
 import 'models/weekly_schedule.dart';
 import 'services/settings_service.dart';
-import 'services/transport_plan_service.dart';
 import 'services/vacancy_notification_service.dart';
 import 'theme/app_theme.dart';
 import 'verify/verify_bootstrap.dart';
@@ -92,8 +91,7 @@ Future<void> main() async {
   // ── 7. SettingsService の Hive ボックスを開く（Day 6）
   await SettingsService.instance.init();
 
-  // ── 8. TransportPlanService の Hive ボックスを開く（Day 6）
-  await TransportPlanService.instance.init();
+  // ── 8. 送迎計画は Firestore（ログイン後に DataSession が購読を始める）
 
   // ── 9. VacancyNotificationService の Hive ボックスを開く（Day 11）
   // 検証構成では LINE 送信・連携コード発行などの外部呼び出しを遮断する

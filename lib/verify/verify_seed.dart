@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_settings.dart';
 import '../models/customer.dart';
 import '../models/notification_log.dart';
-import '../models/transport_plan.dart';
 import '../models/weekly_schedule.dart';
 import '../services/weekly_schedule_service.dart';
 import '../utils/week_util.dart';
@@ -13,9 +12,9 @@ import 'verify_config.dart';
 
 /// 検証構成限定のダミーデータ投入（Hive 側）。
 ///
-/// 【Firestore 移行中】顧客（段階3）・週間利用計画（段階4）・出席（段階5）は Firestore へ
-/// 移した。それらの投入は tool/verify/seed.mjs（[buildCustomer] / [buildDemoWeeks] と
-/// 同じ規則・同じ ID）。ここはまだ Hive にある種類（設定・送迎・通知履歴）だけを投入する。
+/// 【Firestore 移行中】顧客（段階3）・週間利用計画（段階4）・出席（段階5）・送迎計画（段階6）は
+/// Firestore へ移した。それらの投入は tool/verify/seed.mjs（[buildCustomer] / [buildDemoWeeks]
+/// と同じ規則・同じ ID）。ここはまだ Hive にある種類（設定・通知履歴）だけを投入する。
 ///
 /// 【なぜアプリ内で投入するか】
 /// 顧客・出席・週間計画・設定・送迎計画・通知履歴は **ブラウザの IndexedDB（Hive）**
@@ -77,7 +76,6 @@ class VerifySeed {
 
   /// 検証用 Hive ボックスを全消去（設定は既定値に戻る）
   static Future<void> clearAll() async {
-    await Hive.box<TransportVehicleRoute>('transport_plans').clear();
     await Hive.box<NotificationLog>('notification_logs').clear();
     await Hive.box<AppSettings>('app_settings').put('settings', AppSettings());
   }
@@ -267,59 +265,9 @@ class VerifySeed {
       ),
     );
 
-    // ── 週間利用計画（先週・今週・来週）──
-    // 週間利用計画は Firestore（段階4〜）。tool/verify/seed.mjs が同じ規則
-    // （[buildDemoWeeks]）でエミュレータへ投入する。ここでは出席・送迎を
-    // 作るために同じ週を組み立てるだけ。
-    final active = customers.where((c) => c.isActive).toList();
-    final weeks = buildDemoWeeks(today, active);
-    final slot = weeks[1].slotForDate(today)!;
-
-    // ── 出席 ──
-    // 出席は Firestore（段階5〜）。tool/verify/dummy_attendance.mjs が
-    // 直近 5 日の実績と今日の混在（予定/在室/退室済/欠席）を投入する。
-
-    // ── 送迎計画（今日: お迎え 3 台 / お送り 2 台）──
-    final tpBox = Hive.box<TransportVehicleRoute>('transport_plans');
-    final todayKey2 = TransportPlanKey.dateKey(today);
-    final riders = slot.entries
-        .where((e) => e.status != ScheduleStatus.cancelled)
-        .map((e) => customers.firstWhere((c) => c.id == e.customerId))
-        .toList();
-    for (final type in TransportType.values) {
-      final vehicles = type == TransportType.pickup ? 3 : 2;
-      for (var v = 0; v < vehicles; v++) {
-        final mine = [
-          for (var i = v; i < riders.length; i += vehicles) riders[i],
-        ].take(v == 2 ? 4 : 6).toList();
-        final route = TransportVehicleRoute(
-          id: 'dummy-route-${type.name}-$v',
-          vehicleName: ['車両A', '車両B', '車両C'][v],
-          vehicleIndex: v,
-          transportType: type,
-          dateKey: todayKey2,
-          capacity: v == 2 ? 4 : 6,
-          stops: [
-            for (var i = 0; i < mine.length; i++)
-              TransportStop(
-                customerId: mine[i].id,
-                customerName: mine[i].name,
-                address: mine[i].transportLocations.first,
-                lat: mine[i].transportLocationLats.first,
-                lng: mine[i].transportLocationLngs.first,
-                orderIndex: i,
-                scheduledTime: _hhmm(9 + i ~/ 2, (i % 2) * 30 + 5 + v),
-                distanceFromPrevMeters: 800 + i * 350,
-                durationFromPrevSeconds: 240 + i * 60,
-              ),
-          ],
-          totalDistanceMeters: 4200 + v * 900,
-          totalDurationSeconds: 1500 + v * 300,
-        );
-        final key = '${todayKey2}_${v}_${type.name}';
-        await tpBox.put(key, route);
-      }
-    }
+    // 週間利用計画（段階4）・出席（段階5）・送迎計画（段階6）は Firestore。
+    // tool/verify/seed.mjs が dummy_schedule.mjs / dummy_attendance.mjs /
+    // dummy_transport.mjs で投入する（[buildDemoWeeks] と同じ規則）。
 
     // ── 通知履歴（過去 6 日・成功/失敗/重複/ID不正）──
     final logBox = Hive.box<NotificationLog>('notification_logs');
@@ -352,13 +300,4 @@ class VerifySeed {
       }
     }
   }
-}
-
-String _hhmm(int h, int m) =>
-    '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-
-/// transport_plans のキー用 dateKey（NotificationLog と同じ書式）
-class TransportPlanKey {
-  TransportPlanKey._();
-  static String dateKey(DateTime d) => NotificationLog.makeDateKey(d);
 }

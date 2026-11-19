@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -107,6 +108,49 @@ void main() {
         AttendanceService.instance
             .getRecord('c-wait', DateTime.now())!
             .status,
+        AttendanceStatus.present);
+    await t.pumpWidget(const SizedBox.shrink());
+    await _ms(t, 3000);
+  });
+
+  testWidgets('保存中は「処理中…」を出し、同じ児童のボタンを押せない（二度押し防止）', (t) async {
+    await t.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    final key = AttendanceRecord.makeDateKey(DateTime.now());
+    await t.runAsync(() async {
+      await FakeBackend.resetAttendance();
+      await FakeBackend.resetCustomers();
+      await AttendanceService.instance.upsertRecord(AttendanceRecord(
+          customerId: 'c-wait', customerName: '予定 二郎', dateKey: key));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+    });
+    await t.pumpWidget(const MaterialApp(home: AttendanceScreen()));
+    await _ms(t, 1500);
+
+    var calls = 0;
+    final gate = Completer<void>();
+    AttendanceService.instance.debugBeforeTransaction = () {
+      calls++;
+      return gate.future;
+    };
+    addTearDown(() => AttendanceService.instance.debugBeforeTransaction = null);
+    Finder presentButton() => find.ancestor(
+          of: find.text('入室'),
+          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+        );
+    await t.tap(presentButton());
+    await t.pump();
+    expect(find.byKey(const Key('attendanceCardBusy')), findsOneWidget);
+    expect(find.text('処理中…'), findsOneWidget);
+    expect(presentButton(), findsNothing, reason: '保存中はボタンを出さない');
+    expect(calls, 1);
+
+    gate.complete();
+    await _real(t);
+    await _ms(t, 500);
+    expect(find.byKey(const Key('attendanceCardBusy')), findsNothing);
+    expect(calls, 1, reason: '保存は 1 回だけ');
+    expect(AttendanceService.instance.getRecord('c-wait', DateTime.now())!.status,
         AttendanceStatus.present);
     await t.pumpWidget(const SizedBox.shrink());
     await _ms(t, 3000);

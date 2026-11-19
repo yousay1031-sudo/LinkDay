@@ -114,7 +114,7 @@ void main() {
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     await SettingsService.instance.init();
-    await TransportPlanService.instance.init();
+    // 送迎計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     SlotService.instance.remoteEnabled = false;
   });
 
@@ -415,8 +415,7 @@ void main() {
     });
 
     Future<void> seed(_T t, {required bool routeToday}) => t.runAsync(() async {
-          final box = Hive.box<TransportVehicleRoute>('transport_plans');
-          await box.clear();
+          await FakeBackend.resetTransport();
           if (routeToday) {
             await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
               vehicleName: '車両テスト号',

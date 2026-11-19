@@ -1,5 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+
+import '../data/audit.dart' show readTimestamp;
+import '../data/fs_values.dart';
 
 part 'transport_plan.g.dart';
 
@@ -78,6 +82,34 @@ class TransportStop extends HiveObject {
     }
     return '${(distanceFromPrevMeters! / 1000).toStringAsFixed(1)}km';
   }
+
+  Map<String, dynamic> toFirestoreData() => {
+        'customerId': customerId,
+        'customerName': customerName,
+        'address': address,
+        'lat': lat,
+        'lng': lng,
+        'orderIndex': orderIndex,
+        'scheduledTime': scheduledTime,
+        'distanceFromPrevMeters': distanceFromPrevMeters,
+        'durationFromPrevSeconds': durationFromPrevSeconds,
+        'note': note,
+      };
+
+  factory TransportStop.fromFirestore(Map d) => TransportStop(
+        customerId: readString(d['customerId']) ?? '',
+        customerName: readString(d['customerName']) ?? '',
+        address: readString(d['address']) ?? '',
+        lat: readDouble(d['lat']),
+        lng: readDouble(d['lng']),
+        orderIndex: readInt(d['orderIndex'], 0),
+        scheduledTime: readString(d['scheduledTime']),
+        distanceFromPrevMeters:
+            d['distanceFromPrevMeters'] is num ? (d['distanceFromPrevMeters'] as num).toInt() : null,
+        durationFromPrevSeconds:
+            d['durationFromPrevSeconds'] is num ? (d['durationFromPrevSeconds'] as num).toInt() : null,
+        note: readString(d['note']),
+      );
 }
 
 // ── TransportVehicleRoute ─────────────────────────────────────
@@ -163,6 +195,49 @@ class TransportVehicleRoute extends HiveObject {
   /// 区分ラベル
   String get typeLabel =>
       transportType == TransportType.pickup ? 'お迎え' : 'お送り';
+
+  // ── Firestore ─────────────────────────────────────────────────
+  // facilities/{facilityId}/transportRoutes/{date}_{pickup|dropoff}_{vehicleIndex}
+
+  /// 業務データの項目（記録欄・作成日時を除く）
+  Map<String, dynamic> toFirestoreData() => {
+        'routeId': id,
+        'date': dateKey,
+        'transportType': transportType.name,
+        'vehicleIndex': vehicleIndex,
+        'vehicleName': vehicleName,
+        'capacity': capacity,
+        'stops': [for (final s in stops) s.toFirestoreData()],
+        'googleMapsUrl': googleMapsUrl,
+        'totalDistanceMeters': totalDistanceMeters,
+        'totalDurationSeconds': totalDurationSeconds,
+        'optimizedAt': optimizedAt == null ? null : Timestamp.fromDate(optimizedAt!),
+        'note': note,
+      };
+
+  factory TransportVehicleRoute.fromFirestore(Map<String, dynamic> d) =>
+      TransportVehicleRoute(
+        id: readString(d['routeId']),
+        vehicleName: readString(d['vehicleName']) ?? '',
+        vehicleIndex: readInt(d['vehicleIndex'], 0),
+        transportType: d['transportType'] == TransportType.dropoff.name
+            ? TransportType.dropoff
+            : TransportType.pickup,
+        dateKey: readString(d['date']) ?? '',
+        stops: d['stops'] is List
+            ? [for (final s in d['stops'] as List) if (s is Map) TransportStop.fromFirestore(s)]
+            : <TransportStop>[],
+        capacity: readInt(d['capacity'], 5),
+        googleMapsUrl: readString(d['googleMapsUrl']),
+        totalDistanceMeters: d['totalDistanceMeters'] is num
+            ? (d['totalDistanceMeters'] as num).toInt()
+            : null,
+        totalDurationSeconds: d['totalDurationSeconds'] is num
+            ? (d['totalDurationSeconds'] as num).toInt()
+            : null,
+        optimizedAt: readTimestamp(d['optimizedAt']),
+        note: readString(d['note']),
+      );
 }
 
 // ── LatLng helper ────────────────────────────────────────────

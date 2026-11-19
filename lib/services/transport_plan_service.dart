@@ -1,8 +1,14 @@
-import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../data/audit.dart';
+import '../data/data_errors.dart';
+import '../data/facility_context.dart';
+import '../data/fs_values.dart';
+import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../models/transport_plan.dart';
 import '../utils/geo_util.dart';
@@ -10,35 +16,108 @@ import 'google_maps_service.dart';
 import 'maps_js_service.dart';
 import 'settings_service.dart';
 
-const String _kBoxName = 'transport_plans';
-
 /// 送迎計画サービス
-/// Hive box: 'transport_plans'
-/// キー: "${dateKey}_${vehicleIndex}_${type}" 例: "2026-06-16_0_pickup"
-class TransportPlanService {
+///
+/// 保存先: Firestore `facilities/{facilityId}/transportRoutes/{date}_{pickup|dropoff}_{vehicleIndex}`
+/// （日 × お迎え/お送り × 車両 = 1 ドキュメント。停留所の並びはルートの中に持つ）。
+/// - 日付ごとに購読し、端末内に持つ。読み取りは従来どおり同期（先に [ensureDate]）。
+///   他の端末の変更は購読で届き、[ChangeNotifier] で画面へ知らせる。
+/// - 保存はルート 1 件をまとめて書く（同じルートへの書き込みは後勝ち）。担当者が必要。
+///   送信は待たずに戻る（失敗は DataErrors で知らせる）。
+/// - グループ分け・最適化・時刻計算の中身は変えていない（このステップの範囲外）。
+class TransportPlanService extends ChangeNotifier {
   TransportPlanService._();
   static final TransportPlanService instance = TransportPlanService._();
 
-  late Box<TransportVehicleRoute> _box;
+  final Map<String, TransportVehicleRoute> _cache = {};
 
-  // ── 初期化 ──────────────────────────────────────────────────
+  /// 最後に保存先と一致していた内容（担当者が選ばれず保存しなかったときに戻す）
+  final Map<String, Map<String, dynamic>> _base = {};
+  final Map<String, _DateState> _dates = {};
+  bool _attached = false;
 
-  Future<void> init() async {
-    _box = await Hive.openBox<TransportVehicleRoute>(_kBoxName);
-    debugPrint(
-        '[TransportPlanService] initialized. routes=${_box.length}');
+  bool get isAttached => _attached;
+
+  CollectionReference<Map<String, dynamic>> get _col =>
+      FacilityContext.instance.col(FsPaths.transportRoutes);
+
+  // ── 接続 ────────────────────────────────────────────────────
+
+  /// ログイン後に呼ぶ。今日の分を読み込む。
+  Future<void> attach({DateTime? today}) async {
+    await detach();
+    _attached = true;
+    final t = today ?? DateTime.now();
+    await ensureDate(_dateKeyOf(t));
+    debugPrint('[TransportPlanService] attached: routes=${_cache.length}');
+  }
+
+  Future<void> detach() async {
+    for (final d in _dates.values) {
+      await d.cancel();
+    }
+    _dates.clear();
+    _cache.clear();
+    _base.clear();
+    _attached = false;
+  }
+
+  static String _dateKeyOf(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// [dateKey]（"YYYY-MM-DD"）のルートを購読し、最初の読み込みを待つ
+  Future<void> ensureDate(String dateKey) {
+    if (!FacilityContext.instance.isAttached) return Future.value();
+    final existing = _dates[dateKey];
+    if (existing != null) {
+      return existing.isReady ? Future<void>.value() : existing.ready;
+    }
+    final st = _DateState();
+    _dates[dateKey] = st;
+    st.sub = _col.where('date', isEqualTo: dateKey).snapshots().listen((snap) {
+      var changed = false;
+      for (final ch in snap.docChanges) {
+        final id = ch.doc.id;
+        if (ch.type == DocumentChangeType.removed) {
+          changed |= _cache.remove(id) != null;
+          _base.remove(id);
+          continue;
+        }
+        final data = ch.doc.data();
+        if (data == null) continue;
+        final r = TransportVehicleRoute.fromFirestore(data);
+        final normalized = r.toFirestoreData();
+        final known = _base[id];
+        _base[id] = normalized;
+        if (known != null &&
+            _cache.containsKey(id) &&
+            fsChangedFields(known, normalized).isEmpty) {
+          continue; // 自分の書き込みの折り返し
+        }
+        _cache[id] = r;
+        changed = true;
+      }
+      st.complete();
+      if (changed) notifyListeners();
+    }, onError: (Object e) {
+      DataErrors.report('送迎計画を読み込めませんでした（${DataErrors.describe(e)}）');
+      st.complete();
+    });
+    return st.ready.timeout(const Duration(seconds: 10), onTimeout: () {
+      debugPrint('[TransportPlanService] $dateKey first snapshot timeout');
+    });
   }
 
   // ── 基本 CRUD ────────────────────────────────────────────────
 
-  String _makeKey(String dateKey, int vehicleIndex, TransportType type) {
+  static String docIdOf(String dateKey, int vehicleIndex, TransportType type) {
     final typeStr = type == TransportType.pickup ? 'pickup' : 'dropoff';
-    return '${dateKey}_${vehicleIndex}_$typeStr';
+    return '${dateKey}_${typeStr}_$vehicleIndex';
   }
 
-  /// 指定日の全ルートを取得
+  /// 指定日の全ルートを取得（読み込み済みの日だけ。必要なら先に [ensureDate]）
   List<TransportVehicleRoute> getRoutesByDate(String dateKey) {
-    return _box.values
+    return _cache.values
         .where((r) => r.dateKey == dateKey)
         .toList()
       ..sort((a, b) {
@@ -60,28 +139,84 @@ class TransportPlanService {
           .where((r) => r.transportType == TransportType.dropoff)
           .toList();
 
-  /// ルートを保存
-  Future<void> saveRoute(TransportVehicleRoute route) async {
-    final key = _makeKey(route.dateKey, route.vehicleIndex, route.transportType);
-    await _box.put(key, route);
-    debugPrint('[TransportPlanService] saved: $key');
+  /// ルートを保存（ルート 1 件をまとめて書く）
+  ///
+  /// [stamp] を省略すると担当者を求める。選ばれなければ、画面が持っている
+  /// ルートを保存先の内容に戻して [StaffNotSelectedException] を投げる。
+  Future<void> saveRoute(TransportVehicleRoute route, {AuditStamp? stamp}) async {
+    final id = docIdOf(route.dateKey, route.vehicleIndex, route.transportType);
+    AuditStamp s;
+    try {
+      s = stamp ?? await StaffSession.instance.requireStamp();
+    } on StaffNotSelectedException {
+      _restoreFromBase(id, route);
+      notifyListeners();
+      rethrow;
+    }
+    final data = route.toFirestoreData();
+    final isNew = !_base.containsKey(id);
+    _cache[id] = route;
+    _base[id] = data;
+    notifyListeners();
+    DataErrors.send(
+      // 作成日時を残すため merge（停留所の配列はまとめて置き換わる）
+      _col.doc(id).set({...data, ...(isNew ? s.toCreateFields() : s.toFields())},
+          SetOptions(merge: true)),
+      what: '送迎計画（${route.vehicleName} ${route.typeLabel}）',
+    );
+    debugPrint('[TransportPlanService] saved: $id by $s');
+  }
+
+  /// 保存しなかった変更を取り消す（画面が持っているオブジェクトの中身を戻す）
+  void _restoreFromBase(String id, TransportVehicleRoute route) {
+    final base = _base[id];
+    if (base == null) {
+      _cache.remove(id);
+      return;
+    }
+    final r = TransportVehicleRoute.fromFirestore(base);
+    route
+      ..vehicleName = r.vehicleName
+      ..capacity = r.capacity
+      ..googleMapsUrl = r.googleMapsUrl
+      ..totalDistanceMeters = r.totalDistanceMeters
+      ..totalDurationSeconds = r.totalDurationSeconds
+      ..optimizedAt = r.optimizedAt
+      ..note = r.note;
+    route.stops
+      ..clear()
+      ..addAll(r.stops);
+    _cache[id] = route;
   }
 
   /// ルートを削除
   Future<void> deleteRoute(
       String dateKey, int vehicleIndex, TransportType type) async {
-    final key = _makeKey(dateKey, vehicleIndex, type);
-    await _box.delete(key);
+    await StaffSession.instance.requireStamp();
+    final id = docIdOf(dateKey, vehicleIndex, type);
+    _cache.remove(id);
+    _base.remove(id);
+    notifyListeners();
+    DataErrors.send(_col.doc(id).delete(), what: '送迎計画の削除');
   }
 
   /// 指定日のルートを全削除
   Future<void> clearDate(String dateKey) async {
-    final keys = _box.keys
-        .where((k) => k.toString().startsWith(dateKey))
+    await ensureDate(dateKey);
+    await StaffSession.instance.requireStamp();
+    final ids = _cache.entries
+        .where((e) => e.value.dateKey == dateKey)
+        .map((e) => e.key)
         .toList();
-    for (final key in keys) {
-      await _box.delete(key);
+    if (ids.isEmpty) return;
+    final batch = FacilityContext.instance.db.batch();
+    for (final id in ids) {
+      batch.delete(_col.doc(id));
+      _cache.remove(id);
+      _base.remove(id);
     }
+    notifyListeners();
+    DataErrors.send(batch.commit(), what: '送迎計画（$dateKey）の削除');
   }
 
   // ── AI グループ分け ──────────────────────────────────────────
@@ -732,4 +867,21 @@ class DirectionsFallbackException implements Exception {
   String toString() =>
       'DirectionsFallbackException: $message'
       '${cause != null ? '\n  cause: $cause' : ''}';
+}
+
+/// 購読中の 1 日分
+class _DateState {
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sub;
+  final Completer<void> _ready = Completer<void>();
+  Future<void> get ready => _ready.future;
+  bool get isReady => _ready.isCompleted;
+
+  void complete() {
+    if (!_ready.isCompleted) _ready.complete();
+  }
+
+  Future<void> cancel() async {
+    await sub?.cancel();
+    complete();
+  }
 }
