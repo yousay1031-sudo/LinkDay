@@ -21,6 +21,8 @@ import 'package:linkday_app/services/vacancy_notification_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/widgets/slot_status_panel.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 14: 出席画面の「LINE応募」表示と、応募受付時間の設定
 ///
 /// 検証の柱:
@@ -73,7 +75,7 @@ void main() {
     reg(7, AppSettingsAdapter());
     reg(11, NotificationLogAdapter());
     reg(12, NotificationStatusAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
     await AttendanceService.instance.init();
     await WeeklyScheduleService.instance.init();
     await SettingsService.instance.init();
@@ -312,7 +314,7 @@ void main() {
     String keyOf(DateTime d) => NotificationLog.makeDateKey(d);
 
     setUp(() async {
-      await Hive.box<Customer>('customers').clear();
+      await FakeBackend.resetCustomers();
       await Hive.box<AttendanceRecord>('attendance_records').clear();
       await Hive.box<WeeklySchedule>('weekly_schedules').clear();
       for (final (id, name) in [('absent1', '山田 太郎'), ('taker1', '佐藤 花子')]) {

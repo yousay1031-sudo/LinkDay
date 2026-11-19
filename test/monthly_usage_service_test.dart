@@ -12,6 +12,8 @@ import 'package:linkday_app/services/monthly_usage_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/utils/week_util.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 9: 月間支給量の残日数管理
 ///
 /// 【Hive.init（hive パッケージ）を使う理由】
@@ -42,7 +44,7 @@ void main() {
     if (!Hive.isAdapterRegistered(6)) {
       Hive.registerAdapter(ScheduleEntryAdapter());
     }
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
     await AttendanceService.instance.init();
     await WeeklyScheduleService.instance.init();
   });
@@ -53,7 +55,7 @@ void main() {
   });
 
   setUp(() async {
-    await Hive.box<Customer>('customers').clear();
+    await FakeBackend.resetCustomers();
     await Hive.box<AttendanceRecord>('attendance_records').clear();
     await Hive.box<WeeklySchedule>('weekly_schedules').clear();
   });

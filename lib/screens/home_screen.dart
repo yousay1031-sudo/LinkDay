@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -48,6 +50,29 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadCounts();
+    CustomerService.instance.addListener(_onCustomersChanged);
+  }
+
+  Timer? _usageDebounce;
+
+  @override
+  void dispose() {
+    CustomerService.instance.removeListener(_onCustomersChanged);
+    _usageDebounce?.cancel();
+    super.dispose();
+  }
+
+  /// 顧客が変わった（他の端末を含む）: 期限警告・超過見込みの件数を開き直さずに更新する。
+  /// ここからの再集計では利用日数の自動補正（書き込み）をしない。
+  void _onCustomersChanged() {
+    if (!mounted) return;
+    setState(() {
+      _expiringCount = CustomerService.instance.getExpiringCertCustomers().length;
+    });
+    _usageDebounce?.cancel();
+    _usageDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _loadOverProjected(reconcile: false);
+    });
   }
 
   void _loadCounts() {
@@ -66,9 +91,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// 支給超過見込みの児童を集計する（Day 9）
-  Future<void> _loadOverProjected() async {
-    final over =
-        await MonthlyUsageService.instance.getOverProjected(DateTime.now());
+  Future<void> _loadOverProjected({bool reconcile = true}) async {
+    final over = await MonthlyUsageService.instance
+        .getOverProjected(DateTime.now(), reconcileCache: reconcile);
     debugPrint('[HomeScreen] _loadCounts: overProjected=${over.length}');
     if (!mounted) return;
     setState(() => _overProjected = over);

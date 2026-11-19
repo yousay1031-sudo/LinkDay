@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../data/audit.dart';
 import '../models/attendance_record.dart';
 import '../models/customer.dart';
 import '../models/weekly_schedule.dart';
@@ -229,8 +230,10 @@ class MonthlyUsageService {
   Future<List<MonthlyUsage>> getOverProjected(
     DateTime yearMonth, {
     DateTime? today,
+    bool reconcileCache = true,
   }) async {
-    final all = await getAllUsage(yearMonth, today: today);
+    final all = await getAllUsage(yearMonth,
+        today: today, reconcileCache: reconcileCache);
     return all.where((u) => u.isOverProjected).toList()
       ..sort((a, b) => a.remainingProjected.compareTo(b.remainingProjected));
   }
@@ -361,6 +364,9 @@ class MonthlyUsageService {
         'currentMonthUsedDays=${customer.currentMonthUsedDays} → '
         '実績${usage.usedActual}日 に補正します（動的計算を正とする）');
     customer.currentMonthUsedDays = usage.usedActual;
-    await CustomerService.instance.updateCustomer(customer);
+    // 画面を開いたときの自動補正: 担当者は不要（「自動」と記録）。
+    // 変わった項目（currentMonthUsedDays）だけが書かれる。
+    await CustomerService.instance
+        .updateCustomer(customer, stamp: AuditStamp.auto);
   }
 }

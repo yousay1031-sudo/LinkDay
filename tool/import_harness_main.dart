@@ -3,7 +3,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/screens/customer_import_screen.dart';
@@ -12,14 +11,13 @@ import 'package:linkday_app/services/customer_import_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/theme/app_theme.dart';
 
+import 'harness_backend.dart';
+
 final GlobalKey harnessKey = GlobalKey();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Hive.initFlutter('linkday_harness');
-  Hive.registerAdapter(CustomerAdapter());
-  await Hive.deleteBoxFromDisk('customers');
-  await CustomerService.instance.init();
+  await attachHarnessBackend();
   await CustomerService.instance.addCustomer(Customer(
       id: 'exist', name: '山田 太郎', nameKana: 'ヤマダ タロウ',
       recipientCertNumber: '1234567890'));

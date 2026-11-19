@@ -17,7 +17,6 @@ import 'models/notification_log.dart';
 import 'models/transport_plan.dart';
 import 'models/weekly_schedule.dart';
 import 'services/attendance_service.dart';
-import 'services/customer_service.dart';
 import 'services/settings_service.dart';
 import 'services/transport_plan_service.dart';
 import 'services/vacancy_notification_service.dart';
@@ -86,8 +85,7 @@ Future<void> main() async {
   //    有効にできなくても（非対応ブラウザ等）メモリキャッシュで動作を続ける。
   await _enableFirestorePersistence();
 
-  // ── 4. CustomerService の Hive ボックスを開く
-  await CustomerService.instance.init();
+  // ── 4. 顧客は Firestore（ログイン後に DataSession が購読を始める）
 
   // ── 5. WeeklyScheduleService の Hive ボックスを開く（AttendanceService より先に）
   await WeeklyScheduleService.instance.init();

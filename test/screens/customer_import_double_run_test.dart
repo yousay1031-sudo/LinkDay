@@ -14,6 +14,8 @@ import 'package:linkday_app/services/customer_import_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
 
+import '../support/fake_backend.dart';
+
 /// インポート画面: 二重実行防止 / 戻る制御 / 例外・失敗後の復帰
 ///
 /// 実行: flutter test test/screens/customer_import_double_run_test.dart
@@ -70,9 +72,9 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('linkday_import_dbl_');
     Hive.init(tmp.path);
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(CustomerAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
     // Hive の実ファイル I/O は FakeAsync 内で行うと詰まるため、投入は 1 度だけここで行う
-    await Hive.box<Customer>('customers').clear();
+    await FakeBackend.resetCustomers();
     await CustomerService.instance.addCustomer(Customer(
       id: 'existing-1',
       name: '既存 太郎',
@@ -217,7 +219,7 @@ void main() {
         (tester) async {
       await pumpScreen(tester);
       final st = stateOf(tester);
-      final before = Hive.box<Customer>('customers').length;
+      final before = FakeBackend.customerCount;
       st.debugSetPreview(previewOf([_dupRow, _newRow]));
       await tester.pump();
 
@@ -235,7 +237,7 @@ void main() {
       await (st.debugExecute() as Future<void>);
       await tester.pump();
       expect(find.text('重複候補（行 2）'), findsOneWidget);
-      expect(Hive.box<Customer>('customers').length, before,
+      expect(FakeBackend.customerCount, before,
           reason: '保留中は新規行も書き込まれていない（再実行されていない）');
 
       // スキップを選ぶ → 2 行目が取り込まれ結果画面へ
@@ -248,9 +250,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(st.debugIsImporting, isFalse);
       expect(find.text('取り込みが完了しました'), findsOneWidget);
-      expect(Hive.box<Customer>('customers').length, before + 1);
-      final names = Hive.box<Customer>('customers')
-          .values
+      expect(FakeBackend.customerCount, before + 1);
+      final names = FakeBackend.allCustomers
           .map((c) => c.name)
           .toList()
         ..sort();
@@ -270,7 +271,7 @@ void main() {
     testWidgets('「中止」でも処理中表示が解除され、操作可能へ戻る', (tester) async {
       await pumpScreen(tester);
       final st = stateOf(tester);
-      final before = Hive.box<Customer>('customers').length;
+      final before = FakeBackend.customerCount;
       st.debugSetPreview(previewOf([_dupRow, _newRow]));
       await tester.pump();
       unawaited(st.debugExecute() as Future<void>);
@@ -284,7 +285,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(st.debugIsImporting, isFalse);
       expect(find.textContaining('中止しました'), findsOneWidget);
-      expect(Hive.box<Customer>('customers').length, before,
+      expect(FakeBackend.customerCount, before,
           reason: '中止時、後続行は保存されない');
     });
   });

@@ -11,11 +11,12 @@ import 'package:linkday_app/models/weekly_schedule.dart';
 import 'package:linkday_app/screens/attendance_screen.dart';
 import 'package:linkday_app/widgets/attendance_status_badge.dart';
 import 'package:linkday_app/services/attendance_service.dart';
-import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/slot_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
+
+import '../support/fake_backend.dart';
 
 /// 在室中ドット（集計バー／カード内バッジ）の静止表示の回帰テスト。
 ///
@@ -73,7 +74,7 @@ void main() {
     reg(ScheduleStatusAdapter());
     reg(ScheduleEntryAdapter());
     reg(AppSettingsAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
     await WeeklyScheduleService.instance.init();
     await AttendanceService.instance.init();
     await SettingsService.instance.init();
@@ -99,7 +100,7 @@ void main() {
     final key = AttendanceRecord.makeDateKey(DateTime.now());
     await t.runAsync(() async {
       await Hive.box<AttendanceRecord>('attendance_records').clear();
-      await Hive.box<Customer>('customers').clear();
+      await FakeBackend.resetCustomers();
       await AttendanceService.instance.upsertRecord(AttendanceRecord(
           customerId: 'c-in',
           customerName: '在室 一郎',

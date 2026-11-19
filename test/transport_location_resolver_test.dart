@@ -13,6 +13,8 @@ import 'package:linkday_app/models/geocode_candidate.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/transport_location_resolver.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 8: 送迎場所ジオコーディング
 ///   - Customer モデル往復（coords 含む save/load）
 ///   - 旧データ（HiveField 19-21 なし）読込の後方互換
@@ -25,7 +27,7 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('linkday_day8_');
     Hive.init(tmp.path);
     Hive.registerAdapter(CustomerAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
   });
 
   tearDownAll(() async {
@@ -33,7 +35,7 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  setUp(() async => Hive.box<Customer>('customers').clear());
+  setUp(() async => FakeBackend.resetCustomers());
 
   GeocodeCandidate cand(String addr, double lat, double lng, [List<String> types = const ['premise']]) =>
       GeocodeCandidate(formattedAddress: addr, lat: lat, lng: lng, types: types);
@@ -65,7 +67,7 @@ void main() {
       expect(c.transportStatus(5), Customer.locUnresolved);
     });
 
-    test('Hive 往復: coords / status が保存・復元される', () async {
+    test('保存先（Firestore）往復: coords / status が保存・復元される', () async {
       final c = Customer(
         id: 'rt',
         name: '往復',
@@ -76,9 +78,8 @@ void main() {
         transportLocationStatus: [Customer.locResolved, Customer.locManual],
       );
       await CustomerService.instance.addCustomer(c);
-      // box を閉じて再オープン（ディスク往復）
-      await Hive.box<Customer>('customers').close();
-      await CustomerService.instance.init();
+      // 購読をやり直して保存先から読み直す（旧: Hive の box 再オープン）
+      await FakeBackend.reloadCustomers();
       final r = CustomerService.instance.getCustomerById('rt')!;
       expect(r.transportLocationLats, [42.9238, 42.9177]);
       expect(r.transportLocationLngs, [143.1966, 143.2042]);
@@ -554,12 +555,9 @@ void main() {
           transportLocationTypes: ['street_address'],
         ));
       }
-      // 実機の Hive には既に誤座標が保存済みなので、永続化層のガードを
-      // 迂回して box に直接書き込み、「既存誤採用データ」を再現する。
-      final box = Hive.box<Customer>('customers');
-      for (final c in list) {
-        await box.put(c.id, c);
-      }
+      // 実機には既に誤座標が保存済みなので、永続化層のガードを迂回して
+      // 端末内の一覧に直接入れ、「既存誤採用データ」を再現する。
+      CustomerService.instance.debugSetCache(list);
       return list;
     }
 
@@ -708,14 +706,13 @@ void main() {
   });
 
   group('採用根拠メタ（field 22-23）', () {
-    test('Hive 往復で formatted / types が保存・復元される', () async {
+    test('保存先（Firestore）往復で formatted / types が保存・復元される', () async {
       final c = Customer(id: 'meta', name: 'M', nameKana: 'エム',
           transportLocations: ['南公園', '帯広駅前']);
       c.setTransportCoord(0, 42.8871, 143.1920, Customer.locResolved,
           formatted: '北海道帯広市南町 南公園', types: const ['park', 'point_of_interest']);
       await CustomerService.instance.addCustomer(c);
-      await Hive.box<Customer>('customers').close();
-      await CustomerService.instance.init();
+      await FakeBackend.reloadCustomers();
       final r = CustomerService.instance.getCustomerById('meta')!;
       expect(r.transportFormatted(0), '北海道帯広市南町 南公園');
       expect(r.transportTypes(0), ['park', 'point_of_interest']);

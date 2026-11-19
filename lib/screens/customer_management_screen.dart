@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -16,6 +18,7 @@ import '../widgets/motion/staggered.dart';
 import '../widgets/skeletons/screen_skeletons.dart';
 import 'customer_edit_screen.dart';
 import 'customer_import_screen.dart';
+import 'inactive_customers_screen.dart';
 import 'transport_location_resolve_screen.dart';
 
 class CustomerManagementScreen extends StatefulWidget {
@@ -58,10 +61,25 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     super.initState();
     _loadCustomers();
     _loadUsage();
+    CustomerService.instance.addListener(_onCustomersChanged);
+  }
+
+  Timer? _usageDebounce;
+
+  /// 他の端末（またはこの端末の別の画面）で顧客が変わった: 開き直さずに反映する
+  void _onCustomersChanged() {
+    if (!mounted) return;
+    _loadCustomers();
+    // 利用状況はまとめて 1 回だけ再集計する。ここからの再集計では利用日数の
+    // 自動補正（書き込み）をしない（端末どうしで補正し合わないように）
+    _usageDebounce?.cancel();
+    _usageDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _loadUsage(reconcile: false);
+    });
   }
 
   /// 当月の利用状況を読み込む（Day 9）
-  Future<void> _loadUsage() async {
+  Future<void> _loadUsage({bool reconcile = true}) async {
     try {
       if (VerifyConfig.enabled) {
         await VerifyFaults.apply(VerifyFaults.usage);
@@ -69,7 +87,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
       final loader = widget.usageLoader;
       final list = loader != null
           ? await loader()
-          : await MonthlyUsageService.instance.getAllUsage(DateTime.now());
+          : await MonthlyUsageService.instance
+              .getAllUsage(DateTime.now(), reconcileCache: reconcile);
       if (!mounted) return;
       setState(() {
         _usage = {for (final u in list) u.customerId: u};
@@ -103,6 +122,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
 
   @override
   void dispose() {
+    CustomerService.instance.removeListener(_onCustomersChanged);
+    _usageDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -210,6 +231,17 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     }
   }
 
+  Future<void> _navigateToInactive() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const InactiveCustomersScreen()),
+    );
+    if (changed == true) {
+      _loadCustomers();
+      _loadUsage();
+    }
+  }
+
   Future<void> _navigateToImport() async {
     final result = await Navigator.push<bool>(
       context,
@@ -291,6 +323,12 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           icon: const Icon(Icons.upload_file),
           tooltip: 'Excel一括インポート',
           onPressed: _navigateToImport,
+        ),
+        IconButton(
+          key: const Key('openInactiveCustomers'),
+          icon: const Icon(Icons.inventory_2_outlined),
+          tooltip: '在籍終了の顧客',
+          onPressed: _navigateToInactive,
         ),
         IconButton(
           icon: const Icon(Icons.travel_explore),

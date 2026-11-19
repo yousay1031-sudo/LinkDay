@@ -1,11 +1,15 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
+import '../data/audit.dart' show readTimestamp;
+import '../data/fs_values.dart';
+
 part 'customer.g.dart';
 
 /// 顧客（児童）モデル
-/// Hive Type ID: 0
-/// 将来 Firestore 同期する際は tenantId フィールドを追加してください
+///
+/// 保存先: Firestore facilities/{facilityId}/customers/{id}（[toFirestoreData] /
+/// [Customer.fromFirestore]）。Hive の注釈は段階8で削除する（現在は未使用）。
 @HiveType(typeId: 0)
 class Customer extends HiveObject {
   @HiveField(0)
@@ -89,6 +93,9 @@ class Customer extends HiveObject {
   @HiveField(23)
   List<String?> transportLocationTypes; // 採用候補の types（カンマ区切り）
 
+  /// 在籍終了にした日時（在籍中・未記録は null）。Firestore のみ。
+  DateTime? deactivatedAt;
+
   Customer({
     String? id,
     required this.name,
@@ -114,6 +121,7 @@ class Customer extends HiveObject {
     List<String>? transportLocationStatus,
     List<String?>? transportLocationFormatted,
     List<String?>? transportLocationTypes,
+    this.deactivatedAt,
   })  : id = id ?? const Uuid().v4(),
         regularDays = regularDays ?? [],
         transportLocations = transportLocations ?? [],
@@ -324,6 +332,90 @@ class Customer extends HiveObject {
           List<String?>.from(this.transportLocationFormatted),
       transportLocationTypes:
           transportLocationTypes ?? List<String?>.from(this.transportLocationTypes),
+      deactivatedAt: deactivatedAt,
+    );
+  }
+
+  // ── Firestore ─────────────────────────────────────────────────────
+  //
+  // 送迎場所は、Hive では 6 本の並列リストだったものを 1 つの配列
+  // transportLocations: [{address, lat, lng, status, formattedAddress, types[]}]
+  // にまとめる（長さのずれをなくすため）。
+  // createdAt / updatedAt / updatedBy* / deactivatedAt は書き込み側で付ける。
+
+  static const String fIsActive = 'isActive';
+  static const String fDeactivatedAt = 'deactivatedAt';
+  static const String fCurrentMonthUsedDays = 'currentMonthUsedDays';
+
+  /// 業務データの項目（記録欄・日時を除く）。差分の比較にも使う。
+  Map<String, dynamic> toFirestoreData() => {
+        'name': name,
+        'nameKana': nameKana,
+        'birthday': dateOnlyToString(birthday),
+        'gender': gender,
+        'phone': phone,
+        'lineUserId': lineUserId,
+        'guardianName': guardianName,
+        'guardianPhone': guardianPhone,
+        'recipientCertNumber': recipientCertNumber,
+        'recipientCertExpiry': dateOnlyToString(recipientCertExpiry),
+        'monthlyAvailableDays': monthlyAvailableDays,
+        fCurrentMonthUsedDays: currentMonthUsedDays,
+        'regularDays': List<int>.from(regularDays),
+        'transportLocations': [
+          for (var i = 0; i < transportLocations.length; i++)
+            {
+              'address': transportLocations[i],
+              'lat': i < transportLocationLats.length ? transportLocationLats[i] : null,
+              'lng': i < transportLocationLngs.length ? transportLocationLngs[i] : null,
+              'status': transportStatus(i),
+              'formattedAddress': transportFormatted(i),
+              'types': transportTypes(i),
+            },
+        ],
+        'notes': notes,
+        fIsActive: isActive,
+      };
+
+  factory Customer.fromFirestore(String id, Map<String, dynamic> d) {
+    final locs = d['transportLocations'] is List
+        ? [for (final e in d['transportLocations'] as List) if (e is Map) e]
+        : const <Map>[];
+    final types = [
+      for (final l in locs) readStringList(l['types']),
+    ];
+    return Customer(
+      id: id,
+      name: readString(d['name']) ?? '',
+      nameKana: readString(d['nameKana']) ?? '',
+      birthday: dateOnlyFromString(d['birthday']),
+      gender: readString(d['gender']),
+      phone: readString(d['phone']),
+      lineUserId: readString(d['lineUserId']),
+      guardianName: readString(d['guardianName']),
+      guardianPhone: readString(d['guardianPhone']),
+      recipientCertNumber: readString(d['recipientCertNumber']),
+      recipientCertExpiry: dateOnlyFromString(d['recipientCertExpiry']),
+      monthlyAvailableDays: readInt(d['monthlyAvailableDays'], 23),
+      currentMonthUsedDays: readInt(d[fCurrentMonthUsedDays], 0),
+      regularDays: readIntList(d['regularDays']),
+      transportLocations: [for (final l in locs) readString(l['address']) ?? ''],
+      notes: readString(d['notes']),
+      createdAt: readTimestamp(d['createdAt']),
+      updatedAt: readTimestamp(d['updatedAt']),
+      isActive: d[fIsActive] is bool ? d[fIsActive] as bool : true,
+      transportLocationLats: [for (final l in locs) readDouble(l['lat'])],
+      transportLocationLngs: [for (final l in locs) readDouble(l['lng'])],
+      transportLocationStatus: [
+        for (final l in locs) readString(l['status']) ?? locUnresolved,
+      ],
+      transportLocationFormatted: [
+        for (final l in locs) readString(l['formattedAddress']),
+      ],
+      transportLocationTypes: [
+        for (final t in types) t.isEmpty ? null : t.join(','),
+      ],
+      deactivatedAt: readTimestamp(d[fDeactivatedAt]),
     );
   }
 }

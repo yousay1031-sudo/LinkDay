@@ -14,16 +14,16 @@ import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/theme/app_theme.dart';
 
+import 'harness_backend.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // ignore: invalid_use_of_visible_for_testing_member
   SharedPreferences.setMockInitialValues({});
   await Hive.initFlutter('linkday_harness2');
-  Hive.registerAdapter(CustomerAdapter());
   Hive.registerAdapter(AppSettingsAdapter());
-  await Hive.deleteBoxFromDisk('customers');
   await Hive.deleteBoxFromDisk('app_settings');
-  await CustomerService.instance.init();
+  await attachHarnessBackend();
   await SettingsService.instance.init();
 
   // Day 7 サンプル 10 件を投入

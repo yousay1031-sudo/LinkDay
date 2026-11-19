@@ -5,15 +5,27 @@
 //   node tool/verify/seed.mjs            # 認証ユーザーと slots を投入（冪等）
 //   node tool/verify/seed.mjs --reset    # エミュレータ内の Auth/Firestore を全消去して再投入
 //   node tool/verify/seed.mjs --clear    # エミュレータ内を全消去のみ
+//   node tool/verify/seed.mjs --reset --data empty   # 顧客なし（空の状態の確認用）
 //
-// 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / slots
-// 顧客・出席・週間計画・設定・送迎・通知履歴は、Firestore 移行の各段階で
+// 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / 顧客 / slots
+// 出席・週間計画・設定・送迎・通知履歴は、Firestore 移行の各段階で
 // こちらへ移すまでは Hive(IndexedDB) 側（検証ビルドが起動時に投入する。docs/VERIFY_ENV.md）。
 import { assertLocalEmulator, PROJECT, HOST, AUTH_PORT, FS_PORT, loadOrCreateCredentials } from './guard.mjs';
+import { buildCustomer, CUSTOMER_COUNT, toFsFields } from './dummy_customers.mjs';
 
 await assertLocalEmulator();
 
 const args = new Set(process.argv.slice(2));
+// --data normal（既定）| empty
+const argv = process.argv.slice(2);
+const dataIdx = argv.findIndex((a) => a === '--data' || a.startsWith('--data='));
+const dataMode = dataIdx < 0
+  ? 'normal'
+  : argv[dataIdx].includes('=') ? argv[dataIdx].split('=')[1] : argv[dataIdx + 1];
+if (!['normal', 'empty'].includes(dataMode)) {
+  console.error('[seed] --data は normal か empty');
+  process.exit(2);
+}
 const authBase = `http://${HOST}:${AUTH_PORT}`;
 const fsBase = `http://${HOST}:${FS_PORT}`;
 
@@ -139,6 +151,31 @@ for (const [id, name] of staff) {
 console.log(
   `[seed] 事業所 ${FACILITY_ID} と所属を投入しました。職員: 新規 ${staffCreated} 件 / 既存 ${staff.length - staffCreated} 件`
 );
+
+// ── 顧客（Firestore 移行ステップ3）。--data empty なら投入しない（空の状態の確認用）
+// 無いときだけ作る（画面で変えた内容・他のブラウザでの編集を再投入で戻さない）。
+if (dataMode === 'empty') {
+  console.log('[seed] --data empty: 顧客は投入しません');
+} else {
+  const now = new Date();
+  let created = 0;
+  for (let n = 1; n <= CUSTOMER_COUNT + 1; n++) {
+    const c = buildCustomer(n, now);
+    const ok = await createIfMissing(
+      `facilities/${FACILITY_ID}/customers/${c.id}`,
+      {
+        ...toFsFields(c.data),
+        deactivatedAt: c.data.isActive ? { nullValue: null } : nowTs(),
+        ...audit,
+      },
+      `顧客 ${c.id} の投入`
+    );
+    if (ok) created++;
+  }
+  console.log(
+    `[seed] 顧客: 新規 ${created} 件 / 既存 ${CUSTOMER_COUNT + 1 - created} 件（在籍中 ${CUSTOMER_COUNT} + 在籍終了 1）`
+  );
+}
 
 // ── Firestore: slots（出席画面の「LINE応募」表示用）
 // 書込はエミュレータの管理者トークン('owner')で行う（クライアントの rules は緩めない）。

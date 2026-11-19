@@ -24,6 +24,8 @@ import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
 import 'package:linkday_app/widgets/skeletons/screen_skeletons.dart';
 
+import '../support/fake_backend.dart';
+
 /// 代表画面（出席管理・顧客一覧・送迎計画）の
 /// 初期読込 / 正常 / 空 / エラー / 再試行 / 日付切替（古い結果の破棄）を、
 /// 共通部品ではなく「実画面」への接続として検証する。
@@ -109,7 +111,7 @@ void main() {
     reg(TransportVehicleRouteAdapter());
     reg(TransportStopAdapter());
     reg(TransportTypeAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
     await WeeklyScheduleService.instance.init();
     await AttendanceService.instance.init();
     await SettingsService.instance.init();
@@ -153,7 +155,7 @@ void main() {
     Future<void> seed(_T t) => t.runAsync(() async {
           final att = AttendanceService.instance;
           await Hive.box<AttendanceRecord>('attendance_records').clear();
-          await Hive.box<Customer>('customers').clear();
+          await FakeBackend.resetCustomers();
           // 日付ごとに別の名前（旧日付の取り違え検出用）
           for (final n in ['今日 一郎', '今日 二郎']) {
             await att.upsertRecord(AttendanceRecord(
@@ -325,7 +327,7 @@ void main() {
     });
 
     Future<void> seed(_T t, List<Customer> list) => t.runAsync(() async {
-          await Hive.box<Customer>('customers').clear();
+          await FakeBackend.resetCustomers();
           for (final c in list) {
             await CustomerService.instance.addCustomer(c);
           }

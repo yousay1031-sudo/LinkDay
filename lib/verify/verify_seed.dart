@@ -14,6 +14,10 @@ import 'verify_config.dart';
 
 /// 検証構成限定のダミーデータ投入（Hive 側）。
 ///
+/// 【Firestore 移行中】顧客は段階3で Firestore へ移した。顧客の投入は
+/// tool/verify/seed.mjs（[buildCustomer] と同じ規則・同じ ID）。ここは
+/// まだ Hive にある種類（出席・週間計画・設定・送迎・通知履歴）だけを投入する。
+///
 /// 【なぜアプリ内で投入するか】
 /// 顧客・出席・週間計画・設定・送迎計画・通知履歴は **ブラウザの IndexedDB（Hive）**
 /// に保存され、Firestore には無い（firestore.rules 冒頭の方針）。そのため
@@ -74,7 +78,6 @@ class VerifySeed {
 
   /// 検証用 Hive ボックスを全消去（設定は既定値に戻る）
   static Future<void> clearAll() async {
-    await Hive.box<Customer>('customers').clear();
     await Hive.box<AttendanceRecord>('attendance_records').clear();
     await Hive.box<WeeklySchedule>('weekly_schedules').clear();
     await Hive.box<TransportVehicleRoute>('transport_plans').clear();
@@ -192,13 +195,13 @@ class VerifySeed {
     final today = DateTime(now.year, now.month, now.day);
 
     // ── 顧客 ──
-    final custBox = Hive.box<Customer>('customers');
+    // 顧客は Firestore（tool/verify/seed.mjs が同じ ID・氏名で投入する）。
+    // ここでは出席・週間計画など Hive 側のデータを作るために同じ一覧を組み立てるだけ。
     final customers = <Customer>[
       for (var n = 1; n <= customerCount; n++) buildCustomer(n, now),
     ];
     // 退所済み（一覧の「在籍中のみ」確認用）
     customers.add(buildCustomer(customerCount + 1, now)..isActive = false);
-    await custBox.putAll({for (final c in customers) c.id: c});
 
     // ── 設定（架空の事業所）──
     await Hive.box<AppSettings>('app_settings').put(

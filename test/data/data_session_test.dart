@@ -46,10 +46,16 @@ void main() {
       expect(DataSession.instance.status, DataSessionStatus.notMember);
     });
 
-    test('この端末で前回選んだ担当者を事業所ごとに復元する', () async {
+    test('この端末で今日選んだ担当者を事業所ごとに復元する', () async {
+      // 段階3: 担当者は「選んだ日」と一緒に保存する（日付が変われば未選択）
+      final now = DateTime.now();
+      final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
       SharedPreferences.setMockInitialValues({
         StaffSession.prefsKey('fac-1'): 's1',
+        StaffSession.prefsDateKey('fac-1'): today,
         StaffSession.prefsKey('fac-other'): 's9',
+        StaffSession.prefsDateKey('fac-other'): today,
       });
       final db = FakeFirebaseFirestore();
       await db.collection('memberships').doc('u1').set({'facilityId': 'fac-1'});

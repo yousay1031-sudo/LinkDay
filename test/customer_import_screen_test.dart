@@ -6,7 +6,8 @@ import 'package:hive/hive.dart';
 
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/screens/customer_import_screen.dart';
-import 'package:linkday_app/services/customer_service.dart';
+
+import 'support/fake_backend.dart';
 
 /// 利用者インポート画面: 初回 build / 空データ状態で例外なく表示されること
 ///
@@ -27,7 +28,7 @@ void main() {
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(CustomerAdapter());
     }
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
   });
 
   tearDownAll(() async {

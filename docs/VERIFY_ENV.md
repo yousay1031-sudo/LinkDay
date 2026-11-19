@@ -11,7 +11,8 @@ tool/verify/serve_verify.sh             # 127.0.0.1:8765（標準 Chrome で開�
 # 終了
 tool/verify/stop_emulators.sh
 ```
-- 顧客・出席・週間計画・設定・送迎計画・通知履歴は Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（顧客 60 件 + 非在籍 1 件）。
+- 顧客は Firestore（段階3〜）。`seed.mjs` がエミュレータへ投入する（在籍中 60 名 + 在籍終了 1 名。無いときだけ作る）。
+- 出席・週間計画・設定・送迎計画・通知履歴はまだ Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（同じ顧客 ID・氏名を使う。`lib/verify/verify_seed.dart` と `tool/verify/dummy_customers.mjs` は同じ規則で作るので、片方を変えたらもう片方も変える）。
 - 外部公開しない: エミュレータ・配信とも 127.0.0.1 のみ。共有プレビューが必要なときだけ `BIND=0.0.0.0` と GetServiceUrl を使う。
 
 ### Firestore 移行（作業中）で増えたもの
@@ -19,7 +20,9 @@ tool/verify/stop_emulators.sh
 - ログイン後は所属事業所を確認してからホーム画面に進む。所属が無いアカウントは「事業所に登録されていません」画面になる。
 - 画面上部の帯で担当者を選ぶ（端末ごとに保存）。未選択で記録を変える操作をすると選択を求められる。
 - ルールのテスト: `tool/verify/test_rules.sh`（起動中のエミュレータに別プロジェクトID `demo-linkday-rules` で接続。検証データは消さない）。
-- まだ Firestore に移していない種類（顧客・出席・週間計画・設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
+- まだ Firestore に移していない種類（出席・週間計画・設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
+- 顧客（段階3）: `seed.mjs --data empty` で顧客なし（空の状態）。`?verify_data=empty` は Hive 側だけを空にする（顧客は消えない）。
+- 担当者の選択は「選んだ日」と一緒に端末へ保存する。日付が変わると未選択に戻り、ログアウトすると端末の保存も消える。
 
 ## 2. 本番へ誤接続しない仕組み
 - 切替は `--dart-define=LINKDAY_VERIFY=true`（コンパイル時。debug 限定ではなく release/profile 可）。通常ビルドは `const false` で検証コードは tree-shake される。
@@ -46,7 +49,12 @@ tool/verify/stop_emulators.sh
   - 確認方法: Chrome の通信記録（CDP。ページ・Service Worker・WebSocket）で、ログイン→担当者選択→再読み込み→ログアウト→再読み込み→再ログイン→再読み込みの間 `*.googleapis.com` 宛て 0 件。
   - 修正前に、検証用のダミー資格情報が本物の宛先へ送られた可能性があるため作り直した（下記の手順）。
 - **ダミー資格情報の作り直し**: `rm ~/.linkday_verify/credentials.json && node tool/verify/seed.mjs --reset`（エミュレータ内の Auth/Firestore を全消去し、新しいパスワードで作り直す。値は表示しない）。
-- **静的ファイルの外部取得（未対応・記録のみ）**: 検証ビルドも通常ビルドと同じく、画面描画エンジン（`www.gstatic.com/flutter-canvaskit`）、Firebase JS SDK（`www.gstatic.com/firebasejs`）、フォント（`fonts.gstatic.com` の Roboto / Noto Sans JP）を Google の配信元から取得する。資格情報やデータは含まないが、ループバック以外への通信ではある。
+- **外部通信の合格条件（2026-11-19 承認）**: 「資格情報やデータを含む外部通信が 0 件」。検証中に1件でも出たら作業を止めて相談する。確かめ方は Chrome の通信記録（CDP。ページ・Service Worker・WebSocket）で、ループバック（127.0.0.1）以外の宛先を一覧にする。
+- **認められている外部取得（静的ファイルのみ。資格情報・データを含まない）**: 検証ビルドも通常ビルドと同じく、次を Google の配信元から取得する。これ以外の宛先（特に `*.googleapis.com`）が出たら条件違反。
+  - `www.gstatic.com/flutter-canvaskit/…`（画面描画エンジン）
+  - `www.gstatic.com/firebasejs/11.9.1/…`（Firebase JS SDK）
+  - `fonts.gstatic.com/s/roboto/…`、`fonts.gstatic.com/s/notosansjp/…`（フォント）
+- **エミュレータのルールが古いまま残ることがある**（2026-11-19、原因未確定）: ブランチの書き直し（rebase）で firestore.rules が一時的に古い版へ戻った後、エミュレータは「Rules updated」と表示しながら、main の旧ルール（業務データ全面拒否）のまま判定していた。ファイルを touch しても直らず、`stop_emulators.sh` → `start_emulators.sh` → `seed.mjs` で解消した。ログイン後に「データを読み込めませんでした」になり、エラーに `false for 'get' @ L129` のような旧ルールの行番号が出たら、エミュレータを起動し直す。
 - **Service Worker 初回再読込**: 新規プロファイルの初回訪問で canvaskit.js / canvaskit.wasm / main.dart.js が `ERR_ABORTED` になり再読込される。記録のみ。根拠なく削除・改修しない。
 - **テンキー「−」例外**: keydown key='-' code='NumpadSubtract' location=3 で `TypeError: Cannot read properties of null (reading 'toString')`。スタック: main.dart.js:45055 ← 44913 ← 45075 ← 51302 ← 45009 ← 45021 ← 44943/44949 ← 7433。エンジン側マップ `[45,null,null,8589935149]` が関与する可能性はあるが、原因は未確定でエンジン不具合とは断定しない。
 - **setSelectionRange InvalidStateError**: ログイン画面の email 入力中にコンソールへ出る（main.dart.js:49400）。原因未確認。画面操作は継続できた。

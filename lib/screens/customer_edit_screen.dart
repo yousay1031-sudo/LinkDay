@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../services/customer_service.dart';
 import '../services/maps_js_service.dart';
@@ -540,6 +541,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       // 保存成功: チェックマーク付きスナックバー（文言は従来どおり）
       showSuccessSnack(context, _isEditing ? '顧客情報を保存しました' : '顧客を登録しました');
       Navigator.of(context).pop(true);
+    } on StaffNotSelectedException {
+      // 担当者の選択を閉じた → 保存しない（入力内容は画面に残る）
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -568,8 +571,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
         ),
         content: Text(
           '「${widget.customer!.name}」を在籍終了にします。\n'
-          'データは削除されず、非表示になります。\n\n'
-          'この操作は取り消せません。',
+          'データは削除されず、顧客一覧から非表示になります。\n\n'
+          '顧客管理の「在籍終了の顧客」から、いつでも在籍に戻せます。',
           style: const TextStyle(height: 1.6),
         ),
         actions: [
@@ -589,7 +592,11 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
     );
 
     if (confirmed == true) {
-      await CustomerService.instance.deleteCustomer(widget.customer!.id);
+      try {
+        await CustomerService.instance.deleteCustomer(widget.customer!.id);
+      } on StaffNotSelectedException {
+        return; // 担当者の選択を閉じた → 何もしない
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -609,7 +616,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       appBar: AppBar(
         title: Text(_isEditing ? '顧客情報の編集' : '新規登録'),
         actions: [
-          if (_isEditing)
+          if (_isEditing && widget.customer!.isActive)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: '在籍終了にする',

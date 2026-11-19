@@ -1,6 +1,13 @@
-import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+
+import '../data/audit.dart';
+import '../data/data_errors.dart';
+import '../data/facility_context.dart';
+import '../data/fs_values.dart';
+import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../utils/kana_util.dart';
 
@@ -53,59 +60,115 @@ class ImportResult {
 /// 顧客データのCRUD・検索・インポートを担うサービスクラス
 ///
 /// シングルトンパターン: `CustomerService.instance` でアクセスする。
-/// Hive の 'customers' ボックスをローカルストレージとして使用する。
 ///
-/// TODO(SaaS): 将来 Firestore 同期する際は tenantId フィールド付きで
-///             各ドキュメントに `tenantId` を付与し、
-///             `customers/{tenantId}/customers/{customerId}` の
-///             サブコレクション構造で同期する。
-class CustomerService {
+/// 保存先: Firestore `facilities/{facilityId}/customers/{customerId}`。
+/// - ログイン後に [attach] でコレクション全体を購読し、端末内に一覧を持つ。
+///   読み取りは従来どおり同期（キャッシュから）。他端末の変更は購読で届き、
+///   [ChangeNotifier] で画面へ知らせる。
+/// - 書き込みはキャッシュへ先に反映し、送信は待たずに戻る（オフラインで画面が
+///   止まらないように。失敗は [DataErrors] で知らせる）。
+/// - 更新は「前回の内容と違う項目だけ」を書く。値が変わっていなければ書かない。
+/// - 記録を変える操作には担当者が必要（未選択なら選択画面を出し、選ばれなければ
+///   [StaffNotSelectedException]）。自動処理は [AuditStamp.auto] を渡す。
+/// - 顧客は削除しない（在籍終了 = isActive:false。[restoreCustomer] で戻せる）。
+class CustomerService extends ChangeNotifier {
   CustomerService._();
   static final CustomerService instance = CustomerService._();
 
-  static const String _boxName = 'customers';
-  Box<Customer>? _box;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
 
-  Box<Customer> get _customers {
-    assert(_box != null && _box!.isOpen, 'CustomerService.init() を先に呼び出してください');
-    return _box!;
+  /// 画面へ渡す顧客（呼び出し側が書き換えてから update することがある）
+  final Map<String, Customer> _cache = {};
+
+  /// 最後に保存先と一致していた内容（差分の基準。画面側の書き換えの影響を受けない）
+  final Map<String, Map<String, dynamic>> _base = {};
+
+  bool _attached = false;
+  bool get isAttached => _attached;
+
+  CollectionReference<Map<String, dynamic>> get _col =>
+      FacilityContext.instance.col(FsPaths.customers);
+
+  // ── 接続 ────────────────────────────────────────────────────────────
+
+  /// 購読を開始し、最初のスナップショット（端末内キャッシュ由来でも可）を待つ。
+  Future<void> attach({
+    Duration firstSnapshotTimeout = const Duration(seconds: 10),
+  }) async {
+    await detach();
+    _attached = true;
+    final first = Completer<void>();
+    _sub = _col.snapshots().listen((snap) {
+      var changed = false;
+      for (final ch in snap.docChanges) {
+        final id = ch.doc.id;
+        if (ch.type == DocumentChangeType.removed) {
+          changed |= _cache.remove(id) != null;
+          _base.remove(id);
+          continue;
+        }
+        final data = ch.doc.data();
+        if (data == null) continue;
+        final c = Customer.fromFirestore(id, data);
+        final normalized = c.toFirestoreData();
+        final known = _base[id];
+        final sameData =
+            known != null && fsChangedFields(known, normalized).isEmpty;
+        _base[id] = normalized;
+        final current = _cache[id];
+        if (sameData && current != null) {
+          // 自分の書き込みの折り返し（内容は同じ）: 日時だけ反映し、画面は更新しない
+          current.updatedAt = c.updatedAt;
+          current.deactivatedAt = c.deactivatedAt;
+          continue;
+        }
+        _cache[id] = c;
+        changed = true;
+      }
+      if (!first.isCompleted) first.complete();
+      if (changed) notifyListeners();
+    }, onError: (Object e) {
+      DataErrors.report('顧客情報を読み込めませんでした（${DataErrors.describe(e)}）');
+      if (!first.isCompleted) first.complete();
+    });
+    await first.future.timeout(firstSnapshotTimeout, onTimeout: () {
+      debugPrint('[CustomerService] first snapshot timeout（オフラインの可能性）');
+    });
+    debugPrint('[CustomerService] attached: ${_cache.length} customers');
   }
 
-  // ── 初期化 ──────────────────────────────────────────────────────────
-
-  /// Hive ボックスを開く。main.dart で await して呼び出すこと。
-  Future<void> init() async {
-    if (_box != null && _box!.isOpen) return;
-    _box = await Hive.openBox<Customer>(_boxName);
-    debugPrint('[CustomerService] Hive box "$_boxName" opened. '
-        'Stored: ${_box!.length} customers');
+  Future<void> detach() async {
+    await _sub?.cancel();
+    _sub = null;
+    _cache.clear();
+    _base.clear();
+    _attached = false;
   }
 
   // ── 読み取り ────────────────────────────────────────────────────────
 
   /// 全顧客を返す。`includeInactive` が false（デフォルト）なら在籍中のみ。
   List<Customer> getAllCustomers({bool includeInactive = false}) {
-    final all = _customers.values.toList();
+    final all = _cache.values.toList();
     if (includeInactive) return all;
     return all.where((c) => c.isActive).toList()
       ..sort((a, b) => a.nameKana.compareTo(b.nameKana));
   }
 
+  /// 在籍終了の顧客（ふりがな順）
+  List<Customer> getInactiveCustomers() =>
+      _cache.values.where((c) => !c.isActive).toList()
+        ..sort((a, b) => a.nameKana.compareTo(b.nameKana));
+
   /// ID で顧客を取得する。見つからなければ null。
-  Customer? getCustomerById(String id) {
-    try {
-      return _customers.values.firstWhere((c) => c.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
+  Customer? getCustomerById(String id) => _cache[id];
 
   // ── 書き込み ────────────────────────────────────────────────────────
 
   /// 国レベル座標（「日本」等）の送迎場所座標を保存直前に破棄する
   ///
   /// Day 8 修正（受け入れ基準5）: どの経路（一括解決 / 個別採用 / 編集画面 /
-  /// インポート）を通っても「日本」レベルの座標が Hive に保存されないよう、
+  /// インポート）を通っても「日本」レベルの座標が保存されないよう、
   /// 永続化層で最終ガードする。該当時は unresolved に戻す。
   static int sanitizeCoords(Customer customer) {
     int dropped = 0;
@@ -129,47 +192,91 @@ class CustomerService {
   }
 
   /// 顧客を新規追加する
-  Future<void> addCustomer(Customer customer) async {
+  ///
+  /// [stamp] を省略すると担当者を求める（未選択なら選択画面）。
+  Future<void> addCustomer(Customer customer, {AuditStamp? stamp}) async {
+    final s = stamp ?? await StaffSession.instance.requireStamp();
     sanitizeCoords(customer);
-    await _customers.put(customer.id, customer);
-    debugPrint('[CustomerService] Added: ${customer.name} (${customer.id})');
-  }
-
-  /// 顧客情報を更新する
-  Future<void> updateCustomer(Customer customer) async {
-    sanitizeCoords(customer);
-    final updated = customer.copyWith(); // updatedAt を現在時刻に更新
-    await _customers.put(updated.id, updated);
-    debugPrint('[CustomerService] Updated: ${updated.name} (${updated.id})');
-  }
-
-  /// 論理削除（isActive を false にする）
-  Future<void> deleteCustomer(String id) async {
-    final customer = getCustomerById(id);
-    if (customer == null) return;
-    final deleted = Customer(
-      id: customer.id,
-      name: customer.name,
-      nameKana: customer.nameKana,
-      birthday: customer.birthday,
-      gender: customer.gender,
-      phone: customer.phone,
-      lineUserId: customer.lineUserId,
-      guardianName: customer.guardianName,
-      guardianPhone: customer.guardianPhone,
-      recipientCertNumber: customer.recipientCertNumber,
-      recipientCertExpiry: customer.recipientCertExpiry,
-      monthlyAvailableDays: customer.monthlyAvailableDays,
-      currentMonthUsedDays: customer.currentMonthUsedDays,
-      regularDays: List.from(customer.regularDays),
-      transportLocations: List.from(customer.transportLocations),
-      notes: customer.notes,
-      createdAt: customer.createdAt,
-      updatedAt: DateTime.now(),
-      isActive: false, // 論理削除
+    final data = customer.toFirestoreData();
+    _cache[customer.id] = customer;
+    _base[customer.id] = data;
+    notifyListeners();
+    DataErrors.send(
+      _col.doc(customer.id).set({...data, ...s.toCreateFields()}),
+      what: '顧客「${customer.name}」',
     );
-    await _customers.put(id, deleted);
-    debugPrint('[CustomerService] Deleted (logical): ${customer.name} ($id)');
+    debugPrint('[CustomerService] Added: ${customer.name} (${customer.id}) by $s');
+  }
+
+  /// 顧客情報を更新する（前回の内容と違う項目だけを書く。違いが無ければ書かない）
+  ///
+  /// [stamp] を省略すると担当者を求める。自動処理は [AuditStamp.auto] を渡す。
+  Future<void> updateCustomer(Customer customer, {AuditStamp? stamp}) async {
+    sanitizeCoords(customer);
+    final data = customer.toFirestoreData();
+    final base = _base[customer.id];
+    final changed = fsChangedFields(base, data);
+    if (base != null && changed.isEmpty) {
+      _cache[customer.id] = customer;
+      return;
+    }
+    final s = stamp ?? await StaffSession.instance.requireStamp();
+    customer.updatedAt = DateTime.now();
+    _cache[customer.id] = customer;
+    _base[customer.id] = data;
+    notifyListeners();
+    final ref = _col.doc(customer.id);
+    DataErrors.send(
+      base == null
+          // 端末の一覧に無い顧客（読み込み前など）: 全項目を書く（作成日時は付けない）
+          ? ref.set({...data, ...s.toFields()}, SetOptions(merge: true))
+          : ref.update({...changed, ...s.toFields()}),
+      what: '顧客「${customer.name}」',
+    );
+    debugPrint('[CustomerService] Updated: ${customer.name} (${customer.id}) '
+        '${changed.keys.toList()} by $s');
+  }
+
+  /// 在籍終了にする（isActive=false。データは消さない。[restoreCustomer] で戻せる）
+  Future<void> deleteCustomer(String id) => _setActive(id, false);
+
+  /// 在籍終了の顧客を在籍中に戻す
+  Future<void> restoreCustomer(String id) => _setActive(id, true);
+
+  /// 在籍の切り替え（isActive と在籍終了日時だけを書く。他の項目には触れない）
+  Future<void> _setActive(String id, bool active) async {
+    final customer = _cache[id];
+    if (customer == null || customer.isActive == active) return;
+    final s = await StaffSession.instance.requireStamp();
+    customer
+      ..isActive = active
+      ..deactivatedAt = active ? null : DateTime.now()
+      ..updatedAt = DateTime.now();
+    final base = _base[id];
+    if (base != null) _base[id] = {...base, Customer.fIsActive: active};
+    notifyListeners();
+    DataErrors.send(
+      _col.doc(id).update({
+        Customer.fIsActive: active,
+        Customer.fDeactivatedAt: active ? null : FieldValue.serverTimestamp(),
+        ...s.toFields(),
+      }),
+      what: '顧客「${customer.name}」の${active ? '在籍に戻す操作' : '在籍終了'}',
+    );
+    debugPrint('[CustomerService] ${active ? 'Restored' : 'Deactivated'}: '
+        '${customer.name} ($id) by $s');
+  }
+
+  /// テスト用: 購読せずにキャッシュだけ入れる（保存先には書かない）
+  @visibleForTesting
+  void debugSetCache(List<Customer> customers) {
+    _cache
+      ..clear()
+      ..addEntries(customers.map((c) => MapEntry(c.id, c)));
+    _base
+      ..clear()
+      ..addEntries(customers.map((c) => MapEntry(c.id, c.toFirestoreData())));
+    notifyListeners();
   }
 
   // ── 検索 ────────────────────────────────────────────────────────────
@@ -209,33 +316,13 @@ class CustomerService {
 
   // ── 月初リセット ─────────────────────────────────────────────────────
 
-  /// 月初に全顧客の当月利用日数を 0 にリセットする
+  /// 月初に全顧客の当月利用日数を 0 にリセットする（変わる項目だけを書く）
   Future<void> resetMonthlyUsedDays() async {
-    final all = _customers.values.toList();
+    final all = _cache.values.toList();
     for (final customer in all) {
       if (customer.currentMonthUsedDays != 0) {
-        final reset = Customer(
-          id: customer.id,
-          name: customer.name,
-          nameKana: customer.nameKana,
-          birthday: customer.birthday,
-          gender: customer.gender,
-          phone: customer.phone,
-          lineUserId: customer.lineUserId,
-          guardianName: customer.guardianName,
-          guardianPhone: customer.guardianPhone,
-          recipientCertNumber: customer.recipientCertNumber,
-          recipientCertExpiry: customer.recipientCertExpiry,
-          monthlyAvailableDays: customer.monthlyAvailableDays,
-          currentMonthUsedDays: 0, // リセット
-          regularDays: List.from(customer.regularDays),
-          transportLocations: List.from(customer.transportLocations),
-          notes: customer.notes,
-          createdAt: customer.createdAt,
-          updatedAt: DateTime.now(),
-          isActive: customer.isActive,
-        );
-        await _customers.put(customer.id, reset);
+        customer.currentMonthUsedDays = 0;
+        await updateCustomer(customer);
       }
     }
     debugPrint('[CustomerService] Monthly used days reset for ${all.length} customers');
@@ -422,7 +509,3 @@ class CustomerService {
     return result;
   }
 }
-
-// TODO(SaaS): 将来 Firestore 同期する際は tenantId フィールド付きで sync する
-// 例: customers/{tenantId}/customers/{customerId}
-// CustomerService に syncToFirestore(String tenantId) メソッドを追加する

@@ -17,6 +17,8 @@ import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/vacancy_notification_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 11: 空き枠 LINE 通知 — 候補抽出・二重送信ブロックの単体テスト
 ///
 /// 【Hive.init（hive パッケージ）を使う理由】
@@ -67,7 +69,7 @@ void main() {
     if (!Hive.isAdapterRegistered(12)) {
       Hive.registerAdapter(NotificationStatusAdapter());
     }
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
     await AttendanceService.instance.init();
     await WeeklyScheduleService.instance.init();
     await SettingsService.instance.init();
@@ -80,7 +82,7 @@ void main() {
   });
 
   setUp(() async {
-    await Hive.box<Customer>('customers').clear();
+    await FakeBackend.resetCustomers();
     await Hive.box<AttendanceRecord>('attendance_records').clear();
     await Hive.box<WeeklySchedule>('weekly_schedules').clear();
     await Hive.box<NotificationLog>('notification_logs').clear();

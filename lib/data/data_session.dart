@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../services/customer_service.dart';
 import '../services/staff_service.dart';
 import 'data_errors.dart';
 import 'facility_context.dart';
@@ -83,6 +84,7 @@ class DataSession extends ChangeNotifier {
       FacilityContext.instance.attach(d, fid);
       await StaffService.instance.attach();
       await StaffSession.instance.restore(fid);
+      await CustomerService.instance.attach();
       if (_uid != uid) return;
       _status = DataSessionStatus.ready;
     } catch (e) {
@@ -114,6 +116,7 @@ class DataSession extends ChangeNotifier {
   }
 
   Future<void> _detachAll() async {
+    await CustomerService.instance.detach();
     await StaffService.instance.detach();
     StaffSession.instance.reset();
     FacilityContext.instance.detach();
@@ -156,6 +159,8 @@ class DataSession extends ChangeNotifier {
     final db = FacilityContext.instance.isAttached
         ? FacilityContext.instance.db
         : null;
+    // 共用端末: 次にログインする人へ前の担当者を引き継がない（端末の保存も消す）
+    await StaffSession.instance.clearSelection();
     await stop();
     var cleared = true;
     if (db != null) {

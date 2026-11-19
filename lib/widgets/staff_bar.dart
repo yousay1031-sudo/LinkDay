@@ -1,3 +1,5 @@
+import 'dart:async';
+
 // Flutter 3.50 で material.dart 全体が非推奨（既存画面と同じ読み込みに揃える）
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
@@ -58,10 +60,42 @@ class StaffBarScope extends StatelessWidget {
   }
 }
 
-class StaffBar extends StatelessWidget {
+class StaffBar extends StatefulWidget {
   const StaffBar({super.key, required this.navigatorKey});
 
   final GlobalKey<NavigatorState> navigatorKey;
+
+  @override
+  State<StaffBar> createState() => _StaffBarState();
+}
+
+class _StaffBarState extends State<StaffBar> {
+  Timer? _midnight;
+
+  @override
+  void initState() {
+    super.initState();
+    _armMidnight();
+  }
+
+  /// 開いたまま 0 時をまたいだら担当者を未選択に戻す（前日の担当者のまま記録しない）
+  void _armMidnight() {
+    _midnight?.cancel();
+    final now = StaffSession.instance.clock();
+    final next = DateTime(now.year, now.month, now.day + 1);
+    _midnight = Timer(next.difference(now) + const Duration(seconds: 1), () {
+      StaffSession.instance.checkDay();
+      if (mounted) _armMidnight();
+    });
+  }
+
+  @override
+  void dispose() {
+    _midnight?.cancel();
+    super.dispose();
+  }
+
+  GlobalKey<NavigatorState> get navigatorKey => widget.navigatorKey;
 
   @override
   Widget build(BuildContext context) {

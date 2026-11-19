@@ -10,9 +10,10 @@ import 'package:hive/hive.dart';
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/screens/customer_import_screen.dart';
 import 'package:linkday_app/services/customer_import_service.dart';
-import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
 import 'package:linkday_app/theme/app_theme.dart';
+
+import '../support/fake_backend.dart';
 
 /// Day 15 ブラウザ検証で見つかった表示崩れの回帰テスト
 /// 1. 390px 幅で下部「キャンセル」ボタンが 2 行に折り返していた
@@ -29,7 +30,7 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('linkday_import_layout_');
     Hive.init(tmp.path);
     if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(CustomerAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
   });
 
   tearDownAll(() async {

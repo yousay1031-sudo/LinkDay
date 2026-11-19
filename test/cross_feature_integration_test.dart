@@ -13,6 +13,8 @@ import 'package:linkday_app/services/monthly_usage_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/utils/week_util.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 10: 機能間の相互作用（クロス機能）統合テスト
 ///
 /// Day 1〜9 の機能は個別にはテスト済みだが、「インポート → 位置解決 →
@@ -37,7 +39,7 @@ void main() {
     Hive.registerAdapter(DailySlotAdapter());
     Hive.registerAdapter(ScheduleStatusAdapter());
     Hive.registerAdapter(ScheduleEntryAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
     await AttendanceService.instance.init();
     await WeeklyScheduleService.instance.init();
   });
@@ -48,7 +50,7 @@ void main() {
   });
 
   setUp(() async {
-    await Hive.box<Customer>('customers').clear();
+    await FakeBackend.resetCustomers();
     await Hive.box<AttendanceRecord>('attendance_records').clear();
   });
 

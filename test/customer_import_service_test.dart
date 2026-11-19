@@ -10,6 +10,8 @@ import 'package:linkday_app/services/customer_export_service.dart';
 import 'package:linkday_app/services/customer_import_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
 
+import 'support/fake_backend.dart';
+
 /// Day 7: 顧客インポート（Excel/CSV）サービステスト
 ///
 /// 正本: test/fixtures/linkday_customer_sample.xlsx（顧客マスタ A1:P11）
@@ -22,7 +24,7 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('linkday_import_');
     Hive.init(tmp.path);
     Hive.registerAdapter(CustomerAdapter());
-    await CustomerService.instance.init();
+    await FakeBackend.attachWithStaff();
   });
 
   tearDownAll(() async {
@@ -31,8 +33,7 @@ void main() {
   });
 
   Future<void> clearBox() async {
-    final box = Hive.box<Customer>('customers');
-    await box.clear();
+    await FakeBackend.resetCustomers();
   }
 
   // ── 値パーサ ────────────────────────────────────────────────
