@@ -51,6 +51,16 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadCounts();
     CustomerService.instance.addListener(_onCustomersChanged);
+    AttendanceService.instance.addListener(_onAttendanceChanged);
+  }
+
+  /// 出席が変わった（他の端末を含む）: 未処理の件数を開き直さずに更新する
+  void _onAttendanceChanged() {
+    if (!mounted) return;
+    setState(() {
+      _attendanceUnprocessedCount =
+          AttendanceService.instance.getUnprocessedCount(DateTime.now());
+    });
   }
 
   Timer? _usageDebounce;
@@ -58,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     CustomerService.instance.removeListener(_onCustomersChanged);
+    AttendanceService.instance.removeListener(_onAttendanceChanged);
     _usageDebounce?.cancel();
     super.dispose();
   }

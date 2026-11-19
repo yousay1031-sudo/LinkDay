@@ -13,7 +13,8 @@ tool/verify/stop_emulators.sh
 ```
 - 顧客は Firestore（段階3〜）。`seed.mjs` がエミュレータへ投入する（在籍中 60 名 + 在籍終了 1 名。無いときだけ作る）。
 - 週間利用計画も Firestore（段階4〜）。`seed.mjs` が先週・今週・来週を投入する（週の目印 `scheduleWeeks` が既にある週は触らない）。
-- 出席・設定・送迎計画・通知履歴はまだ Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（同じ顧客 ID・氏名・今日の予定を使う。`lib/verify/verify_seed.dart` と `tool/verify/dummy_customers.mjs`・`dummy_schedule.mjs` は同じ規則で作るので、片方を変えたらもう片方も変える）。
+- 出席も Firestore（段階5〜）。`seed.mjs` が直近 5 日の実績と今日の混在（予定/在室/退室済/欠席）を投入する（`tool/verify/dummy_attendance.mjs`）。
+- 設定・送迎計画・通知履歴はまだ Hive(IndexedDB) のため、検証アプリが起動時に自分で投入する（同じ顧客 ID・氏名・今日の予定を使う。`lib/verify/verify_seed.dart` と `tool/verify/dummy_customers.mjs`・`dummy_schedule.mjs` は同じ規則で作るので、片方を変えたらもう片方も変える）。
 - 外部公開しない: エミュレータ・配信とも 127.0.0.1 のみ。共有プレビューが必要なときだけ `BIND=0.0.0.0` と GetServiceUrl を使う。
 
 ### Firestore 移行（作業中）で増えたもの
@@ -21,7 +22,9 @@ tool/verify/stop_emulators.sh
 - ログイン後は所属事業所を確認してからホーム画面に進む。所属が無いアカウントは「事業所に登録されていません」画面になる。
 - 画面上部の帯で担当者を選ぶ（端末ごとに保存）。未選択で記録を変える操作をすると選択を求められる。
 - ルールのテスト: `tool/verify/test_rules.sh`（起動中のエミュレータに別プロジェクトID `demo-linkday-rules` で接続。検証データは消さない）。
-- まだ Firestore に移していない種類（出席・設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
+  - 最初に `tool/verify/check_rules_loaded.mjs` が、いまの firestore.rules を検証用（demo-linkday）とテスト用（demo-linkday-rules）の両方に読み込ませ、検証用で「所属は読める／所属なし・未認証は拒否／担当者の記録がない書き込みは拒否」を実際に試す。古いルールのままなら NG で止まり、ルールテストは実行しない。判定だけ試すときは `--check-only`。
+- まだ Firestore に移していない種類（設定・送迎・通知履歴）は、従来どおり Hive 側をアプリが起動時に投入する。
+- 出席（段階5）: `attendance/{YYYY-MM-DD}_{顧客ID}`。入室・退室・欠席・欠席の取り消しはトランザクションで、通信できないときは記録せず「再試行」を出す。画面に出ていた状態と保存先の状態が違えば記録しない（他の端末の操作を逆戻りさせない）。
 - 週間利用計画（段階4）: マス 1 件 = `scheduleEntries/{YYYY-MM-DD}_{顧客ID}`、週の目印 = `scheduleWeeks/{weekKey}`。まだ無い週は画面を開いたときに「自動」で作られる（2 台が同時に開いても 1 回だけ）。
 - 顧客（段階3）: `seed.mjs --data empty` で顧客なし（空の状態）。`?verify_data=empty` は Hive 側だけを空にする（顧客は消えない）。
 - 担当者の選択は「選んだ日」と一緒に端末へ保存する。日付が変わると未選択に戻り、ログアウトすると端末の保存も消える。
@@ -56,6 +59,7 @@ tool/verify/stop_emulators.sh
   - `www.gstatic.com/flutter-canvaskit/…`（画面描画エンジン）
   - `www.gstatic.com/firebasejs/11.9.1/…`（Firebase JS SDK）
   - `fonts.gstatic.com/s/roboto/…`、`fonts.gstatic.com/s/notosansjp/…`（フォント）
+- **要判断（2026-11-19、段階5で検出）**: 通信が切れている間、Firestore JS SDK が `www.google.com/images/cleardot.gif?zx=<乱数>` を取りに行く（接続確認とみられる）。ヘッダーは Referer（127.0.0.1:8765）と User-Agent だけで、資格情報・データ・Cookie は無い。検証ではすべて「送信されず（ERR_INTERNET_DISCONNECTED）」。認められた宛先に加えるかは未決定。
 - **エミュレータのルールが古いまま残ることがある**（2026-11-19、原因未確定）: ブランチの書き直し（rebase）で firestore.rules が一時的に古い版へ戻った後、エミュレータは「Rules updated」と表示しながら、main の旧ルール（業務データ全面拒否）のまま判定していた。ファイルを touch しても直らず、`stop_emulators.sh` → `start_emulators.sh` → `seed.mjs` で解消した。ログイン後に「データを読み込めませんでした」になり、エラーに `false for 'get' @ L129` のような旧ルールの行番号が出たら、エミュレータを起動し直す。
 - **Service Worker 初回再読込**: 新規プロファイルの初回訪問で canvaskit.js / canvaskit.wasm / main.dart.js が `ERR_ABORTED` になり再読込される。記録のみ。根拠なく削除・改修しない。
 - **テンキー「−」例外**: keydown key='-' code='NumpadSubtract' location=3 で `TypeError: Cannot read properties of null (reading 'toString')`。スタック: main.dart.js:45055 ← 44913 ← 45075 ← 51302 ← 45009 ← 45021 ← 44943/44949 ← 7433。エンジン側マップ `[45,null,null,8589935149]` が関与する可能性はあるが、原因は未確定でエンジン不具合とは断定しない。

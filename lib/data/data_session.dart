@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../services/attendance_service.dart';
 import '../services/customer_service.dart';
 import '../services/staff_service.dart';
 import '../services/weekly_schedule_service.dart';
@@ -87,6 +88,7 @@ class DataSession extends ChangeNotifier {
       await StaffSession.instance.restore(fid);
       await CustomerService.instance.attach();
       await WeeklyScheduleService.instance.attach();
+      await AttendanceService.instance.attach();
       if (_uid != uid) return;
       _status = DataSessionStatus.ready;
     } catch (e) {
@@ -118,6 +120,7 @@ class DataSession extends ChangeNotifier {
   }
 
   Future<void> _detachAll() async {
+    await AttendanceService.instance.detach();
     await WeeklyScheduleService.instance.detach();
     await CustomerService.instance.detach();
     await StaffService.instance.detach();

@@ -3,7 +3,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_settings.dart';
-import '../models/attendance_record.dart';
 import '../models/customer.dart';
 import '../models/notification_log.dart';
 import '../models/transport_plan.dart';
@@ -14,9 +13,9 @@ import 'verify_config.dart';
 
 /// 検証構成限定のダミーデータ投入（Hive 側）。
 ///
-/// 【Firestore 移行中】顧客（段階3）と週間利用計画（段階4）は Firestore へ移した。
-/// それらの投入は tool/verify/seed.mjs（[buildCustomer] / [buildDemoWeeks] と同じ規則・
-/// 同じ ID）。ここはまだ Hive にある種類（出席・設定・送迎・通知履歴）だけを投入する。
+/// 【Firestore 移行中】顧客（段階3）・週間利用計画（段階4）・出席（段階5）は Firestore へ
+/// 移した。それらの投入は tool/verify/seed.mjs（[buildCustomer] / [buildDemoWeeks] と
+/// 同じ規則・同じ ID）。ここはまだ Hive にある種類（設定・送迎・通知履歴）だけを投入する。
 ///
 /// 【なぜアプリ内で投入するか】
 /// 顧客・出席・週間計画・設定・送迎計画・通知履歴は **ブラウザの IndexedDB（Hive）**
@@ -78,7 +77,6 @@ class VerifySeed {
 
   /// 検証用 Hive ボックスを全消去（設定は既定値に戻る）
   static Future<void> clearAll() async {
-    await Hive.box<AttendanceRecord>('attendance_records').clear();
     await Hive.box<TransportVehicleRoute>('transport_plans').clear();
     await Hive.box<NotificationLog>('notification_logs').clear();
     await Hive.box<AppSettings>('app_settings').put('settings', AppSettings());
@@ -277,67 +275,9 @@ class VerifySeed {
     final weeks = buildDemoWeeks(today, active);
     final slot = weeks[1].slotForDate(today)!;
 
-    // ── 出席: 直近 5 日の実績 + 今日の混在 ──
-    final attBox = Hive.box<AttendanceRecord>('attendance_records');
-    for (var back = 1; back <= 5; back++) {
-      final d = today.subtract(Duration(days: back));
-      final key = AttendanceRecord.makeDateKey(d);
-      var i = 0;
-      for (final c in active) {
-        if (!c.regularDays.contains(d.weekday)) continue;
-        final absent = i % 9 == 4;
-        final r = AttendanceRecord(
-          customerId: c.id,
-          customerName: c.name,
-          dateKey: key,
-          status: absent ? AttendanceStatus.absent : AttendanceStatus.departed,
-          plannedStartTime: DateTime(d.year, d.month, d.day, 10),
-          plannedEndTime: DateTime(d.year, d.month, d.day, 16),
-          checkInTime: absent ? null : DateTime(d.year, d.month, d.day, 10, i % 20),
-          checkOutTime: absent ? null : DateTime(d.year, d.month, d.day, 16, i % 25),
-          absenceReason: absent ? '体調不良' : null,
-        );
-        await attBox.put(r.boxKey, r);
-        i++;
-      }
-    }
-    // 今日: 予定 / 在室 / 退室済 / 欠席 を混在
-    final todayKey = AttendanceRecord.makeDateKey(today);
-    var k = 0;
-    for (final e in slot.entries) {
-      if (e.status == ScheduleStatus.cancelled) continue;
-      final n = int.tryParse(e.customerId.substring(idPrefix.length)) ?? 0;
-      AttendanceStatus st;
-      if (todayAbsentNumbers.contains(n)) {
-        st = AttendanceStatus.absent;
-      } else {
-        st = [
-          AttendanceStatus.scheduled,
-          AttendanceStatus.present,
-          AttendanceStatus.departed,
-          AttendanceStatus.scheduled,
-        ][k % 4];
-      }
-      k++;
-      final inT = DateTime(today.year, today.month, today.day, 10, k % 30);
-      final r = AttendanceRecord(
-        customerId: e.customerId,
-        customerName: e.customerName,
-        dateKey: todayKey,
-        status: st,
-        plannedStartTime: DateTime(today.year, today.month, today.day, 10),
-        plannedEndTime: DateTime(today.year, today.month, today.day, 16),
-        checkInTime: (st == AttendanceStatus.present ||
-                st == AttendanceStatus.departed)
-            ? inT
-            : null,
-        checkOutTime: st == AttendanceStatus.departed
-            ? DateTime(today.year, today.month, today.day, 15, 30)
-            : null,
-        absenceReason: st == AttendanceStatus.absent ? '家庭の都合' : null,
-      );
-      await attBox.put(r.boxKey, r);
-    }
+    // ── 出席 ──
+    // 出席は Firestore（段階5〜）。tool/verify/dummy_attendance.mjs が
+    // 直近 5 日の実績と今日の混在（予定/在室/退室済/欠席）を投入する。
 
     // ── 送迎計画（今日: お迎え 3 台 / お送り 2 台）──
     final tpBox = Hive.box<TransportVehicleRoute>('transport_plans');

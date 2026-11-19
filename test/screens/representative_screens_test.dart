@@ -112,7 +112,7 @@ void main() {
     reg(TransportTypeAdapter());
     await FakeBackend.attachWithStaff();
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
-    await AttendanceService.instance.init();
+    // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     await SettingsService.instance.init();
     await TransportPlanService.instance.init();
     SlotService.instance.remoteEnabled = false;
@@ -153,7 +153,7 @@ void main() {
 
     Future<void> seed(_T t) => t.runAsync(() async {
           final att = AttendanceService.instance;
-          await Hive.box<AttendanceRecord>('attendance_records').clear();
+          await FakeBackend.resetAttendance();
           await FakeBackend.resetCustomers();
           // 日付ごとに別の名前（旧日付の取り違え検出用）
           for (final n in ['今日 一郎', '今日 二郎']) {
@@ -281,15 +281,17 @@ void main() {
       await _ms(t, 600);
 
       gates[keyOf(_monday)] = Completer<void>();
-      final box = Hive.box<AttendanceRecord>('attendance_records');
-      final genKey = '${CustomerService.instance.getAllCustomers().first.id}_${keyOf(_monday)}';
-      expect(box.containsKey(genKey), isFalse);
+      // 出席は Firestore（端末内の記録で確かめる。旧: Hive の box.containsKey）
+      final genId = CustomerService.instance.getAllCustomers().first.id;
+      bool generated() =>
+          AttendanceService.instance.getRecord(genId, _monday) != null;
+      expect(generated(), isFalse);
 
       // A=月曜（保存後に保留）→ すぐ B=日曜へ切替
       unawaited(st(t).debugSelectDate(_monday) as Future<void>);
       await t.pump();
       await _real(t); // 月曜側の保存（Hive 実 I/O）を完了させる
-      expect(box.containsKey(genKey), isTrue,
+      expect(generated(), isTrue,
           reason: '表示結果を捨てる前に、必要な保存は完了している');
 
       await (st(t).debugSelectDate(_sunday) as Future<void>);
@@ -302,7 +304,7 @@ void main() {
       expect(find.text('本日の利用予定者はいません'), findsOneWidget);
       expect(find.text('月曜 花子'), findsNothing);
       expect(find.text('月曜 生成'), findsNothing);
-      expect(box.containsKey(genKey), isTrue, reason: '生成済みレコードは残る');
+      expect(generated(), isTrue, reason: '生成済みレコードは残る');
       await _unmount(t);
     });
   });

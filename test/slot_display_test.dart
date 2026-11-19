@@ -75,7 +75,7 @@ void main() {
     reg(11, NotificationLogAdapter());
     reg(12, NotificationStatusAdapter());
     await FakeBackend.attachWithStaff();
-    await AttendanceService.instance.init();
+    // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     await SettingsService.instance.init();
     await VacancyNotificationService.instance.init(remoteEnabled: false);
@@ -314,7 +314,7 @@ void main() {
 
     setUp(() async {
       await FakeBackend.resetCustomers();
-      await Hive.box<AttendanceRecord>('attendance_records').clear();
+      await FakeBackend.resetAttendance();
       await FakeBackend.resetSchedules();
       for (final (id, name) in [('absent1', '山田 太郎'), ('taker1', '佐藤 花子')]) {
         await CustomerService.instance.addCustomer(Customer(

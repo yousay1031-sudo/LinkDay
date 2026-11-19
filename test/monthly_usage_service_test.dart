@@ -45,7 +45,7 @@ void main() {
       Hive.registerAdapter(ScheduleEntryAdapter());
     }
     await FakeBackend.attachWithStaff();
-    await AttendanceService.instance.init();
+    // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
   });
 
@@ -56,7 +56,7 @@ void main() {
 
   setUp(() async {
     await FakeBackend.resetCustomers();
-    await Hive.box<AttendanceRecord>('attendance_records').clear();
+    await FakeBackend.resetAttendance();
     await FakeBackend.resetSchedules();
   });
 

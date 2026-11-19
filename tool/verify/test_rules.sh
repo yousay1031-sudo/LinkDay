@@ -10,6 +10,9 @@ if ! curl -s -m 2 http://127.0.0.1:8080/ | grep -q Ok; then
   echo "Firestore エミュレータ(127.0.0.1:8080)が起動していません。tool/verify/start_emulators.sh を先に実行してください" >&2
   exit 1
 fi
+# 最初に、エミュレータが「いまの firestore.rules」で判定していることを確かめる
+# （古いルールのまま合格と出ないように。失敗したらテストを実行しない）
+node tool/verify/check_rules_loaded.mjs
 cd test_rules
 if [ ! -d node_modules ]; then
   npm ci --no-audit --no-fund

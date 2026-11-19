@@ -7,6 +7,7 @@ import '../verify/verify_config.dart';
 import '../verify/verify_faults.dart';
 import '../models/slot_info.dart';
 import '../services/attendance_pdf_service.dart';
+import '../data/staff_session.dart';
 import '../services/attendance_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/slot_service.dart';
@@ -76,10 +77,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _slotTick = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted && _slots.isNotEmpty) setState(() {});
     });
+    AttendanceService.instance.addListener(_onRecordsChanged);
+  }
+
+  /// 他の端末（またはこの端末の別の画面）で出席が変わった: 開き直さずに反映する
+  void _onRecordsChanged() {
+    if (!mounted || _isLoading || _loadError != null) return;
+    _loadRecords();
   }
 
   @override
   void dispose() {
+    AttendanceService.instance.removeListener(_onRecordsChanged);
     _loadSeq.invalidate();
     _slotSub?.cancel();
     _slotTick?.cancel();
@@ -259,13 +268,73 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  // ── 記録を変える操作の共通処理（段階5） ──────────────────────
+
+  /// 入室・退室・欠席・欠席の取り消しを実行する。成功したら true。
+  ///
+  /// - 担当者の選択を閉じた → 何もしない
+  /// - 他の端末で先に状態が変わっていた → 記録せず、最新の状態を表示して知らせる
+  ///   （状態を逆戻りさせない）
+  /// - 通信できない → 記録せず、理由と「再試行」を出す（オフラインでは記録しない）
+  Future<bool> _guardRecordOp(
+    String what,
+    Future<void> Function() op, {
+    required VoidCallback retry,
+  }) async {
+    try {
+      await op();
+      return true;
+    } on StaffNotSelectedException {
+      return false;
+    } on AttendanceConflictException catch (e) {
+      _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            key: const Key('attendanceConflictSnack'),
+            content: Text('$what：${e.message}'),
+            backgroundColor: AppColors.warning,
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return false;
+    } on AttendanceUnavailableException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            key: const Key('attendanceOfflineSnack'),
+            content: Text('$what：${e.message}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 10),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: '再試行',
+              textColor: Colors.white,
+              onPressed: retry,
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   // ── 入室処理 ────────────────────────────────────────────────
 
   Future<void> _markPresent(AttendanceRecord record) async {
-    await AttendanceService.instance.markPresent(
-      customerId: record.customerId,
-      date: _selectedDate,
+    final ok = await _guardRecordOp(
+      '${record.customerName} さんの入室',
+      () => AttendanceService.instance.markPresent(
+        customerId: record.customerId,
+        date: _selectedDate,
+        // 操作を始めたときに画面に出ていた状態（他の端末の操作を逆戻りさせない）
+        expected: record.status,
+      ),
+      retry: () => _markPresent(record),
     );
+    if (!ok) return;
     _reload();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -325,11 +394,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   // ── 退室処理 ────────────────────────────────────────────────
 
   Future<void> _markDeparted(AttendanceRecord record) async {
-    final result = await AttendanceService.instance.markDeparted(
-      customerId: record.customerId,
-      date: _selectedDate,
+    var result = DepartResult.success;
+    final ok = await _guardRecordOp(
+      '${record.customerName} さんの退室',
+      () async {
+        result = await AttendanceService.instance.markDeparted(
+          customerId: record.customerId,
+          date: _selectedDate,
+          expected: record.status,
+        );
+      },
+      retry: () => _markDeparted(record),
     );
-    if (!mounted) return;
+    if (!ok || !mounted) return;
 
     if (result == DepartResult.noCheckIn) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -483,17 +560,28 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ? (freeText.isEmpty ? 'その他' : freeText)
         : (selectedReason ?? kAbsenceReasons.first);
 
-    // 既存の出席保存ロジックには手を入れない（Day 11 は後続フックのみ追加）
-    await AttendanceService.instance.markAbsent(
-      customerId: record.customerId,
-      date: _selectedDate,
-      reason: finalReason,
+    await _saveAbsent(record, finalReason);
+  }
+
+  /// 欠席を保存し、成功したときだけ空き枠通知フローを起動する
+  Future<void> _saveAbsent(AttendanceRecord record, String reason) async {
+    final ok = await _guardRecordOp(
+      '${record.customerName} さんの欠席',
+      () => AttendanceService.instance.markAbsent(
+        customerId: record.customerId,
+        date: _selectedDate,
+        reason: reason,
+        // 欠席理由を選んでいる間に他の端末で入室された場合は記録しない
+        expected: record.status,
+      ),
+      retry: () => _saveAbsent(record, reason),
     );
-    if (!mounted) return;
+    if (!ok || !mounted) return;
 
     _reload();
 
-    // Day 11: 欠席保存成功後に空き枠通知フローを起動する
+    // Day 11: 欠席保存成功後に空き枠通知フローを起動する（動きは従来どおり。
+    // 送信は職員が確認して「送信する」を押したときだけ。検証構成では送信しない）
     await _runVacancyNotificationFlow(record);
   }
 
@@ -660,10 +748,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (confirmed != true) return;
     if (!mounted) return;
 
-    await AttendanceService.instance.resetAbsent(
-      customerId: record.customerId,
-      date: _selectedDate,
+    final ok = await _guardRecordOp(
+      '${record.customerName} さんの欠席の取り消し',
+      () => AttendanceService.instance.resetAbsent(
+        customerId: record.customerId,
+        date: _selectedDate,
+      ),
+      retry: () => _doResetAbsent(record),
     );
+    if (!ok) return;
     _reload();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -675,25 +768,47 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
+  /// 欠席の取り消し（確認ダイアログの後・再試行から）
+  Future<void> _doResetAbsent(AttendanceRecord record) async {
+    final ok = await _guardRecordOp(
+      '${record.customerName} さんの欠席の取り消し',
+      () => AttendanceService.instance.resetAbsent(
+        customerId: record.customerId,
+        date: _selectedDate,
+      ),
+      retry: () => _doResetAbsent(record),
+    );
+    if (!ok) return;
+    _reload();
+  }
+
   // ── 時刻修正 ────────────────────────────────────────────────
 
   Future<void> _onCheckInChanged(
       AttendanceRecord record, DateTime newTime) async {
-    await AttendanceService.instance.updateCheckInTime(
-      customerId: record.customerId,
-      date: _selectedDate,
-      newTime: newTime,
-    );
+    try {
+      await AttendanceService.instance.updateCheckInTime(
+        customerId: record.customerId,
+        date: _selectedDate,
+        newTime: newTime,
+      );
+    } on StaffNotSelectedException {
+      return;
+    }
     _reload();
   }
 
   Future<void> _onCheckOutChanged(
       AttendanceRecord record, DateTime newTime) async {
-    await AttendanceService.instance.updateCheckOutTime(
-      customerId: record.customerId,
-      date: _selectedDate,
-      newTime: newTime,
-    );
+    try {
+      await AttendanceService.instance.updateCheckOutTime(
+        customerId: record.customerId,
+        date: _selectedDate,
+        newTime: newTime,
+      );
+    } on StaffNotSelectedException {
+      return;
+    }
     _reload();
   }
 

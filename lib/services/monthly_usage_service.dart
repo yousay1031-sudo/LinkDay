@@ -350,10 +350,13 @@ class MonthlyUsageService {
   }
 
   /// 対象月の週間利用計画（Firestore）を読み込んでから集計する
-  Future<void> _ensureMonthLoaded(DateTime yearMonth) {
+  Future<void> _ensureMonthLoaded(DateTime yearMonth) async {
     final start = monthStart(yearMonth);
     final end = DateTime(start.year, start.month, lastDayOfMonth(start));
-    return WeeklyScheduleService.instance.ensureRange(start, end);
+    await Future.wait([
+      WeeklyScheduleService.instance.ensureRange(start, end),
+      AttendanceService.instance.ensureMonth(start),
+    ]);
   }
 
   /// Customer.currentMonthUsedDays（キャッシュ）と実績の差異を検出・補正する

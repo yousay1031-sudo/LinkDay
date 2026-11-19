@@ -69,7 +69,7 @@ void main() {
       Hive.registerAdapter(NotificationStatusAdapter());
     }
     await FakeBackend.attachWithStaff();
-    await AttendanceService.instance.init();
+    // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
     await SettingsService.instance.init();
     await svc.init(remoteEnabled: false);
@@ -82,7 +82,7 @@ void main() {
 
   setUp(() async {
     await FakeBackend.resetCustomers();
-    await Hive.box<AttendanceRecord>('attendance_records').clear();
+    await FakeBackend.resetAttendance();
     await FakeBackend.resetSchedules();
     await Hive.box<NotificationLog>('notification_logs').clear();
     svc.setRemoteEnabled(false);

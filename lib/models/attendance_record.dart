@@ -1,5 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+
+import '../data/audit.dart' show readTimestamp;
+import '../data/fs_values.dart';
 
 part 'attendance_record.g.dart';
 
@@ -68,6 +72,13 @@ class AttendanceRecord extends HiveObject {
   @HiveField(12)
   DateTime updatedAt;
 
+  // ── Firestore のみ（段階5）: 入室・退室を記録した担当者 ─────────────
+  // 後で作る業務日誌で「誰が入室を記録したか」を出すため（設計判断点⑥）。
+  String? checkInByStaffId;
+  String? checkInByStaffName;
+  String? checkOutByStaffId;
+  String? checkOutByStaffName;
+
   // ── 将来 daily_report 連携ポイント ──────────────────────────
   // TODO(daily_report): レポート生成時、日付とcustomerIdで検索して
   //   checkInTime/checkOutTime/absenceReason を参照してください。
@@ -88,6 +99,10 @@ class AttendanceRecord extends HiveObject {
     this.note,
     DateTime? createdAt,
     DateTime? updatedAt,
+    this.checkInByStaffId,
+    this.checkInByStaffName,
+    this.checkOutByStaffId,
+    this.checkOutByStaffName,
   })  : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
@@ -161,6 +176,10 @@ class AttendanceRecord extends HiveObject {
       note: note ?? this.note,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
+      checkInByStaffId: clearCheckIn ? null : checkInByStaffId,
+      checkInByStaffName: clearCheckIn ? null : checkInByStaffName,
+      checkOutByStaffId: clearCheckOut ? null : checkOutByStaffId,
+      checkOutByStaffName: clearCheckOut ? null : checkOutByStaffName,
     );
   }
 
@@ -174,6 +193,59 @@ class AttendanceRecord extends HiveObject {
 
   /// Hive ボックスのキー（customerId + dateKey の組み合わせ）
   String get boxKey => '${customerId}_$dateKey';
+
+  // ── Firestore ─────────────────────────────────────────────────
+  // facilities/{facilityId}/attendance/{YYYY-MM-DD}_{customerId}
+  // ドキュメント ID が日付と顧客から決まるので、同じ日・同じ顧客の記録は 1 件だけ。
+
+  static String docIdOf(String dateKey, String customerId) =>
+      '${dateKey}_$customerId';
+
+  String get docId => docIdOf(dateKey, customerId);
+
+  static Timestamp? _ts(DateTime? d) => d == null ? null : Timestamp.fromDate(d);
+
+  /// 業務データの項目（記録欄・作成日時を除く）
+  Map<String, dynamic> toFirestoreData() => {
+        'date': dateKey,
+        'customerId': customerId,
+        'customerName': customerName,
+        'status': status.name,
+        'plannedStartTime': _ts(plannedStartTime),
+        'plannedEndTime': _ts(plannedEndTime),
+        'checkInTime': _ts(checkInTime),
+        'checkOutTime': _ts(checkOutTime),
+        'absenceReason': absenceReason,
+        'note': note,
+        'checkInByStaffId': checkInByStaffId,
+        'checkInByStaffName': checkInByStaffName,
+        'checkOutByStaffId': checkOutByStaffId,
+        'checkOutByStaffName': checkOutByStaffName,
+      };
+
+  factory AttendanceRecord.fromFirestore(String id, Map<String, dynamic> d) =>
+      AttendanceRecord(
+        id: id,
+        customerId: readString(d['customerId']) ?? '',
+        customerName: readString(d['customerName']) ?? '',
+        dateKey: readString(d['date']) ?? '',
+        status: AttendanceStatus.values.firstWhere(
+          (s) => s.name == d['status'],
+          orElse: () => AttendanceStatus.scheduled,
+        ),
+        plannedStartTime: readTimestamp(d['plannedStartTime']),
+        plannedEndTime: readTimestamp(d['plannedEndTime']),
+        checkInTime: readTimestamp(d['checkInTime']),
+        checkOutTime: readTimestamp(d['checkOutTime']),
+        absenceReason: readString(d['absenceReason']),
+        note: readString(d['note']),
+        createdAt: readTimestamp(d['createdAt']),
+        updatedAt: readTimestamp(d['updatedAt']),
+        checkInByStaffId: readString(d['checkInByStaffId']),
+        checkInByStaffName: readString(d['checkInByStaffName']),
+        checkOutByStaffId: readString(d['checkOutByStaffId']),
+        checkOutByStaffName: readString(d['checkOutByStaffName']),
+      );
 }
 
 /// AttendanceService.getTodaySummary() の戻り値

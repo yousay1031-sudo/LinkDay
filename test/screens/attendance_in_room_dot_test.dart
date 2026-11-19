@@ -75,7 +75,7 @@ void main() {
     reg(AppSettingsAdapter());
     await FakeBackend.attachWithStaff();
     // 週間利用計画は Firestore（FakeBackend.attachWithStaff で接続済み）
-    await AttendanceService.instance.init();
+    // 出席は Firestore（FakeBackend.attachWithStaff で接続済み）
     await SettingsService.instance.init();
     SlotService.instance.remoteEnabled = false;
   });
@@ -98,7 +98,7 @@ void main() {
     addTearDown(() => t.binding.setSurfaceSize(null));
     final key = AttendanceRecord.makeDateKey(DateTime.now());
     await t.runAsync(() async {
-      await Hive.box<AttendanceRecord>('attendance_records').clear();
+      await FakeBackend.resetAttendance();
       await FakeBackend.resetCustomers();
       await AttendanceService.instance.upsertRecord(AttendanceRecord(
           customerId: 'c-in',

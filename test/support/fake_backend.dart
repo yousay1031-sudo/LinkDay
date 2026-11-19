@@ -5,6 +5,7 @@ import 'package:linkday_app/data/facility_context.dart';
 import 'package:linkday_app/data/staff_session.dart';
 import 'package:linkday_app/models/customer.dart';
 import 'package:linkday_app/models/staff.dart';
+import 'package:linkday_app/services/attendance_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/staff_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
@@ -42,6 +43,7 @@ class FakeBackend {
     StaffSession.instance.debugSet(facilityId: facilityId, staffId: currentStaffId);
     await CustomerService.instance.attach();
     await WeeklyScheduleService.instance.attach();
+    await AttendanceService.instance.attach();
     _current = backend;
     return backend;
   }
@@ -92,6 +94,25 @@ class FakeBackend {
     }
     await WeeklyScheduleService.instance.detach();
     await WeeklyScheduleService.instance.attach();
+  }
+
+  /// 出席の記録を空にする（旧 Hive の attendance_records.clear() の代わり）
+  static Future<void> resetAttendance() async {
+    final b = current;
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final col = b.db.collection(FsPaths.facilities).doc(b.facilityId).collection(FsPaths.attendance);
+    for (final d in (await col.get()).docs) {
+      await d.reference.delete();
+    }
+    await AttendanceService.instance.detach();
+    await AttendanceService.instance.attach();
+  }
+
+  /// 購読をやり直して、保存先から出席を読み直す
+  static Future<void> reloadAttendance() async {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await AttendanceService.instance.detach();
+    await AttendanceService.instance.attach();
   }
 
   /// 購読をやり直して、保存先から週間利用計画を読み直す

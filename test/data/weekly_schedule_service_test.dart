@@ -186,6 +186,23 @@ void main() {
     expect(stored['2026-11-23_c1']!['status'], 'cancelled');
   });
 
+  test('通信できずに週を作れないときは、仮の案を出さず例外を返す（再試行で作れる）', () async {
+    _svc.debugCreateError =
+        FirebaseException(plugin: 'cloud_firestore', code: 'unavailable');
+    addTearDown(() => _svc.debugCreateError = null);
+    await expectLater(_svc.getOrCreateSchedule(_monday, _customers),
+        throwsA(isA<WeekUnavailableException>()
+            .having((e) => e.message, 'message', contains('通信できない'))));
+    expect(_svc.getScheduleByWeekKey(_weekKey), isNull, reason: '仮の案を持たない');
+    expect(_svc.getEntriesForDate(_monday), isEmpty);
+    expect(await _storedEntries(), isEmpty);
+
+    _svc.debugCreateError = null; // 通信が戻った → 再試行
+    final w = await _svc.getOrCreateSchedule(_monday, _customers);
+    await _settle();
+    expect(w.dailySlots.expand((s) => s.entries).length, 4);
+  });
+
   test('別の端末の変更で変更通知が出る（画面を開き直さずに反映）', () async {
     await _svc.getOrCreateSchedule(_monday, _customers);
     await _settle();

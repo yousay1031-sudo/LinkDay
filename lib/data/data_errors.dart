@@ -36,6 +36,20 @@ class DataErrors {
       e is FirebaseException &&
       (e.code == 'unavailable' || e.code == 'deadline-exceeded');
 
+  /// トランザクションの失敗のうち「通信が戻れば再試行で通る」ものか。
+  ///
+  /// Web 版ではトランザクションの失敗が FirebaseException にならず
+  /// 「Dart exception thrown from converted Future」の形で届く（2026-11-19 検証環境で確認）。
+  /// 種類が分からない失敗は、通信できない場合と同じく再試行を案内する。
+  /// 権限がない等の FirebaseException は、そのまま理由を出す。
+  static bool isRetryable(Object e) {
+    if (e is TimeoutException) return true;
+    if (e is FirebaseException) {
+      return isOffline(e) || e.code == 'aborted' || e.code == 'failed-precondition';
+    }
+    return true;
+  }
+
   /// 利用者向けの短い説明
   static String describe(Object e) {
     if (e is FirebaseException) {

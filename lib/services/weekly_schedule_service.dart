@@ -277,12 +277,12 @@ class WeeklyScheduleService extends ChangeNotifier {
 
     bool created;
     try {
-      created = await _createWithTransaction(fresh);
+      created = await _createWithTransaction(fresh)
+          .timeout(const Duration(seconds: 10));
     } catch (e) {
-      // 通信できない等: 画面には作成案を出す（編集すると保存される）
-      DataErrors.report('週間利用計画を作成できませんでした（${DataErrors.describe(e)}）');
-      _weeks[weekKey] = fresh;
-      return fresh;
+      // 通信できない等: 仮の案は出さない（通信が戻ってから作る。画面は再試行を出す）
+      debugPrint('[WeeklyScheduleService] create $weekKey failed: $e');
+      throw WeekUnavailableException(weekKey, e);
     }
     if (created) {
       // 送った内容を基準にする（折り返しの通知では画面を作り直さない）
@@ -301,7 +301,13 @@ class WeeklyScheduleService extends ChangeNotifier {
     return _weeks[weekKey] ?? fresh;
   }
 
+  /// テスト用: 週の自動作成の前にこの例外を投げる（通信できない状態の再現）
+  @visibleForTesting
+  Object? debugCreateError;
+
   Future<bool> _createWithTransaction(WeeklySchedule fresh) async {
+    final err = debugCreateError;
+    if (err != null) throw err;
     final markerRef = _weeksCol.doc(fresh.weekKey);
     final docs = _docsOf(fresh);
     final stamp = AuditStamp.auto.toCreateFields();
@@ -765,6 +771,20 @@ class WeeklyScheduleService extends ChangeNotifier {
       dailySlots: slots,
     );
   }
+}
+
+/// まだ無い週を作れなかった（通信できない等）。画面は理由と再試行を出す。
+class WeekUnavailableException implements Exception {
+  WeekUnavailableException(this.weekKey, this.cause);
+  final String weekKey;
+  final Object cause;
+
+  String get message => DataErrors.isRetryable(cause)
+      ? '通信できないため、この週の計画を作成できません。\n接続を確かめて再試行してください。'
+      : 'この週の計画を作成できませんでした（${DataErrors.describe(cause)}）。\n再試行してください。';
+
+  @override
+  String toString() => message;
 }
 
 /// 購読中の 1 週分の状態

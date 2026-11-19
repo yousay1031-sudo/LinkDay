@@ -144,6 +144,14 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
         _schedule = schedule;
         _loading = false;
       });
+    } on WeekUnavailableException catch (e) {
+      // まだ無い週を通信できずに作れない: 仮の案は出さず、理由と再試行を出す
+      if (!mounted || !_loadSeq.isCurrent(token)) return;
+      setState(() {
+        _schedule = null;
+        _errorMessage = e.message;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted || !_loadSeq.isCurrent(token)) return;
       setState(() {

@@ -13,6 +13,7 @@
 import { assertLocalEmulator, PROJECT, HOST, AUTH_PORT, FS_PORT, loadOrCreateCredentials } from './guard.mjs';
 import { buildCustomer, CUSTOMER_COUNT, toFsFields } from './dummy_customers.mjs';
 import { buildDemoWeeks, scheduleDocs } from './dummy_schedule.mjs';
+import { buildDemoAttendance } from './dummy_attendance.mjs';
 
 await assertLocalEmulator();
 
@@ -204,6 +205,23 @@ if (dataMode === 'empty') {
   console.log(
     `[seed] 週間利用計画: 新規 ${markers.length - skipWeeks.size} 週・${todo.length} マス / 既存 ${skipWeeks.size} 週（触らない）`
   );
+
+  // ── 出席（Firestore 移行ステップ5）: 直近 5 日の実績 + 今日の混在。無いときだけ作る
+  const att = buildDemoAttendance(now);
+  let attCreated = 0;
+  for (let i = 0; i < att.length; i += 25) {
+    const res = await Promise.all(
+      att.slice(i, i + 25).map((r) =>
+        createIfMissing(
+          `facilities/${FACILITY_ID}/attendance/${r.id}`,
+          { ...toFsFields(r.data), ...audit },
+          `出席 ${r.id} の投入`
+        )
+      )
+    );
+    attCreated += res.filter(Boolean).length;
+  }
+  console.log(`[seed] 出席: 新規 ${attCreated} 件 / 既存 ${att.length - attCreated} 件`);
 }
 
 // ── Firestore: slots（出席画面の「LINE応募」表示用）

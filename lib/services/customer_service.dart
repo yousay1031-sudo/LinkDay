@@ -117,9 +117,7 @@ class CustomerService extends ChangeNotifier {
         _base[id] = normalized;
         final current = _cache[id];
         if (sameData && current != null) {
-          // 自分の書き込みの折り返し（内容は同じ）: 日時だけ反映し、画面は更新しない
-          current.updatedAt = c.updatedAt;
-          current.deactivatedAt = c.deactivatedAt;
+          // 自分の書き込みの折り返し（内容は同じ）: 何も変えず、画面も更新しない
           continue;
         }
         _cache[id] = c;
