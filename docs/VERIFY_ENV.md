@@ -40,7 +40,13 @@ tool/verify/stop_emulators.sh
 | Firestore側エラー | Firestore エミュレータを停止 |
 
 ## 4. 既知の問題（原因未確定のものは断定しない）
-- **【要対応・安全装置の穴】再読み込みで認証が本番エンドポイントへ出る**（2026-11-19 確認。main=bc3ca0c の検証ビルドでも再現）: ログイン済みでページを再読み込みすると、保存済みセッションの確認 `accounts:lookup` が `identitytoolkit.googleapis.com`（本物の Google）へ送られ 400 で失敗し、ログアウト状態になる。その後に再ログインすると `accounts:signInWithPassword` も同じく本物へ送られる（検証用のダミー資格情報）。`demo-api-key` のため受理はされないが「ループバックのみ」の前提に反する。Firebase.initializeApp 時に Auth が保存済みセッションの確認を始め、その後の useAuthEmulator が効かないためと見られる（原因は未確定）。**対応方針が決まるまで、検証構成では再読み込み後に再ログインしない。**
+- **【対応済み 2026-11-19】再読み込みで認証が本番エンドポイントへ出ていた**（main=bc3ca0c の検証ビルドでも再現していた）
+  - 原因: Web 版 firebase_auth は `Firebase.initializeApp` の中で Auth を作り、保存済みログインの確認 `accounts:lookup` をその場で始める。`useAuthEmulator` はその後なので、ログイン状態が保存されていると最初の通信が本物の `identitytoolkit.googleapis.com` へ出て、エミュレータ設定は黙って失敗する（プラグインがエラーを握りつぶす）。以後のログイン `accounts:signInWithPassword` も本物宛てになる。Google が 400 を返すとログアウト状態になり再ログインも失敗する。Google へ届かない環境（通信失敗）ではログイン状態が保たれたままホーム画面に進み、ログアウト→再読み込み→再ログインはエミュレータで成功する（保存済みログインが無い起動ではエミュレータ設定が間に合うため）。
+  - 対策（検証構成のみ）: `lib/verify/verify_auth_guard*.dart`。`Firebase.initializeApp` の前に、Auth の JS モジュールが `window.firebase_auth` に入る時点で `initializeAuth` を包み、Auth を作った直後（通信前）に `connectAuthEmulator` を呼ぶ。仕掛けられない・働かなかった場合は起動失敗画面で止める（本番へフォールバックしない）。通常ビルドの出力は変わらない（main.dart.js が同一であることを確認）。
+  - 確認方法: Chrome の通信記録（CDP。ページ・Service Worker・WebSocket）で、ログイン→担当者選択→再読み込み→ログアウト→再読み込み→再ログイン→再読み込みの間 `*.googleapis.com` 宛て 0 件。
+  - 修正前に、検証用のダミー資格情報が本物の宛先へ送られた可能性があるため作り直した（下記の手順）。
+- **ダミー資格情報の作り直し**: `rm ~/.linkday_verify/credentials.json && node tool/verify/seed.mjs --reset`（エミュレータ内の Auth/Firestore を全消去し、新しいパスワードで作り直す。値は表示しない）。
+- **静的ファイルの外部取得（未対応・記録のみ）**: 検証ビルドも通常ビルドと同じく、画面描画エンジン（`www.gstatic.com/flutter-canvaskit`）、Firebase JS SDK（`www.gstatic.com/firebasejs`）、フォント（`fonts.gstatic.com` の Roboto / Noto Sans JP）を Google の配信元から取得する。資格情報やデータは含まないが、ループバック以外への通信ではある。
 - **Service Worker 初回再読込**: 新規プロファイルの初回訪問で canvaskit.js / canvaskit.wasm / main.dart.js が `ERR_ABORTED` になり再読込される。記録のみ。根拠なく削除・改修しない。
 - **テンキー「−」例外**: keydown key='-' code='NumpadSubtract' location=3 で `TypeError: Cannot read properties of null (reading 'toString')`。スタック: main.dart.js:45055 ← 44913 ← 45075 ← 51302 ← 45009 ← 45021 ← 44943/44949 ← 7433。エンジン側マップ `[45,null,null,8589935149]` が関与する可能性はあるが、原因は未確定でエンジン不具合とは断定しない。
 - **setSelectionRange InvalidStateError**: ログイン画面の email 入力中にコンソールへ出る（main.dart.js:49400）。原因未確認。画面操作は継続できた。

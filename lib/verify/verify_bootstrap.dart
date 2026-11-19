@@ -4,9 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'verify_auth_guard.dart';
 import 'verify_config.dart';
 
 /// 検証構成の Firebase 初期化と、起動前の到達確認。
@@ -57,7 +59,18 @@ class VerifyBootstrap {
   }
 
   /// demo プロジェクトで Firebase を初期化し、Auth / Firestore をエミュレータへ向ける。
-  static Future<void> initFirebase() async {
+  ///
+  /// 問題があればメッセージを返す（呼び出し側は [VerifyFailureApp] を出して止める）。
+  static Future<String?> initFirebase() async {
+    const host = VerifyConfig.emulatorHost;
+    // Web: Auth が作られた直後（保存済みログインの確認通信より前）にエミュレータへ
+    // 向ける。initializeApp の後の useAuthEmulator だけでは間に合わない
+    // （verify_auth_guard.dart の説明を参照）。
+    if (kIsWeb &&
+        !VerifyAuthGuard.install('http://$host:${VerifyConfig.authPort}')) {
+      return 'Auth をエミュレータへ向ける準備ができませんでした。\n'
+          '本番へは接続しません（フォールバックなし）。';
+    }
     await Firebase.initializeApp(
       options: const FirebaseOptions(
         apiKey: 'demo-api-key',
@@ -67,7 +80,10 @@ class VerifyBootstrap {
         authDomain: '${VerifyConfig.projectId}.firebaseapp.com',
       ),
     );
-    const host = VerifyConfig.emulatorHost;
+    if (kIsWeb && !VerifyAuthGuard.connected) {
+      return 'Auth をエミュレータへ向けられませんでした（初期化の順序を確認できません）。\n'
+          '本番へは接続しません（フォールバックなし）。';
+    }
     await FirebaseAuth.instance.useAuthEmulator(host, VerifyConfig.authPort);
     FirebaseFirestore.instance
         .useFirestoreEmulator(host, VerifyConfig.firestorePort);
@@ -78,6 +94,7 @@ class VerifyBootstrap {
     debugPrint('[Verify] Firebase = ${VerifyConfig.projectId} / '
         'auth=$host:${VerifyConfig.authPort} '
         'firestore=$host:${VerifyConfig.firestorePort}');
+    return null;
   }
 }
 

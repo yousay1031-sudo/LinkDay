@@ -70,7 +70,11 @@ Future<void> main() async {
   // ── 3. Firebase 初期化
   if (VerifyConfig.enabled) {
     // 検証構成: demo プロジェクト + Auth/Firestore エミュレータ（docs/VERIFY_ENV.md）
-    await VerifyBootstrap.initFirebase();
+    final problem = await VerifyBootstrap.initFirebase();
+    if (problem != null) {
+      runApp(VerifyFailureApp(message: problem));
+      return;
+    }
   } else {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
