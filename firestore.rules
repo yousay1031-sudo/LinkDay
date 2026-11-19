@@ -4,18 +4,28 @@ rules_version = '2';
 // LinkDay Firestore セキュリティルール
 //
 // 【前提】
-// - 業務データ（顧客 / 出席 / 送迎）は端末内 Hive に保持し Firestore に置かない。
-//   Firestore は LINE 連携に必要な最小限のコレクションのみ保持する。
+// - 業務データ（顧客・週間利用計画・出席・送迎計画・設定・職員）は
+//   facilities/{facilityId}/ の下に置き、複数の端末で共有する。
+//   児童の個人情報を含むため、その事業所に所属するアカウントだけが読み書きできる。
+// - 所属は最上位の memberships/{uid}（{ facilityId }）で表す。
+//   クライアントは自分の分を読めるだけで、作成・変更はできない
+//   （登録は管理者が Firebase コンソール／Admin SDK で行う）。
+// - LINE 連携用のコレクション（line_linkage 以下）は従来どおり。
 // - Cloud Functions は Admin SDK で動作するため、本ルールを
 //   バイパスする（lineWebhook は未認証の LINE からの呼び出しだが、
 //   x-line-signature の HMAC 検証を通過したものだけが Firestore に書く）。
-// - クライアント（Flutter Web）は Firebase Auth でサインイン済みの
-//   職員アカウントのみ read/write できる。
+// - ログインは事業所アカウントを共用端末で使う。誰が操作したかは
+//   各ドキュメントの updatedByStaffId / updatedByStaffName に残す
+//   （本人確認ではない。アプリ内で担当者を選ぶ方式）。
 //
 // 【原則】
 // 1. 未認証（request.auth == null）は全コレクション全面拒否。
-// 2. 明示的に許可したコレクション以外は全面拒否（最後の match /{document=**}）。
-// 3. notification_logs はクライアントから作成・更新・削除できない
+// 2. facilities/{facilityId}/** は「ログイン済み かつ その事業所に所属」の場合だけ。
+//    「ログイン済みなら誰でも」にはしない。他事業所のデータは読めない。
+// 3. 業務データの作成・更新には updatedAt（サーバー時刻）と担当者名を必須にする。
+// 4. 顧客・職員は削除しない（在籍終了 = isActive:false）。削除は拒否する。
+// 5. 明示的に許可したコレクション以外は全面拒否（最後の match /{document=**}）。
+// 6. notification_logs はクライアントから作成・更新・削除できない
 //    （冪等キーを兼ねるため、改変されると二重送信が可能になる）。
 //    作成は Cloud Functions（Admin SDK）のみ。クライアントは read のみ。
 // ============================================================
@@ -36,6 +46,54 @@ service cloud.firestore {
     // LINE userId: 'U' + 32 桁 16 進英数字
     function isValidLineUserId(id) {
       return id is string && id.matches('^U[0-9a-fA-F]{32}$');
+    }
+
+    // その事業所に所属するアカウントか（memberships/{uid}.facilityId で判定）
+    function isMemberOf(facilityId) {
+      let m = /databases/$(database)/documents/memberships/$(request.auth.uid);
+      return isSignedIn() && exists(m) && get(m).data.facilityId == facilityId;
+    }
+
+    // 業務データの書き込みに担当者の記録が付いているか
+    function hasAudit() {
+      let d = request.resource.data;
+      return d.updatedAt == request.time
+        && d.updatedByStaffName is string
+        && d.updatedByStaffName.size() > 0
+        && (d.updatedByStaffId == null || d.updatedByStaffId is string);
+    }
+
+    // ── memberships: アカウント → 事業所の所属 ─────────────
+    // doc id = Firebase Auth の uid
+    // 自分の所属だけ読める。クライアントからは作成・変更・削除できない
+    // （書き換えられると他事業所のデータを読めてしまうため）。
+    match /memberships/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+
+    // ── facilities: 事業所と業務データ ───────────────────────
+    match /facilities/{facilityId} {
+      // 事業所ドキュメント自体は管理者が作る（クライアントは読むだけ）
+      allow read: if isMemberOf(facilityId);
+      allow create, update, delete: if false;
+
+      // customers / scheduleEntries / scheduleWeeks / attendance /
+      // transportRoutes / settings / staff と、後のステップで追加するもの
+      match /{collection}/{docId} {
+        allow read: if isMemberOf(facilityId);
+        allow create, update: if isMemberOf(facilityId) && hasAudit();
+        // 顧客・職員は削除しない（在籍終了で扱う）
+        allow delete: if isMemberOf(facilityId)
+          && !(collection in ['customers', 'staff']);
+      }
+
+      // さらに下の階層（後のステップ用）も所属アカウントだけ。
+      // 注意: {rest=**} は 0 階層にも一致するため、{sub} を挟んで
+      // 「少なくとも 1 階層深い」パスだけに限定する（上の条件を素通りさせない）。
+      match /{collection}/{docId}/{sub}/{rest=**} {
+        allow read, write: if isMemberOf(facilityId);
+      }
     }
 
     // ── line_linkage: 連携済み（customerId ↔ lineUserId）──

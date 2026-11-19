@@ -1,0 +1,16 @@
+{
+  "name": "linkday-rules-test",
+  "private": true,
+  "description": "firestore.rules のテスト（ローカルの Firestore エミュレータ上で実行。本番には接続しない）",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 rules.test.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0"
+  }
+}
