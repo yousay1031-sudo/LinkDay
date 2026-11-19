@@ -79,6 +79,7 @@ tool/verify/stop_emulators.sh
   - `www.gstatic.com/flutter-canvaskit/…`（画面描画エンジン）
   - `www.gstatic.com/firebasejs/11.9.1/…`（Firebase JS SDK）
   - `fonts.gstatic.com/s/roboto/…`、`fonts.gstatic.com/s/notosansjp/…`（フォント）
+  - `fonts.gstatic.com/s/notosanssc/…`、`…/notosanstc/…`、`…/notosanshk/…`、`…/notosanskr/…`（2026-11-19 承認）: 中国語（簡体・繁体・香港）・韓国語の Noto フォント。通信が切れていて日本語フォントを読めない間に、描画エンジンが代わりのフォントとして取りに行くとみられる（推測）。日本語フォントと同じ配信元の静的なフォントファイルで、**資格情報・データを含まない**（URL はフォントのファイルを指すだけ）。
   - `www.google.com/images/cleardot.gif?zx=<乱数>`（2026-11-19 承認）: **通信が切れている間だけ**出る Firestore JS SDK の接続確認とみられる取得。ヘッダーは Referer（`http://127.0.0.1:8765/`）・User-Agent・sec-ch-ua だけで、**資格情報・データ・Cookie は含まない**。検証ではブラウザがオフラインのため送信されなかった（ERR_INTERNET_DISCONNECTED）。
 - **エミュレータのルールが古いまま残ることがある**（2026-11-19、原因未確定）: ブランチの書き直し（rebase）で firestore.rules が一時的に古い版へ戻った後、エミュレータは「Rules updated」と表示しながら、main の旧ルール（業務データ全面拒否）のまま判定していた。ファイルを touch しても直らず、`stop_emulators.sh` → `start_emulators.sh` → `seed.mjs` で解消した。ログイン後に「データを読み込めませんでした」になり、エラーに `false for 'get' @ L129` のような旧ルールの行番号が出たら、エミュレータを起動し直す。
 - **Service Worker 初回再読込**: 新規プロファイルの初回訪問で canvaskit.js / canvaskit.wasm / main.dart.js が `ERR_ABORTED` になり再読込される。記録のみ。根拠なく削除・改修しない。
