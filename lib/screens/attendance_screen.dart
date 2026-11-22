@@ -29,6 +29,15 @@ import '../widgets/vacancy_notice_dialog.dart';
 import 'notification_history_screen.dart';
 import '../widgets/motion/app_spinner.dart';
 
+/// 出席管理の画面タイトル。今日を開いているときは「当日出席管理」、
+/// それ以外の日は「出席管理」（日付は下の行に出す）。
+String attendanceTitleFor(DateTime selected, DateTime now) {
+  final isToday = selected.year == now.year &&
+      selected.month == now.month &&
+      selected.day == now.day;
+  return isToday ? '当日出席管理' : '出席管理';
+}
+
 /// 当日出席管理画面
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key, this.afterEnsureHook});
@@ -916,7 +925,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('当日出席管理'),
+          Text(attendanceTitleFor(_selectedDate, DateTime.now())),
           Text(
             dateStr,
             style: const TextStyle(fontSize: 12, color: Colors.white70),
