@@ -22,9 +22,6 @@ class InactiveCustomersScreen extends StatefulWidget {
 }
 
 class _InactiveCustomersScreenState extends State<InactiveCustomersScreen> {
-  /// 在籍に戻した顧客がいれば true（前の画面で一覧を読み直す）
-  bool _changed = false;
-
   Future<void> _restore(Customer c) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -54,7 +51,6 @@ class _InactiveCustomersScreenState extends State<InactiveCustomersScreen> {
     } on StaffNotSelectedException {
       return; // 担当者の選択を閉じた → 何もしない
     }
-    _changed = true;
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('「${c.name}」を在籍に戻しました')),
@@ -63,65 +59,62 @@ class _InactiveCustomersScreenState extends State<InactiveCustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope<bool>(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop(_changed);
-      },
-      child: Scaffold(
-        appBar: AppBar(title: const Text('在籍終了の顧客')),
-        body: ListenableBuilder(
-          listenable: CustomerService.instance,
-          builder: (context, _) {
-            final list = CustomerService.instance.getInactiveCustomers();
-            if (list.isEmpty) {
-              return const EmptyState(
-                icon: Icons.inventory_2_outlined,
-                title: '在籍終了の顧客はいません',
-                message: '顧客の編集画面から「在籍終了」にした顧客がここに表示されます',
-              );
-            }
-            final fmt = DateFormat('yyyy/MM/dd');
-            return ListView.separated(
-              key: const Key('inactiveCustomerList'),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-              itemCount: list.length + 1,
-              separatorBuilder: (_, i) =>
-                  i == 0 ? const SizedBox(height: 8) : const Divider(height: 1),
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return Text(
-                    '在籍終了 ${list.length} 名。「在籍に戻す」で顧客一覧に戻せます。',
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.onSurfaceVariant),
-                  );
-                }
-                final c = list[i - 1];
-                final ended = c.deactivatedAt;
-                return ListTile(
-                  key: Key('inactiveCustomer_${c.id}'),
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person_off_outlined),
-                  title: Text(c.name),
-                  subtitle: Text([
-                    c.nameKana,
-                    if (ended != null) '在籍終了 ${fmt.format(ended)}',
-                  ].join('　')),
-                  trailing: OutlinedButton.icon(
-                    key: Key('restoreCustomer_${c.id}'),
-                    // テーマの minimumSize は幅が無限（Size.fromHeight）のため、
-                    // ListTile の trailing では有限の最小幅を指定する
-                    style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(120, 40)),
-                    onPressed: () => _restore(c),
-                    icon: const Icon(Icons.undo, size: 18),
-                    label: const Text('在籍に戻す'),
-                  ),
-                );
-              },
+    // 戻ったときの一覧の読み直しは不要（顧客管理の画面が変更通知で読み直す）。
+    // 以前は PopScope で結果を返していたが、戻った後に顧客管理の「戻る」が
+    // 効かなくなる不具合があったためやめた。
+    return Scaffold(
+      appBar: AppBar(title: const Text('在籍終了の顧客')),
+      body: ListenableBuilder(
+        listenable: CustomerService.instance,
+        builder: (context, _) {
+          final list = CustomerService.instance.getInactiveCustomers();
+          if (list.isEmpty) {
+            return const EmptyState(
+              icon: Icons.inventory_2_outlined,
+              title: '在籍終了の顧客はいません',
+              message: '顧客の編集画面から「在籍終了」にした顧客がここに表示されます',
             );
-          },
-        ),
+          }
+          final fmt = DateFormat('yyyy/MM/dd');
+          return ListView.separated(
+            key: const Key('inactiveCustomerList'),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            itemCount: list.length + 1,
+            separatorBuilder: (_, i) =>
+                i == 0 ? const SizedBox(height: 8) : const Divider(height: 1),
+            itemBuilder: (context, i) {
+              if (i == 0) {
+                return Text(
+                  '在籍終了 ${list.length} 名。「在籍に戻す」で顧客一覧に戻せます。',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.onSurfaceVariant),
+                );
+              }
+              final c = list[i - 1];
+              final ended = c.deactivatedAt;
+              return ListTile(
+                key: Key('inactiveCustomer_${c.id}'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.person_off_outlined),
+                title: Text(c.name),
+                subtitle: Text([
+                  c.nameKana,
+                  if (ended != null) '在籍終了 ${fmt.format(ended)}',
+                ].join('　')),
+                trailing: OutlinedButton.icon(
+                  key: Key('restoreCustomer_${c.id}'),
+                  // テーマの minimumSize は幅が無限（Size.fromHeight）のため、
+                  // ListTile の trailing では有限の最小幅を指定する
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(120, 40)),
+                  onPressed: () => _restore(c),
+                  icon: const Icon(Icons.undo, size: 18),
+                  label: const Text('在籍に戻す'),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

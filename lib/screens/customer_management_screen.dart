@@ -232,14 +232,14 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
   }
 
   Future<void> _navigateToInactive() async {
-    final changed = await Navigator.push<bool>(
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(builder: (_) => const InactiveCustomersScreen()),
     );
-    if (changed == true) {
-      _loadCustomers();
-      _loadUsage();
-    }
+    if (!mounted) return;
+    // 在籍に戻した顧客がいれば変更通知でも読み直されるが、念のため戻ったときにも読み直す
+    _loadCustomers();
+    _loadUsage(reconcile: false);
   }
 
   Future<void> _navigateToImport() async {
