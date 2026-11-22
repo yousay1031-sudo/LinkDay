@@ -230,19 +230,23 @@ class AttendanceSummary {
   final int presentCount;
   final int departedCount;
   final int absentCount;
-  final int capacity; // 定員（現時点では固定値）
+  /// 定員（設定の「1日の最大利用者数」。AttendanceService.getTodaySummary が渡す）
+  final int capacity;
 
   const AttendanceSummary({
     required this.scheduledCount,
     required this.presentCount,
     required this.departedCount,
     required this.absentCount,
-    this.capacity = 10,
+    required this.capacity,
   });
 
-  /// 空き枠 = 定員 - (予定 + 在室中)
-  int get availableSlots =>
-      (capacity - scheduledCount - presentCount).clamp(0, capacity);
+  /// 空き枠 = 定員 - (予定 + 在室中)。0 未満にはしない
+  /// （定員が 0 以下の値で保存されていても例外にせず 0 を返す）
+  int get availableSlots {
+    final left = capacity - scheduledCount - presentCount;
+    return left < 0 ? 0 : left;
+  }
 
   int get totalActive => scheduledCount + presentCount + departedCount;
 }

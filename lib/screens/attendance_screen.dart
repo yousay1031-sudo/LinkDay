@@ -9,6 +9,7 @@ import '../models/slot_info.dart';
 import '../services/attendance_pdf_service.dart';
 import '../data/staff_session.dart';
 import '../services/attendance_service.dart';
+import '../services/settings_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/slot_service.dart';
 import '../services/customer_service.dart';
@@ -90,6 +91,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (mounted && _slots.isNotEmpty) setState(() {});
     });
     AttendanceService.instance.addListener(_onRecordsChanged);
+    // 設定の「1日の最大利用者数」が変わったら空き枠の表示を直す
+    SettingsService.instance.addListener(_onSettingsChanged);
+  }
+
+  void _onSettingsChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 他の端末（またはこの端末の別の画面）で出席が変わった: 開き直さずに反映する
@@ -101,6 +108,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void dispose() {
     AttendanceService.instance.removeListener(_onRecordsChanged);
+    SettingsService.instance.removeListener(_onSettingsChanged);
     _loadSeq.invalidate();
     _slotSub?.cancel();
     _slotTick?.cancel();

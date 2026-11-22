@@ -10,6 +10,7 @@ import '../data/fs_values.dart';
 import '../data/staff_session.dart';
 import '../models/attendance_record.dart';
 import '../models/customer.dart';
+import 'settings_service.dart';
 import 'weekly_schedule_service.dart';
 
 /// 欠席ダイアログ選択肢
@@ -643,6 +644,9 @@ class AttendanceService extends ChangeNotifier {
       presentCount: present,
       departedCount: departed,
       absentCount: absent,
+      // 定員は設定の「1日の最大利用者数」。設定が未入力（設定の文書や項目が無い）
+      // ときは AppSettings の既定値 10 名になる（設定画面に表示される値と同じ）
+      capacity: SettingsService.instance.getSettings().maxStudentsPerDay,
     );
   }
 
