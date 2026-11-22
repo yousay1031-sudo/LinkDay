@@ -20,6 +20,13 @@ import '../widgets/skeletons/screen_skeletons.dart';
 import '../widgets/draggable_marker_map.dart';
 import '../widgets/motion/app_spinner.dart';
 
+/// 設定のアプリ情報に出す Flutter の版。
+/// flutter build / run / test がビルド時に自動で埋める FlutterVersion を使う
+/// （以前は手で書いた「Flutter 3.35.4」のままで、実際の版とずれていた）。
+/// 埋まっていないビルド（独自の組み込み等）では「不明」。
+const String frameworkVersionLabel =
+    'Flutter ${FlutterVersion.version ?? '（不明）'}';
+
 // ════════════════════════════════════════════════════════════════
 // SettingsScreen
 // ════════════════════════════════════════════════════════════════
@@ -1258,7 +1265,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.code, size: 20),
             title: Text('フレームワーク'),
-            trailing: Text('Flutter 3.35.4',
+            // ビルドに使った Flutter の版（flutter build / run が自動で埋める。手で書かない）
+            trailing: Text(frameworkVersionLabel,
                 style: TextStyle(color: AppColors.onSurfaceVariant)),
           ),
         ],
