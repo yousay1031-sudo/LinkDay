@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/pending_echoes.dart';
 import '../data/data_errors.dart';
 import '../data/facility_context.dart';
 import '../data/fs_values.dart';
@@ -41,6 +42,9 @@ class SettingsService extends ChangeNotifier {
 
   /// 最後に保存先と一致していた内容（null = 保存先にまだ無い）
   Map<String, dynamic>? _base;
+
+  /// 送った内容の折り返しのうち、まだ届いていないもの（古い折り返しで戻さないため）
+  final PendingEchoes _echoes = PendingEchoes();
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
   bool _attached = false;
 
@@ -70,11 +74,15 @@ class SettingsService extends ChangeNotifier {
       } else {
         final s = AppSettings.fromFirestore(data);
         final normalized = s.toFirestoreData();
-        final same = _base != null && fsChangedFields(_base, normalized).isEmpty;
-        _base = normalized;
-        if (!same) {
-          _settings = s;
-          if (first.isCompleted) notifyListeners();
+        // 続けて保存したときの、前の保存の折り返し: 画面の内容はもう新しいので戻さない
+        if (!_echoes.isStaleEcho(normalized)) {
+          final same =
+              _base != null && fsChangedFields(_base, normalized).isEmpty;
+          _base = normalized;
+          if (!same) {
+            _settings = s;
+            if (first.isCompleted) notifyListeners();
+          }
         }
       }
       if (!first.isCompleted) {
@@ -95,6 +103,7 @@ class SettingsService extends ChangeNotifier {
     await _sub?.cancel();
     _sub = null;
     _base = null;
+    _echoes.clear();
     _settings = AppSettings();
     _attached = false;
   }
@@ -113,6 +122,7 @@ class SettingsService extends ChangeNotifier {
     _base = data;
     notifyListeners();
     if (!FacilityContext.instance.isAttached) return;
+    _echoes.add(data);
     DataErrors.send(
       _doc.set(
         {...(isNew ? data : changed), ...(isNew ? stamp.toCreateFields() : stamp.toFields())},
