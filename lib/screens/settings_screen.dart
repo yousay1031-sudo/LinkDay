@@ -11,6 +11,7 @@ import '../data/staff_session.dart';
 import '../services/settings_service.dart';
 import '../services/staff_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/unfocus_offscreen_text_field.dart';
 import '../widgets/staff_minimal_section.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/skeleton_gate.dart';
@@ -102,7 +103,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 入力欄の内容が [s] と同じか（保存していない入力が無いか）
   bool _formMatches(AppSettings s) {
     final names = _vehicleNameCtrls.map((c) => c.text.trim()).toList();
-    final caps = _vehicleCapCtrls.map((c) => int.tryParse(c.text) ?? 5).toList();
+    final caps =
+        _vehicleCapCtrls.map((c) => int.tryParse(c.text) ?? 5).toList();
     return _facilityNameCtrl.text.trim() == s.facilityName &&
         _facilityAddressCtrl.text.trim() == s.facilityAddress &&
         (int.tryParse(_maxStudentsCtrl.text) ?? -1) == s.maxStudentsPerDay &&
@@ -121,7 +123,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_formMatches(latest)) {
       // この画面で保存した内容の反映など: 入力欄はそのまま
       _applied = latest;
-      setState(() => _slotTtlHours = AppSettings.clampSlotTtlHours(latest.slotTtlHours));
+      setState(() =>
+          _slotTtlHours = AppSettings.clampSlotTtlHours(latest.slotTtlHours));
       return;
     }
     final prev = _applied;
@@ -131,8 +134,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     // 入力中の内容は消さない（保存すると、その項目は入力した内容になる）
-    _showSnack('他の端末で設定が変更されました。保存していない入力があるため、画面には反映していません。',
-        AppColors.warning);
+    _showSnack(
+        '他の端末で設定が変更されました。保存していない入力があるため、画面には反映していません。', AppColors.warning);
   }
 
   /// 担当者の選択を閉じたら保存しない（true = 保存した）
@@ -260,10 +263,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prevSettings = SettingsService.instance.getSettings();
     final addressChanged = prevSettings.facilityAddress != newAddress;
 
-    final saved = await _saveWithStaff(() => SettingsService.instance.updateFacility(
-          _facilityNameCtrl.text.trim(),
-          newAddress,
-        ));
+    final saved =
+        await _saveWithStaff(() => SettingsService.instance.updateFacility(
+              _facilityNameCtrl.text.trim(),
+              newAddress,
+            ));
     if (!saved || !mounted) return;
     _showSnack('事業所情報を保存しました', AppColors.success);
 
@@ -299,19 +303,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final names = _vehicleNameCtrls.map((c) => c.text.trim()).toList();
     final caps =
         _vehicleCapCtrls.map((c) => int.tryParse(c.text) ?? 5).toList();
-    final saved = await _saveWithStaff(
-        () => SettingsService.instance.updateVehicles(_vehicleCount, names, caps));
+    final saved = await _saveWithStaff(() =>
+        SettingsService.instance.updateVehicles(_vehicleCount, names, caps));
     if (!saved || !mounted) return;
     _showSnack('車両設定を保存しました', AppColors.success);
   }
 
   Future<void> _saveOperatingHours() async {
     final maxStudents = int.tryParse(_maxStudentsCtrl.text) ?? 10;
-    final saved = await _saveWithStaff(() => SettingsService.instance.updateOperatingHours(
-          _formatTime(_pickupStart),
-          _formatTime(_dropoffEnd),
-          maxStudents,
-        ));
+    final saved = await _saveWithStaff(
+        () => SettingsService.instance.updateOperatingHours(
+              _formatTime(_pickupStart),
+              _formatTime(_dropoffEnd),
+              maxStudents,
+            ));
     if (!saved || !mounted) return;
     _showSnack('運営時間を保存しました', AppColors.success);
   }
@@ -319,8 +324,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveSlotTtl(int hours) async {
     final v = AppSettings.clampSlotTtlHours(hours);
     setState(() => _slotTtlHours = v);
-    final saved =
-        await _saveWithStaff(() => SettingsService.instance.updateSlotTtlHours(v));
+    final saved = await _saveWithStaff(
+        () => SettingsService.instance.updateSlotTtlHours(v));
     if (!mounted) return;
     if (!saved) {
       // 担当者の選択を閉じた → 表示を保存先の値に戻す
@@ -574,8 +579,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(AppTheme.controlBorderRadius)),
+            borderRadius: BorderRadius.circular(AppTheme.controlBorderRadius)),
       ),
     );
   }
@@ -594,27 +598,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: Form(
           key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildFacilitySection(),
-              const SizedBox(height: 16),
-              // 担当者選択用の職員（ログイン後のみ表示。未接続なら空）
-              const StaffMinimalSection(),
-              if (StaffService.instance.isAttached) const SizedBox(height: 16),
-              _buildVehicleSection(),
-              const SizedBox(height: 16),
-              _buildOperatingHoursSection(),
-              const SizedBox(height: 16),
-              _buildSlotTtlSection(),
-              const SizedBox(height: 16),
-              _buildAdminLineUserIdSection(),
-              const SizedBox(height: 16),
-              _buildApiKeySection(),
-              const SizedBox(height: 16),
-              _buildAppInfoSection(),
-              const SizedBox(height: 32),
-            ],
+          // 入力中の欄が画面の外に出たらフォーカスを外す（ブラウザで読み上げが
+          // 有効なとき、戻ってきた入力欄の保存前の入力が消えるのを防ぐ）
+          child: UnfocusOffscreenTextField(
+            // 一度に全部を作る（ListView は画面外の部品を作り直すため、職員の名前など
+            // 部品が自分で持つ入力欄の保存前の入力が、スクロールで消えていた）
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildFacilitySection(),
+                  const SizedBox(height: 16),
+                  // 担当者選択用の職員（ログイン後のみ表示。未接続なら空）
+                  const StaffMinimalSection(),
+                  if (StaffService.instance.isAttached)
+                    const SizedBox(height: 16),
+                  _buildVehicleSection(),
+                  const SizedBox(height: 16),
+                  _buildOperatingHoursSection(),
+                  const SizedBox(height: 16),
+                  _buildSlotTtlSection(),
+                  const SizedBox(height: 16),
+                  _buildAdminLineUserIdSection(),
+                  const SizedBox(height: 16),
+                  _buildApiKeySection(),
+                  const SizedBox(height: 16),
+                  _buildAppInfoSection(),
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
           ),
         ),
       ),
