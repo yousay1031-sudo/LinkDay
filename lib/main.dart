@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'app_locale.dart';
 import 'data/data_errors.dart';
 import 'data/staff_session.dart';
 import 'firebase_options.dart';
@@ -168,6 +169,11 @@ class _LinkDayAppState extends State<LinkDayApp> {
 
       // ── テーマ
       theme: AppTheme.lightTheme,
+
+      // ── 表示言語: 日本語に固定する（標準部品の文言・日付の書式。lib/app_locale.dart）
+      locale: AppLocale.locale,
+      supportedLocales: AppLocale.supportedLocales,
+      localizationsDelegates: AppLocale.delegates,
 
       // ── Web の prefers-reduced-motion を MediaQuery.disableAnimations に反映
       builder: (context, child) {
