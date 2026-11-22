@@ -851,7 +851,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     final columns = _columnCount(c.maxWidth);
                     return AttendanceSkeleton(
                       columns: columns,
-                      aspectRatio: _aspectRatio(columns),
+                      aspectRatio: _aspectRatio(columns, c.maxWidth),
                       padding: _gridPadding(c.maxWidth),
                     );
                   },
@@ -1088,9 +1088,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           padding: EdgeInsets.all(padding),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: _aspectRatio(columns),
+            crossAxisSpacing: _gridSpacing,
+            mainAxisSpacing: _gridSpacing,
+            mainAxisExtent: _cardExtent,
           ),
           itemCount: _records.length,
           itemBuilder: (ctx, i) => StaggeredItem(
@@ -1113,7 +1113,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  double _aspectRatio(int columns) => columns == 1 ? 2.0 : 1.15;
+  /// カードの縦の長さ（中身に合わせた固定値。幅に比例させると空白が大きくなるため）。
+  /// 氏名 + 時刻（または欠席理由と LINE 応募）+ 提供時間 + ボタン（高さ 48）。
+  static const double _cardExtent = 176;
+  static const double _gridSpacing = 10;
+
+  /// 読み込み中の骨格用（カードと同じ大きさになる比率）
+  double _aspectRatio(int columns, double width) {
+    final cellWidth =
+        (width - _gridPadding(width) * 2 - _gridSpacing * (columns - 1)) / columns;
+    return cellWidth / _cardExtent;
+  }
 
   double _gridPadding(double width) => width >= 900 ? 16.0 : 12.0;
 
@@ -1249,7 +1259,7 @@ class _AttendanceCard extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
 
             // ── 時刻チップ（欠席以外）
             if (record.status != AttendanceStatus.absent) ...[
@@ -1358,7 +1368,7 @@ class _AttendanceCard extends StatelessWidget {
   Widget _busyRow() {
     return const SizedBox(
       key: Key('attendanceCardBusy'),
-      height: 34,
+      height: 48,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1381,7 +1391,7 @@ class _AttendanceCard extends StatelessWidget {
         Expanded(
           flex: 2,
           child: SizedBox(
-            height: 34,
+            height: 48,
             child: AppElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2E7D32),
@@ -1406,7 +1416,7 @@ class _AttendanceCard extends StatelessWidget {
         Expanded(
           flex: 2,
           child: SizedBox(
-            height: 34,
+            height: 48,
             child: AppOutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.error,
@@ -1448,7 +1458,7 @@ class _AttendanceCard extends StatelessWidget {
         Expanded(
           flex: 2,
           child: SizedBox(
-            height: 34,
+            height: 48,
             child: AppElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -1495,7 +1505,7 @@ class _AttendanceCard extends StatelessWidget {
   Widget _absentButtons(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 32,
+      height: 48,
       child: AppOutlinedButton.icon(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.error,

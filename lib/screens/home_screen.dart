@@ -588,11 +588,14 @@ class _HomeScreenState extends State<HomeScreen> {
               child: StaggerScope(
                 child: GridView.builder(
                   padding: EdgeInsets.all(padding),
+                  // 縦の長さは中身に合わせた固定値（幅に比例させると広い画面・狭い画面で
+                  // 空白が大きくなるため）。1 列: アイコン 56 + 上下 12。複数列: アイコン 64 +
+                  // 文字 + 上下 16。どちらも押す場所は 48 以上。
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: columnCount,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: columnCount == 1 ? 3.0 : 1.1,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    mainAxisExtent: columnCount == 1 ? 80 : 132,
                   ),
                   itemCount: _menuItems.length,
                   itemBuilder: (context, index) {
@@ -811,7 +814,7 @@ class _HomeScreenState extends State<HomeScreen> {
           highlightColor: item.color.withValues(alpha: 0.05),
           child: Padding(
             padding: columnCount == 1
-                ? const EdgeInsets.symmetric(horizontal: 20, vertical: 16)
+                ? const EdgeInsets.symmetric(horizontal: 20, vertical: 12)
                 : const EdgeInsets.all(16),
             child: columnCount == 1
                 ? _buildCardContentHorizontal(item)

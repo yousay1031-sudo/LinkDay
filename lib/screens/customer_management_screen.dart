@@ -262,17 +262,16 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
     return 1;
   }
 
-  double _getChildAspectRatio(int cols) {
-    switch (cols) {
-      case 4:
-        return 1.3;
-      case 3:
-        return 1.25;
-      case 2:
-        return 1.2;
-      default:
-        return 2.5;
-    }
+  /// カードの縦の長さ（中身に合わせた固定値。幅に比例させると空白が大きくなるため）
+  /// 1 列（狭い幅）: 横並びのカード。複数列: 縦並びのカード。
+  static double _cardExtent(int cols) => cols == 1 ? 84 : 128;
+
+  static const double _gridSpacing = 10;
+
+  /// 読み込み中の骨格用（カードと同じ大きさになる比率）
+  double _getChildAspectRatio(int cols, double width) {
+    final cellWidth = (width - 32 - _gridSpacing * (cols - 1)) / cols;
+    return cellWidth / _cardExtent(cols);
   }
 
   // ── ビルド ──────────────────────────────────────────────────────────
@@ -296,7 +295,7 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
                   final cols = _getColumnCount(c.maxWidth);
                   return CustomerListSkeleton(
                     columns: cols,
-                    aspectRatio: _getChildAspectRatio(cols),
+                    aspectRatio: _getChildAspectRatio(cols, c.maxWidth),
                   );
                 },
               ),
@@ -507,9 +506,9 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: cols,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: _getChildAspectRatio(cols),
+            crossAxisSpacing: _gridSpacing,
+            mainAxisSpacing: _gridSpacing,
+            mainAxisExtent: _cardExtent(cols),
           ),
           itemCount: _filteredCustomers.length,
           itemBuilder: (context, index) {
@@ -684,8 +683,11 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+              // カードの高さを固定にしたため、狭い幅でも 1 行に収める
               Text(
                 customer.nameKana,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 11,
                   color: AppColors.onSurfaceVariant,
@@ -694,6 +696,8 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
               if (customer.regularDays.isNotEmpty)
                 Text(
                   customer.regularDayLabels.join('・'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.secondary,
