@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_settings.dart';
+import '../services/app_version.dart';
 import '../verify/verify_config.dart';
 import '../verify/verify_faults.dart';
 import '../data/staff_session.dart';
@@ -1248,8 +1249,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.tag, size: 20),
             title: Text('バージョン'),
-            trailing: Text('1.0.0+6',
-                style: TextStyle(color: AppColors.onSurfaceVariant)),
+            // pubspec.yaml の version（ビルド時に作られる version.json から読む。手で書かない）
+            trailing: _AppVersionText(),
           ),
           Divider(height: 1),
           ListTile(
@@ -1397,6 +1398,25 @@ class _ApiKeyStatusBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// アプリの版（pubspec.yaml の version）。読めないときは「（不明）」
+class _AppVersionText extends StatelessWidget {
+  const _AppVersionText();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: AppVersion.load(),
+      builder: (context, snap) => Text(
+        snap.connectionState == ConnectionState.done
+            ? (snap.data ?? '（不明）')
+            : '…',
+        key: const Key('appVersionText'),
+        style: const TextStyle(color: AppColors.onSurfaceVariant),
       ),
     );
   }
