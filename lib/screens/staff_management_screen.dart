@@ -179,8 +179,18 @@ class _StaffCard extends StatelessWidget {
     final sub = [
       if (s.role != null) s.role!.label,
       if (s.workDays.isNotEmpty) '勤務 ${s.workDaysLabel}',
-      if (last != null) '最終ログイン ${DateFormat('M/d HH:mm').format(last)}',
     ].join('　');
+    // 最終ログインは役割・勤務日とは別に出す（同じ行だと、役割の名前が長いと切れて
+    // 見えなくなるため）。複数列は独立した 1 行、1 列は氏名の行の右。
+    final lastText = last == null
+        ? null
+        : Text(
+            '最終ログイン ${DateFormat('M/d HH:mm').format(last)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                fontSize: 11, color: AppColors.onSurfaceVariant),
+          );
     final name = Text(
       s.name,
       maxLines: 1,
@@ -231,7 +241,17 @@ class _StaffCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: [name, subText],
+                        // 1 列（狭い幅）は高さが低いので、最終ログインは氏名の行の右に置く
+                        children: [
+                          Row(children: [
+                            Flexible(child: name),
+                            if (lastText != null) ...[
+                              const SizedBox(width: 8),
+                              lastText,
+                            ],
+                          ]),
+                          subText,
+                        ],
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -270,8 +290,9 @@ class _StaffCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 11, color: AppColors.onSurfaceVariant)),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     subText,
+                    if (lastText != null) lastText,
                     const Spacer(),
                     badges,
                   ],

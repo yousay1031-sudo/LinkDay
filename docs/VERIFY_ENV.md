@@ -4,7 +4,7 @@
 
 ## 1. 起動・データ投入・終了
 ```bash
-tool/verify/start_emulators.sh          # Auth 127.0.0.1:9099 / Firestore 127.0.0.1:8080（Java 17 + firebase-tools）
+tool/verify/start_emulators.sh          # Auth 127.0.0.1:9099 / Firestore 127.0.0.1:8080 / Functions 127.0.0.1:5001（所属の関数だけ。§1.5）
 node tool/verify/seed.mjs               # 認証ユーザー + 事業所・所属・職員・業務データ・slots（認証情報は ~/.linkday_verify/credentials.json、表示しない）
 node tool/verify/seed.mjs --reset       # エミュレータ内の Auth/Firestore を全消去して入れ直す
 node tool/verify/seed.mjs --reset --data empty   # 業務データなし（空の状態の確認用。事業所・所属・職員は入る）
@@ -24,7 +24,9 @@ tool/verify/stop_emulators.sh
 | 出席 | `attendance/{YYYY-MM-DD}_{顧客ID}` | 入室・退室・欠席・欠席の取り消しはトランザクション。通信できなければ記録せず「再試行」 |
 | 送迎計画 | `transportRoutes/{YYYY-MM-DD}_{pickup|dropoff}_{車両番号}` | 停留所の並びはルートの中 |
 | 設定 | `settings/app` | Maps の API キーは置かない（端末の SharedPreferences） |
-| 職員 | `staff/{職員ID}` | 担当者の選択用。在籍終了 = `isActive:false` |
+| 職員 | `staff/{職員ID}` | 担当者の選択用・職員管理。在籍終了 = `isActive:false`。管理者・ログインの許可などは管理者だけが変えられる（ステップ2） |
+| 職員の Google メールアドレス | `staffAccounts/{職員ID}` | 管理者だけが読み書きできる（ステップ2） |
+| ログイン履歴 | `loginHistory/{uid}_{auth_time}` | 追記だけ。読めるのは管理者だけ（ステップ2） |
 
 - 最上位: 事業所 `facilities/demo-facility`、検証ユーザーの所属 `memberships/{uid}`（クライアントからは書けない）。
 - すべての書き込みに `updatedAt`（サーバー時刻）・`updatedByStaffId`・`updatedByStaffName` が付く。自動処理は「自動」、最初の職員登録は「初期設定」、`seed.mjs` の投入は「検証データ」。
@@ -48,11 +50,34 @@ tool/verify/stop_emulators.sh
 - ルールのテスト: `tool/verify/test_rules.sh`（起動中のエミュレータに別プロジェクトID `demo-linkday-rules` で接続。検証データは消さない）。
   - 最初に `tool/verify/check_rules_loaded.mjs` が、いまの firestore.rules を検証用（demo-linkday）とテスト用（demo-linkday-rules）の両方に読み込ませ、検証用で「所属は読める／所属なし・未認証は拒否／担当者の記録がない書き込みは拒否」を実際に試す。古いルールのままなら NG で止まり、ルールテストは実行しない。判定だけ試すときは `--check-only`。
 
+## 1.5 ステップ2（Google ログインと職員管理。2026-11-25 追加）
+
+### Functions エミュレータ（所属の関数だけ・LINE の関数は読み込まない）
+- `start_emulators.sh` は Functions エミュレータ（127.0.0.1:5001）も起動する。読み込むのは `tool/verify/functions_account/`（`functions/lib/account` だけを読み込む入口）で、`firebase.emulator.json` の Functions はこの入口だけを指す。**LINE の関数（sendVacancyNotice / lineWebhook）は検証環境では読み込まれもしない。**
+  - 起動前に `npm --prefix functions run build` を行い、入口から `functions/node_modules` へのリンクを作る（リンクは git に入れない）。`functions/node_modules` が無ければ先に `(cd functions && npm ci --no-audit --no-fund --ignore-scripts)`。
+- **秘密情報を渡さない**: `functions/.secret.local` などがあれば起動を中断する。`LINE_CHANNEL_*` の環境変数も外す。
+- **外部への接続を止めて記録する**: `tool/verify/block_external.cjs` を `NODE_OPTIONS=--require` で読み込ませ、エミュレータの Node の処理（firebase-tools 本体・Functions の実行環境・npm）がループバック以外へ接続しようとしたら止めて `/tmp/linkday_emulator_net.log` に記録する（宛先・ポートだけ。中身は記録しない）。起動時に件数を表示する。合格条件は 0 件。
+  - 2026-11-25 に見つけて止めたもの（送信されていない）: firebase-tools が資格情報を探す GCE の metadata サーバー（169.254.169.254・metadata.google.internal）と、Functions の SDK の最新版を調べる `npm show`（registry.npmjs.org）。`METADATA_SERVER_DETECTION=none` と `npm_config_offline=true` で、試みないようにした。
+- 古い構成（Functions なし）で起動中なら、`start_emulators.sh` は止まるよう案内する。`stop_emulators.sh` → `start_emulators.sh` で起動し直す。
+
+### Google ログインの模擬（本物の Google には接続しない）
+- 検証ビルドのログイン画面で「Googleでログイン」を押すと、「検証用：Google ログインの模擬」の画面が出る。ダミーのアドレスを入れると、Auth エミュレータへ署名のない JSON を Google の ID トークンとして渡してログインする（`AuthService.signInWithEmulatorGoogle`）。本番のポップアップ（`signInWithPopup`）は検証環境では確かめられない（手順書の公開後の確認に入れた）。
+- seed.mjs の職員（アドレスは実在しない `.invalid`）:
+
+| 職員 | 管理者 | ログインの許可 | Google メールアドレス |
+|---|---|---|---|
+| 職員 春子 | はい（最初の管理者） | はい | `haruko@example.invalid` |
+| 職員 夏男 | いいえ | はい | `natsuo@example.invalid` |
+| 職員 秋子 | いいえ | いいえ | なし（共用端末だけを使う） |
+
+- 登録の無いアドレス（例 `stranger@example.invalid`）でログインすると「このアカウントは事業所に登録されていません」になる。
+- 共用端末アカウント（従来のメールアドレスとパスワード）の動きは変えていない。
+
 ## 2. 本番へ誤接続しない仕組み
 - 切替は `--dart-define=LINKDAY_VERIFY=true`（コンパイル時。debug 限定ではなく release/profile 可）。通常ビルドは `const false` で検証コードは tree-shake される。
 - プロジェクトIDは `demo-*` 必須・`linkday-proud` 拒否・ホストはループバックのみ（`VerifyConfig.validate`）。
 - 起動時にエミュレータへ事前疎通。失敗したら `VerifyFailureApp` を出して終了し、本番へはフォールバックしない。
-- 検証構成は `FirebaseOptions` もダミー（apiKey `demo-api-key`）。Functions はループバック宛、LINE 送信は `remoteEnabled:false` で遮断。
+- 検証構成は `FirebaseOptions` もダミー（apiKey `demo-api-key`）。Functions はループバック宛、LINE 送信は `remoteEnabled:false` で遮断。Functions エミュレータは所属の関数だけを読み込み、LINE の関数は読み込まない（§1.5）。
 - seed.mjs は `guard.mjs` で対象を検証し、本番ID・非ループバック・エミュレータ未設定を拒否。
 - 検証ビルド出力は `build/verify_web`。Hosting の `public` は `build/web` なので混在しない。**検証ビルドを `firebase deploy` しないこと。**
 - 画面下に Firebase SDK の「Running in emulator mode」バナーと検証ストリップが出る。

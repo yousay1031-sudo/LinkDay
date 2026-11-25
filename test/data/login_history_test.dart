@@ -125,6 +125,44 @@ void main() {
     expect(AccountSession.instance.isAdmin, isFalse);
   });
 
+  for (final w in const [1280.0, 820.0, 530.0]) {
+    testWidgets('職員管理: 最終ログインの行があっても幅 ${w.toInt()} で崩れない（役割の名前が長くても）',
+        (t) async {
+      await t.binding.setSurfaceSize(Size(w, 900));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      const long = Staff(
+        id: 's-long',
+        name: '職員 長子',
+        kana: 'しょくいん ながこ',
+        role: StaffRole.childDevManager,
+        workDays: [1, 2, 3, 4, 5],
+        canDrive: true,
+        loginEnabled: true,
+        hasGoogleEmail: true,
+      );
+      await t.runAsync(() async {
+        final b = await FakeBackend.attach(
+            staff: const [admin, long],
+            personalStaffId: admin.id,
+            currentStaffId: admin.id);
+        await col(b).doc('x_1').set({
+          'uid': 'x',
+          'kind': 'personal',
+          'staffId': long.id,
+          'staffName': '職員 長子',
+          'at': Timestamp.fromDate(DateTime(2026, 11, 24, 18, 30)),
+          'authTime': 1,
+        });
+        LoginHistoryService.instance.start();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await t.pumpWidget(const MaterialApp(home: StaffManagementScreen()));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+      expect(find.text('最終ログイン 11/24 18:30'), findsOneWidget);
+    });
+  }
+
   testWidgets('職員管理: 管理者には最後のログインと履歴の入口が出る。管理者でなければ出ない', (t) async {
     await t.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => t.binding.setSurfaceSize(null));
