@@ -7,6 +7,7 @@ import '../data/audit.dart';
 import '../data/data_errors.dart';
 import '../data/facility_context.dart';
 import '../data/fs_values.dart';
+import '../data/pending_echoes.dart';
 import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../utils/kana_util.dart';
@@ -83,6 +84,9 @@ class CustomerService extends ChangeNotifier {
   /// 最後に保存先と一致していた内容（差分の基準。画面側の書き換えの影響を受けない）
   final Map<String, Map<String, dynamic>> _base = {};
 
+  /// 自分の書き込みの遅れて届いた折り返し（古い内容）を見分ける
+  final PendingEchoesByDoc _echoes = PendingEchoesByDoc();
+
   bool _attached = false;
   bool get isAttached => _attached;
 
@@ -111,6 +115,8 @@ class CustomerService extends ChangeNotifier {
         if (data == null) continue;
         final c = Customer.fromFirestore(id, data);
         final normalized = c.toFirestoreData();
+        // 自分の古い書き込みの折り返し（この後の書き込みが控えている）: 戻さない
+        if (_echoes.isStaleEcho(id, normalized)) continue;
         final known = _base[id];
         final sameData =
             known != null && fsChangedFields(known, normalized).isEmpty;
@@ -140,6 +146,7 @@ class CustomerService extends ChangeNotifier {
     _sub = null;
     _cache.clear();
     _base.clear();
+    _echoes.clear();
     _attached = false;
   }
 
@@ -198,6 +205,7 @@ class CustomerService extends ChangeNotifier {
     final data = customer.toFirestoreData();
     _cache[customer.id] = customer;
     _base[customer.id] = data;
+    _echoes.add(customer.id, data);
     notifyListeners();
     DataErrors.send(
       _col.doc(customer.id).set({...data, ...s.toCreateFields()}),
@@ -222,6 +230,7 @@ class CustomerService extends ChangeNotifier {
     customer.updatedAt = DateTime.now();
     _cache[customer.id] = customer;
     _base[customer.id] = data;
+    _echoes.add(customer.id, data);
     notifyListeners();
     final ref = _col.doc(customer.id);
     DataErrors.send(
@@ -251,7 +260,10 @@ class CustomerService extends ChangeNotifier {
       ..deactivatedAt = active ? null : DateTime.now()
       ..updatedAt = DateTime.now();
     final base = _base[id];
-    if (base != null) _base[id] = {...base, Customer.fIsActive: active};
+    if (base != null) {
+      _base[id] = {...base, Customer.fIsActive: active};
+      _echoes.add(id, _base[id]!);
+    }
     notifyListeners();
     DataErrors.send(
       _col.doc(id).update({

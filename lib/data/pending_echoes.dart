@@ -36,3 +36,24 @@ class PendingEchoes {
 
   void clear() => _sent.clear();
 }
+
+/// [PendingEchoes] をドキュメントごとに持つ（顧客・出席・送迎計画のように、
+/// 1 つの購読で複数のドキュメントが届くもの用）
+class PendingEchoesByDoc {
+  final Map<String, PendingEchoes> _byDoc = {};
+
+  /// ドキュメント [id] へ送った内容（正規化したもの）を覚える
+  void add(String id, Map<String, dynamic> normalized) =>
+      _byDoc.putIfAbsent(id, PendingEchoes.new).add(normalized);
+
+  /// ドキュメント [id] に届いた内容が、自分の古い書き込みの折り返しなら true
+  bool isStaleEcho(String id, Map<String, dynamic> normalized) {
+    final e = _byDoc[id];
+    if (e == null) return false;
+    final stale = e.isStaleEcho(normalized);
+    if (e.isEmpty) _byDoc.remove(id);
+    return stale;
+  }
+
+  void clear() => _byDoc.clear();
+}

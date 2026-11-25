@@ -7,6 +7,7 @@ import '../data/audit.dart';
 import '../data/data_errors.dart';
 import '../data/facility_context.dart';
 import '../data/fs_values.dart';
+import '../data/pending_echoes.dart';
 import '../data/staff_session.dart';
 import '../models/attendance_record.dart';
 import '../models/customer.dart';
@@ -81,6 +82,9 @@ class AttendanceService extends ChangeNotifier {
   static final AttendanceService instance = AttendanceService._();
 
   final Map<String, AttendanceRecord> _cache = {};
+
+  /// 自分の書き込みの遅れて届いた折り返し（古い内容）を見分ける
+  final PendingEchoesByDoc _echoes = PendingEchoesByDoc();
   final Map<String, _MonthState> _months = {};
   bool _attached = false;
 
@@ -127,6 +131,7 @@ class AttendanceService extends ChangeNotifier {
     }
     _months.clear();
     _cache.clear();
+    _echoes.clear();
     _attached = false;
   }
 
@@ -160,9 +165,12 @@ class AttendanceService extends ChangeNotifier {
         final data = ch.doc.data();
         if (data == null) continue;
         final r = AttendanceRecord.fromFirestore(id, data);
+        final normalized = r.toFirestoreData();
+        // 自分の古い書き込みの折り返し（この後の書き込みが控えている）: 戻さない
+        if (_echoes.isStaleEcho(id, normalized)) continue;
         final cur = _cache[id];
         if (cur != null &&
-            fsChangedFields(cur.toFirestoreData(), r.toFirestoreData()).isEmpty) {
+            fsChangedFields(cur.toFirestoreData(), normalized).isEmpty) {
           continue; // 内容が同じ（自分の書き込みの折り返しなど）
         }
         _cache[id] = r;
@@ -197,6 +205,7 @@ class AttendanceService extends ChangeNotifier {
     final s = stamp ?? await StaffSession.instance.requireStamp();
     final isNew = !_cache.containsKey(record.docId);
     _cache[record.docId] = record;
+    _echoes.add(record.docId, record.toFirestoreData());
     notifyListeners();
     DataErrors.send(
       _col.doc(record.docId).set({
@@ -351,8 +360,10 @@ class AttendanceService extends ChangeNotifier {
     final ref = _col.doc(docId);
     AttendanceRecord? result;
     AttendanceConflictException? conflict;
+    var wrote = false;
     try {
       await _runTransaction((tx) async {
+        wrote = false;
         final snap = await tx.get(ref);
         final current = snap.exists && snap.data() != null
             ? AttendanceRecord.fromFirestore(docId, snap.data()!)
@@ -369,6 +380,7 @@ class AttendanceService extends ChangeNotifier {
         }
         result = next ?? current;
         if (next == null) return;
+        wrote = true;
         tx.set(
           ref,
           {
@@ -395,6 +407,8 @@ class AttendanceService extends ChangeNotifier {
     }
     final r = result;
     if (r != null) {
+      // 書いたときだけ覚える（書かなかったときは折り返しが来ない）
+      if (wrote) _echoes.add(docId, r.toFirestoreData());
       _cache[docId] = r;
       notifyListeners();
     }
@@ -580,6 +594,7 @@ class AttendanceService extends ChangeNotifier {
     final stamp = await StaffSession.instance.requireStamp();
     final updated = change(existing);
     _cache[existing.docId] = updated;
+    _echoes.add(existing.docId, updated.toFirestoreData());
     notifyListeners();
     DataErrors.send(
       _col.doc(existing.docId).update({...fields(updated), ...stamp.toFields()}),

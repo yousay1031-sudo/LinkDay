@@ -8,6 +8,7 @@ import '../data/audit.dart';
 import '../data/data_errors.dart';
 import '../data/facility_context.dart';
 import '../data/fs_values.dart';
+import '../data/pending_echoes.dart';
 import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../models/transport_plan.dart';
@@ -33,6 +34,9 @@ class TransportPlanService extends ChangeNotifier {
 
   /// 最後に保存先と一致していた内容（担当者が選ばれず保存しなかったときに戻す）
   final Map<String, Map<String, dynamic>> _base = {};
+
+  /// 自分の書き込みの遅れて届いた折り返し（古い内容）を見分ける
+  final PendingEchoesByDoc _echoes = PendingEchoesByDoc();
   final Map<String, _DateState> _dates = {};
   bool _attached = false;
 
@@ -59,6 +63,7 @@ class TransportPlanService extends ChangeNotifier {
     _dates.clear();
     _cache.clear();
     _base.clear();
+    _echoes.clear();
     _attached = false;
   }
 
@@ -87,6 +92,8 @@ class TransportPlanService extends ChangeNotifier {
         if (data == null) continue;
         final r = TransportVehicleRoute.fromFirestore(data);
         final normalized = r.toFirestoreData();
+        // 自分の古い書き込みの折り返し（この後の書き込みが控えている）: 戻さない
+        if (_echoes.isStaleEcho(id, normalized)) continue;
         final known = _base[id];
         _base[id] = normalized;
         if (known != null &&
@@ -157,6 +164,7 @@ class TransportPlanService extends ChangeNotifier {
     final isNew = !_base.containsKey(id);
     _cache[id] = route;
     _base[id] = data;
+    _echoes.add(id, data);
     notifyListeners();
     DataErrors.send(
       // 作成日時を残すため merge（停留所の配列はまとめて置き換わる）
