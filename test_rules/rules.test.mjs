@@ -54,7 +54,16 @@ const PERSONAL_STAFF = {
   haru: { name: '職員 春子', isActive: true, loginEnabled: true, isAdmin: false },
   natsu: { name: '職員 夏男', isActive: true, loginEnabled: false, isAdmin: false },
   aki: { name: '職員 秋子', isActive: false, loginEnabled: true, isAdmin: false },
+  boss: { name: '管理 一郎', isActive: true, loginEnabled: true, isAdmin: true },
 };
+
+/** 個人アカウント id 本人の担当者の記録付きの書き込みデータ */
+const by = (id, extra = {}) => ({
+  ...extra,
+  updatedAt: serverTimestamp(),
+  updatedByStaffId: id,
+  updatedByStaffName: id,
+});
 
 // クライアントが触れうる最上位のコレクション（firestore.rules に書いたものすべて）
 const TOP_LEVEL = [
@@ -185,7 +194,12 @@ describe('所属アカウントは許可', () => {
       const db = memberA();
       await assertSucceeds(getDoc(doc(db, `facilities/${FAC}/${c}/d1`)));
       await assertSucceeds(getDocs(collection(db, `facilities/${FAC}/${c}`)));
-      await assertSucceeds(setDoc(doc(db, `facilities/${FAC}/${c}/new`), audited({ v: 1 })));
+      // ステップ2（判断点7）: 職員の登録は管理者だけ。共用端末は職員を作れない
+      if (c === 'staff') {
+        await assertFails(setDoc(doc(db, `facilities/${FAC}/${c}/new`), audited({ v: 1 })));
+      } else {
+        await assertSucceeds(setDoc(doc(db, `facilities/${FAC}/${c}/new`), audited({ v: 1 })));
+      }
       await assertSucceeds(updateDoc(doc(db, `facilities/${FAC}/${c}/d1`), audited({ v: 2 })));
     });
   }
@@ -432,5 +446,142 @@ describe('個人アカウントの所属', () => {
     await assertFails(getDoc(doc(noMembership(), 'line_linkage/x1')));
     await assertFails(getDoc(doc(noMembership(), 'notification_logs/2026-11-19_c1')));
     await assertSucceeds(getDoc(doc(memberA(), 'line_linkage/x1')));
+  });
+});
+
+describe('管理者の権限（アカウントに関わる項目）', () => {
+  const PROTECTED = {
+    isAdmin: true,
+    loginEnabled: true, // 夏男はログイン停止なので、許可に変える
+    isActive: false,
+    hasGoogleEmail: true,
+    deactivatedAt: new Date(2026, 0, 1),
+    otherAdminId: 'boss',
+    pinHash: 'x',
+  };
+  const email = (addr) => ({ googleEmail: addr, googleEmailLower: addr.toLowerCase() });
+
+  for (const [label, who, stamp] of [
+    // 共用端末で担当者に管理者（管理 一郎）を選んでいる状態
+    ['共用端末アカウント（担当者に管理者を選んでいても）', memberA, (x) => by('boss', x)],
+    ['管理者でない個人アカウント', () => personal('haru'), (x) => by('haru', x)],
+  ]) {
+    test(`${label}: アカウントに関わる項目を1つも変えられない`, async () => {
+      const db = who();
+      for (const [k, v] of Object.entries(PROTECTED)) {
+        await assertFails(updateDoc(doc(db, `facilities/${FAC}/staff/natsu`), stamp({ [k]: v })));
+      }
+    });
+    test(`${label}: 職員を登録できない・メールアドレスを読めない・書けない`, async () => {
+      const db = who();
+      await assertFails(setDoc(doc(db, `facilities/${FAC}/staff/new`), stamp({ name: '新人' })));
+      await assertFails(getDoc(doc(db, `facilities/${FAC}/staffAccounts/haru`)));
+      await assertFails(getDocs(collection(db, `facilities/${FAC}/staffAccounts`)));
+      await assertFails(
+        setDoc(doc(db, `facilities/${FAC}/staffAccounts/natsu`), stamp(email('n@example.invalid'))),
+      );
+    });
+    test(`${label}: 氏名・ふりがな・役割・資格・勤務日・送迎の可否は変えられる`, async () => {
+      await assertSucceeds(
+        updateDoc(
+          doc(who(), `facilities/${FAC}/staff/natsu`),
+          stamp({
+            name: '職員 夏男2',
+            kana: 'なつお',
+            role: 'driver',
+            qualifications: '中型',
+            workDays: [1, 2],
+            canDrive: true,
+          }),
+        ),
+      );
+    });
+  }
+
+  test('自分で自分を管理者にできない（管理者でない個人アカウント）', async () => {
+    const db = personal('haru');
+    await assertFails(updateDoc(doc(db, `facilities/${FAC}/staff/haru`), by('haru', { isAdmin: true })));
+    await assertFails(
+      setDoc(doc(db, `facilities/${FAC}/staff/haru`), by('haru', { ...PERSONAL_STAFF.haru, isAdmin: true })),
+    );
+  });
+
+  test('管理者（個人アカウント）は、アカウントに関わる項目を変えられる', async () => {
+    const db = personal('boss');
+    await assertSucceeds(updateDoc(doc(db, `facilities/${FAC}/staff/haru`), by('boss', { isAdmin: true })));
+    // 春子は直前に管理者になったので、ログインの停止は「管理者を減らす変更」。残る管理者を示す
+    await assertSucceeds(
+      updateDoc(doc(db, `facilities/${FAC}/staff/haru`), by('boss', { loginEnabled: false, otherAdminId: 'boss' })),
+    );
+    await assertSucceeds(updateDoc(doc(db, `facilities/${FAC}/staff/natsu`), by('boss', { hasGoogleEmail: true })));
+    await assertSucceeds(
+      updateDoc(doc(db, `facilities/${FAC}/staff/natsu`), by('boss', { isActive: false, deactivatedAt: serverTimestamp() })),
+    );
+    await assertSucceeds(
+      setDoc(doc(db, `facilities/${FAC}/staff/new`), by('boss', { name: '新人', isActive: true, isAdmin: false })),
+    );
+    await assertSucceeds(getDocs(collection(db, `facilities/${FAC}/staffAccounts`)));
+    await assertSucceeds(
+      setDoc(doc(db, `facilities/${FAC}/staffAccounts/natsu`), by('boss', email('Natsuo@Example.invalid'))),
+    );
+    await assertSucceeds(setDoc(doc(db, `facilities/${FAC}/staffAccounts/natsu`), by('boss', email(''))));
+  });
+
+  test('管理者でも: 小文字の照合用が合わない・形の違うアドレスは拒否。削除は誰もできない', async () => {
+    const db = personal('boss');
+    await assertFails(
+      setDoc(doc(db, `facilities/${FAC}/staffAccounts/natsu`), by('boss', {
+        googleEmail: 'Natsuo@Example.invalid',
+        googleEmailLower: 'other@example.invalid',
+      })),
+    );
+    await assertFails(setDoc(doc(db, `facilities/${FAC}/staffAccounts/natsu`), by('boss', email('not-an-address'))));
+    await assertFails(deleteDoc(doc(db, `facilities/${FAC}/staffAccounts/haru`)));
+    await assertFails(deleteDoc(doc(db, `facilities/${FAC}/staff/haru`)));
+    // 在籍終了での登録は不可（在籍終了は更新で行う）
+    await assertFails(
+      setDoc(doc(db, `facilities/${FAC}/staff/new2`), by('boss', { name: 'x', isActive: false })),
+    );
+  });
+
+  test('ログインを停止された管理者・在籍終了の管理者は管理者として扱わない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), `facilities/${FAC}/staff/natsu`), { isAdmin: true });
+    });
+    // 夏男は管理者だがログイン停止 → 所属自体が無効
+    const db = personal('natsu');
+    await assertFails(updateDoc(doc(db, `facilities/${FAC}/staff/haru`), by('natsu', { isAdmin: true })));
+    await assertFails(getDoc(doc(db, `facilities/${FAC}/staffAccounts/haru`)));
+  });
+
+  describe('最後の管理者', () => {
+    test('別の管理者を示さないと、管理者を減らす変更はできない', async () => {
+      const db = personal('boss');
+      await assertFails(updateDoc(doc(db, `facilities/${FAC}/staff/boss`), by('boss', { isAdmin: false })));
+      await assertFails(updateDoc(doc(db, `facilities/${FAC}/staff/boss`), by('boss', { loginEnabled: false })));
+      await assertFails(updateDoc(doc(db, `facilities/${FAC}/staff/boss`), by('boss', { isActive: false })));
+      // 示した職員が管理者でない・自分自身・存在しない
+      for (const other of ['haru', 'boss', 'ghost']) {
+        await assertFails(
+          updateDoc(doc(db, `facilities/${FAC}/staff/boss`), by('boss', { isAdmin: false, otherAdminId: other })),
+        );
+      }
+    });
+
+    test('別の管理者（在籍中・ログイン許可）を示せば外せる', async () => {
+      await env.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), `facilities/${FAC}/staff/boss2`), {
+          name: '管理 二郎', isActive: true, loginEnabled: true, isAdmin: true,
+        });
+      });
+      const db = personal('boss');
+      await assertSucceeds(
+        updateDoc(doc(db, `facilities/${FAC}/staff/boss2`), by('boss', { isActive: false, otherAdminId: 'boss' })),
+      );
+      // boss2 が在籍終了になった後は、boss 自身を外すのに boss2 は使えない
+      await assertFails(
+        updateDoc(doc(db, `facilities/${FAC}/staff/boss`), by('boss', { isAdmin: false, otherAdminId: 'boss2' })),
+      );
+    });
   });
 });

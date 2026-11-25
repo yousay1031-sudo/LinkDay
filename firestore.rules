@@ -76,26 +76,38 @@ service cloud.firestore {
       return m.get('kind', 'shared') == 'personal';
     }
 
+    // 【文書の読み取りの回数】ルール 1 回の評価で読める文書の回数には上限がある
+    // （1 件の読み書きで 10 回）。所属・職員の文書は、ここの関数で 1 回ずつだけ読む。
+    // 所属や職員の文書が無いときの get() は評価エラーになり、拒否として扱われる。
+    function myMembership() {
+      return get(membershipPath()).data;
+    }
+
+    // 職員の文書が「在籍中かつログイン許可」か
+    function staffCanLogin(s) {
+      return s.get('isActive', false) == true && s.get('loginEnabled', false) == true;
+    }
+
     // 所属の文書 m が有効か（共用端末なら常に有効。個人なら職員が在籍中かつログイン許可）
     function membershipOk(m) {
       return m.facilityId is string
         && (!isPersonal(m)
           || (m.get('staffId', null) is string
-            && exists(staffPath(m.facilityId, m.staffId))
-            && get(staffPath(m.facilityId, m.staffId)).data.get('isActive', false) == true
-            && get(staffPath(m.facilityId, m.staffId)).data.get('loginEnabled', false) == true));
+            && staffCanLogin(get(staffPath(m.facilityId, m.staffId)).data)));
     }
 
     // 有効な所属があるか（事業所を問わない。LINE 連携の最上位コレクション用）
     function hasValidMembership() {
-      return isSignedIn() && exists(membershipPath())
-        && membershipOk(get(membershipPath()).data);
+      return isSignedIn() && membershipOk(myMembership());
     }
 
     // その事業所に有効な所属があるか
     function isMemberOf(facilityId) {
-      return hasValidMembership()
-        && get(membershipPath()).data.facilityId == facilityId;
+      return isSignedIn() && memberOfWith(myMembership(), facilityId);
+    }
+
+    function memberOfWith(m, facilityId) {
+      return m.facilityId == facilityId && membershipOk(m);
     }
 
     // 業務データの書き込みに担当者の記録が付いているか。
@@ -103,7 +115,7 @@ service cloud.firestore {
     // 例外は画面を開いたときの自動処理（担当者 ID なし・名前「自動」）だけ。
     function hasAudit() {
       let d = request.resource.data;
-      let m = get(membershipPath()).data;
+      let m = myMembership();
       return d.updatedAt == request.time
         && d.updatedByStaffName is string
         && d.updatedByStaffName.size() > 0
@@ -111,6 +123,53 @@ service cloud.firestore {
         && (!isPersonal(m)
           || d.updatedByStaffId == m.staffId
           || (d.updatedByStaffId == null && d.updatedByStaffName == '自動'));
+    }
+
+    // ── 管理者（ステップ2）──────────────────────────────────
+    // 「個人アカウントで、ひも付く職員が在籍中・ログイン許可・管理者」のときだけ。
+    // 共用端末アカウントは、担当者に管理者の名前を選んでいても管理者にならない
+    // （名前を選ぶだけで管理者になれてしまうため）。
+    function isAdminOf(facilityId) {
+      let m = myMembership();
+      return isSignedIn() && memberOfWith(m, facilityId) && isPersonal(m)
+        && get(staffPath(facilityId, m.staffId)).data.get('isAdmin', false) == true;
+    }
+
+    // 職員・メールアドレス・ログイン履歴（汎用の業務データのルールでは扱わない）
+    function ACCOUNT_COLLECTIONS() {
+      return ['staff', 'staffAccounts', 'loginHistory'];
+    }
+
+    // 職員の文書のうち管理者だけが変えられる項目（lib/models/staff.dart と一致させる）
+    function PROTECTED_STAFF_FIELDS() {
+      return ['isActive', 'deactivatedAt', 'isAdmin', 'loginEnabled',
+              'hasGoogleEmail', 'pinHash', 'pinSalt', 'otherAdminId'];
+    }
+
+    // 管理者として働ける職員の文書か
+    function isEffectiveAdmin(d) {
+      return d.get('isActive', false) == true
+        && d.get('isAdmin', false) == true
+        && d.get('loginEnabled', false) == true;
+    }
+
+    // 管理者による職員の更新で、管理者が 1 人もいなくならないこと。
+    // 管理者を減らす変更（在籍終了・管理者の解除・ログインの停止）には、
+    // 残る別の管理者の職員 ID を otherAdminId に付けさせ、その人を確かめる。
+    // 既知の制限: 2 人の管理者が同時にお互いを外すと、両方が通りうる（手順書に記載）。
+    function keepsAnAdmin(facilityId, staffId) {
+      let other = request.resource.data.get('otherAdminId', null);
+      return !(isEffectiveAdmin(resource.data) && !isEffectiveAdmin(request.resource.data))
+        || (other is string && other != staffId
+          && isEffectiveAdmin(get(staffPath(facilityId, other)).data));
+    }
+
+    // メールアドレスの文書の形（空文字は「登録を外した」）
+    function validAccountEmail(d) {
+      return d.googleEmail is string
+        && d.googleEmailLower == d.googleEmail.lower()
+        && (d.googleEmail == ''
+          || d.googleEmail.matches('^[^@\\s]+@[^@\\s]+[.][^@\\s]+$'));
     }
 
     // ── memberships: アカウント → 事業所の所属 ─────────────
@@ -129,13 +188,42 @@ service cloud.firestore {
       allow create, update, delete: if false;
 
       // customers / scheduleEntries / scheduleWeeks / attendance /
-      // transportRoutes / settings / staff と、後のステップで追加するもの
+      // transportRoutes / settings と、後のステップで追加するもの。
+      // 職員・メールアドレス・ログイン履歴は下の専用のルールだけで判定する
+      // （ここで許すと、どれか 1 つが許せば通るため専用のルールを素通りする）。
       match /{collection}/{docId} {
-        allow read: if isMemberOf(facilityId);
-        allow create, update: if isMemberOf(facilityId) && hasAudit();
-        // 顧客・職員は削除しない（在籍終了で扱う）
+        allow read: if isMemberOf(facilityId)
+          && !(collection in ACCOUNT_COLLECTIONS());
+        allow create, update: if isMemberOf(facilityId) && hasAudit()
+          && !(collection in ACCOUNT_COLLECTIONS());
+        // 顧客は削除しない（在籍終了で扱う）
         allow delete: if isMemberOf(facilityId)
-          && !(collection in ['customers', 'staff']);
+          && !(collection in ['customers'])
+          && !(collection in ACCOUNT_COLLECTIONS());
+      }
+
+      // ── 職員（ステップ2: 管理者の権限）─────────────────────
+      // 氏名・ふりがな・役割・資格・勤務日・送迎の可否は、所属するアカウントなら
+      // 誰でも変えられる。在籍・管理者・ログインの許可・メールアドレスの有無など
+      // （PROTECTED_STAFF_FIELDS）は管理者だけ。登録も管理者だけ。削除は誰もできない。
+      match /staff/{staffId} {
+        allow read: if isMemberOf(facilityId);
+        allow create: if isAdminOf(facilityId) && hasAudit()
+          && request.resource.data.get('isActive', true) == true;
+        allow update: if isMemberOf(facilityId) && hasAudit()
+          && (isAdminOf(facilityId)
+            ? keepsAnAdmin(facilityId, staffId)
+            : !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(PROTECTED_STAFF_FIELDS()));
+        allow delete: if false;
+      }
+
+      // ── 職員の Google メールアドレス（個人情報。管理者だけが読み書きできる）──
+      match /staffAccounts/{staffId} {
+        allow read: if isAdminOf(facilityId);
+        allow create, update: if isAdminOf(facilityId) && hasAudit()
+          && validAccountEmail(request.resource.data);
+        allow delete: if false;
       }
 
       // さらに下の階層（後のステップ用）も所属アカウントだけ。

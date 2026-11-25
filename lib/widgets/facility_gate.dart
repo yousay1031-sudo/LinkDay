@@ -35,10 +35,35 @@ class FacilityGate extends StatefulWidget {
 }
 
 class _FacilityGateState extends State<FacilityGate> {
+  DataSessionStatus _lastStatus = DataSession.instance.status;
+
   @override
   void initState() {
     super.initState();
+    DataSession.instance.addListener(_onStatusChanged);
     _startAfterBuild();
+  }
+
+  @override
+  void dispose() {
+    DataSession.instance.removeListener(_onStatusChanged);
+    super.dispose();
+  }
+
+  /// 使える状態（ready）から外れたら、上に開いている画面・ダイアログを閉じる。
+  ///
+  /// このゲートは最初の画面の中にあるため、職員管理などを開いたまま
+  /// 在籍終了・ログイン停止で「事業所に登録されていません」に切り替わっても、
+  /// 上に重なった画面に隠れて見えなかった（2026-11-25 検証環境で確認）。
+  void _onStatusChanged() {
+    final now = DataSession.instance.status;
+    final wasReady = _lastStatus == DataSessionStatus.ready;
+    _lastStatus = now;
+    if (!wasReady || now == DataSessionStatus.ready) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.maybeOf(context)?.popUntil((r) => r.isFirst);
+    });
   }
 
   @override
