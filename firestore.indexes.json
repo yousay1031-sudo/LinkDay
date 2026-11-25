@@ -7,7 +7,24 @@
         {"fieldPath": "date", "order": "DESCENDING"},
         {"fieldPath": "sentAt", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "loginHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "staffId", "order": "ASCENDING"},
+        {"fieldPath": "at", "order": "DESCENDING"}
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "staffAccounts",
+      "fieldPath": "googleEmailLower",
+      "indexes": [
+        {"order": "ASCENDING", "queryScope": "COLLECTION"},
+        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"}
+      ]
+    }
+  ]
 }

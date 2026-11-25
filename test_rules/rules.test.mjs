@@ -585,3 +585,75 @@ describe('管理者の権限（アカウントに関わる項目）', () => {
     });
   });
 });
+
+describe('ログイン履歴（追記だけ・自分の分だけ・読めるのは管理者だけ）', () => {
+  const AUTH_TIME = 1764000000;
+  // ログインした時刻（auth_time）付きのアカウント
+  const withAuthTime = (uid, extra = {}) =>
+    env.authenticatedContext(uid, { auth_time: AUTH_TIME, ...extra }).firestore();
+  const personalAt = (id) => withAuthTime(`p-${id}`, googleToken(`${id}@example.invalid`));
+  const entry = (uid, kind, staffId, staffName) => ({
+    uid,
+    kind,
+    staffId,
+    staffName,
+    at: serverTimestamp(),
+    authTime: AUTH_TIME,
+  });
+  const path = (uid) => `facilities/${FAC}/loginHistory/${uid}_${AUTH_TIME}`;
+
+  test('個人アカウント・共用端末アカウントは、自分のログインを1件だけ記録できる', async () => {
+    await assertSucceeds(setDoc(doc(personalAt('haru'), path('p-haru')), entry('p-haru', 'personal', 'haru', '職員 春子')));
+    await assertSucceeds(setDoc(doc(withAuthTime('member-a'), path('member-a')), entry('member-a', 'shared', null, null)));
+    // 同じログイン（同じ auth_time）でもう一度書く = 書き換え → 拒否（再読み込みで増えない）
+    await assertFails(setDoc(doc(personalAt('haru'), path('p-haru')), entry('p-haru', 'personal', 'haru', '職員 春子')));
+  });
+
+  test('書き換え・削除はできない（管理者も）', async () => {
+    await assertSucceeds(setDoc(doc(personalAt('haru'), path('p-haru')), entry('p-haru', 'personal', 'haru', '職員 春子')));
+    for (const db of [personalAt('haru'), personalAt('boss'), withAuthTime('member-a')]) {
+      await assertFails(updateDoc(doc(db, path('p-haru')), { staffName: 'x' }));
+      await assertFails(deleteDoc(doc(db, path('p-haru'))));
+    }
+    await assertFails(deleteDoc(doc(personalAt('boss'), `facilities/${FAC}/loginHistory/h1`)));
+  });
+
+  test('自分以外の記録は作れない（他人の uid・別のログイン時刻・別の職員・種類の偽り）', async () => {
+    const db = personalAt('haru');
+    // 他人の uid の文書
+    await assertFails(setDoc(doc(db, path('p-boss')), entry('p-boss', 'personal', 'boss', '管理 一郎')));
+    // 自分の文書 ID だが中身の uid が他人
+    await assertFails(setDoc(doc(db, path('p-haru')), entry('p-boss', 'personal', 'haru', '職員 春子')));
+    // 別のログイン時刻の文書 ID
+    await assertFails(
+      setDoc(doc(db, `facilities/${FAC}/loginHistory/p-haru_123`), { ...entry('p-haru', 'personal', 'haru', 'x'), authTime: 123 }),
+    );
+    // 別の職員として
+    await assertFails(setDoc(doc(db, path('p-haru')), entry('p-haru', 'personal', 'boss', '管理 一郎')));
+    // 個人アカウントが共用端末と偽る・共用端末が個人と偽る
+    await assertFails(setDoc(doc(db, path('p-haru')), entry('p-haru', 'shared', null, null)));
+    await assertFails(
+      setDoc(doc(withAuthTime('member-a'), path('member-a')), entry('member-a', 'personal', 'haru', '職員 春子')),
+    );
+    // 時刻をクライアントで決める・余計な項目
+    await assertFails(
+      setDoc(doc(db, path('p-haru')), { ...entry('p-haru', 'personal', 'haru', '職員 春子'), at: new Date(2020, 0, 1) }),
+    );
+    await assertFails(
+      setDoc(doc(db, path('p-haru')), { ...entry('p-haru', 'personal', 'haru', '職員 春子'), extra: 1 }),
+    );
+  });
+
+  test('所属の無い・無効なアカウントは記録できない', async () => {
+    await assertFails(setDoc(doc(withAuthTime('stranger'), path('stranger')), entry('stranger', 'shared', null, null)));
+    await assertFails(setDoc(doc(personalAt('natsu'), path('p-natsu')), entry('p-natsu', 'personal', 'natsu', '職員 夏男')));
+  });
+
+  test('読めるのは管理者だけ（共用端末・管理者でない個人アカウントは読めない）', async () => {
+    await assertSucceeds(getDocs(collection(personalAt('boss'), `facilities/${FAC}/loginHistory`)));
+    await assertSucceeds(getDoc(doc(personalAt('boss'), `facilities/${FAC}/loginHistory/h1`)));
+    await assertFails(getDocs(collection(personalAt('haru'), `facilities/${FAC}/loginHistory`)));
+    await assertFails(getDoc(doc(personalAt('haru'), `facilities/${FAC}/loginHistory/h1`)));
+    await assertFails(getDocs(collection(withAuthTime('member-a'), `facilities/${FAC}/loginHistory`)));
+  });
+});

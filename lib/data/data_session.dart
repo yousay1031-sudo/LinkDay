@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/attendance_service.dart';
 import '../services/customer_service.dart';
+import '../services/login_history_service.dart';
 import '../services/settings_service.dart';
 import '../services/staff_account_service.dart';
 import '../services/staff_service.dart';
@@ -145,6 +146,9 @@ class DataSession extends ChangeNotifier {
       _membership = m;
       _db = d;
       _watch(d, uid, m);
+      LoginHistoryService.instance.start();
+      // ログイン履歴（1 回のログインにつき 1 件。再読み込みでは増えない）
+      unawaited(LoginHistoryService.instance.recordLogin(uid));
       _status = DataSessionStatus.ready;
     } catch (e) {
       debugPrint('[DataSession] start failed: $e');
@@ -268,6 +272,7 @@ class DataSession extends ChangeNotifier {
     await WeeklyScheduleService.instance.detach();
     await CustomerService.instance.detach();
     await StaffAccountService.instance.stop();
+    await LoginHistoryService.instance.stop();
     await StaffService.instance.detach();
     StaffSession.instance.reset();
     AccountSession.instance.reset();

@@ -172,6 +172,21 @@ service cloud.firestore {
           || d.googleEmail.matches('^[^@\\s]+@[^@\\s]+[.][^@\\s]+$'));
     }
 
+    // ログイン履歴の 1 件として正しいか（自分の所属の種類・職員と一致すること）
+    function validLoginEntry(entryId) {
+      let d = request.resource.data;
+      let m = myMembership();
+      return entryId == request.auth.uid + '_' + string(request.auth.token.auth_time)
+        && d.keys().hasOnly(['uid', 'kind', 'staffId', 'staffName', 'at', 'authTime'])
+        && d.uid == request.auth.uid
+        && d.at == request.time
+        && d.authTime == request.auth.token.auth_time
+        && (isPersonal(m)
+          ? (d.kind == 'personal' && d.staffId == m.staffId
+            && d.staffName is string && d.staffName.size() > 0)
+          : (d.kind == 'shared' && d.staffId == null && d.staffName == null));
+    }
+
     // ── memberships: アカウント → 事業所の所属 ─────────────
     // doc id = Firebase Auth の uid
     // 自分の所属だけ読める。クライアントからは作成・変更・削除できない
@@ -216,6 +231,17 @@ service cloud.firestore {
             : !request.resource.data.diff(resource.data).affectedKeys()
                 .hasAny(PROTECTED_STAFF_FIELDS()));
         allow delete: if false;
+      }
+
+      // ── ログイン履歴（ステップ2）──────────────────────────
+      // doc id = {uid}_{auth_time}（auth_time は実際にログインした時刻。ページを
+      // 再読み込みしても変わらないので、1 回のログインにつき 1 件だけになる）。
+      // 追記だけ（作った後の書き換え・削除は誰もできない）。自分の分しか作れない。
+      // 読めるのは管理者だけ。
+      match /loginHistory/{entryId} {
+        allow read: if isAdminOf(facilityId);
+        allow create: if isMemberOf(facilityId) && validLoginEntry(entryId);
+        allow update, delete: if false;
       }
 
       // ── 職員の Google メールアドレス（個人情報。管理者だけが読み書きできる）──

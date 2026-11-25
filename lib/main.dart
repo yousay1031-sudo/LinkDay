@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'data/data_errors.dart';
 import 'data/staff_session.dart';
 import 'firebase_options.dart';
 import 'models/notification_log.dart';
+import 'services/login_history_service.dart';
 import 'services/settings_service.dart';
 import 'services/vacancy_notification_service.dart';
 import 'theme/app_theme.dart';
@@ -44,7 +46,7 @@ Future<void> main() async {
   // ── 2. Hive アダプター登録（Firebase 初期化の前に行う）
   // 業務データ（顧客・出席・週間計画・設定・送迎計画）は Firestore に移した。
   // Hive に残すのは空き枠 LINE 通知の送信記録（端末ごと）だけ。
-  Hive.registerAdapter(NotificationLogAdapter());   // typeId=11
+  Hive.registerAdapter(NotificationLogAdapter()); // typeId=11
   Hive.registerAdapter(NotificationStatusAdapter()); // typeId=12
 
   // ── 3. Firebase 初期化
@@ -83,6 +85,14 @@ Future<void> main() async {
   // （remoteEnabled=false）。通常ビルドは従来どおり true。
   await VacancyNotificationService.instance
       .init(remoteEnabled: !VerifyConfig.enabled);
+
+  // ── 9.5 ログイン履歴: いまのログインの時刻（ID トークンの auth_time。再読み込みでは
+  //    変わらない）を記録の ID に使う
+  LoginHistoryService.instance.authTimeProvider = () async {
+    final r = await FirebaseAuth.instance.currentUser?.getIdTokenResult();
+    final t = r?.claims?['auth_time'];
+    return t is int ? t : (t is num ? t.toInt() : null);
+  };
 
   // ── 10. 日本語ロケールデータ初期化（PDF出力の LocaleDataException 対策）
   await initializeDateFormatting('ja_JP', null);
@@ -228,13 +238,12 @@ class _LinkDayAppState extends State<LinkDayApp> {
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton(
-                    onPressed: () => Navigator.of(context)
-                        .pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (_) => const AuthGate(),
-                          ),
-                          (_) => false,
-                        ),
+                    onPressed: () => Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => const AuthGate(),
+                      ),
+                      (_) => false,
+                    ),
                     child: const Text('ホームに戻る'),
                   ),
                 ],

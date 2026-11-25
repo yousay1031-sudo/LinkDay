@@ -2,13 +2,17 @@
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
+import 'package:intl/intl.dart';
+
 import '../data/account_session.dart';
 import '../models/staff.dart';
+import '../services/login_history_service.dart';
 import '../services/staff_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/empty_state.dart';
 import 'inactive_staff_screen.dart';
+import 'login_history_screen.dart';
 import 'staff_edit_screen.dart';
 
 /// 職員管理: 在籍中の職員の一覧。
@@ -41,8 +45,11 @@ class StaffManagementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable:
-          Listenable.merge([StaffService.instance, AccountSession.instance]),
+      listenable: Listenable.merge([
+        StaffService.instance,
+        AccountSession.instance,
+        LoginHistoryService.instance,
+      ]),
       builder: (context, _) {
         final admin = AccountSession.instance.isAdmin;
         final reason = AccountSession.instance.adminOnlyReason;
@@ -51,6 +58,18 @@ class StaffManagementScreen extends StatelessWidget {
           appBar: AppBar(
             title: const Text('職員管理'),
             actions: [
+              // ログイン履歴は管理者だけが読める（ルールでも同じ）
+              if (admin)
+                IconButton(
+                  key: const Key('openLoginHistory'),
+                  icon: const Icon(Icons.history),
+                  tooltip: 'ログイン履歴',
+                  onPressed: () => Navigator.push<void>(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const LoginHistoryScreen()),
+                  ),
+                ),
               IconButton(
                 key: const Key('openInactiveStaff'),
                 icon: const Icon(Icons.inventory_2_outlined),
@@ -110,6 +129,11 @@ class StaffManagementScreen extends StatelessWidget {
                           itemCount: list.length,
                           itemBuilder: (context, i) => _StaffCard(
                             staff: list[i],
+                            // 最後にログインした日時（ログイン履歴は管理者だけが読める）
+                            lastLogin: admin
+                                ? LoginHistoryService.instance
+                                    .lastLoginOf(list[i].id)
+                                : null,
                             horizontal: cols == 1,
                             onTap: () => _openEdit(context, list[i]),
                           ),
@@ -138,20 +162,24 @@ class StaffManagementScreen extends StatelessWidget {
 class _StaffCard extends StatelessWidget {
   const _StaffCard({
     required this.staff,
+    required this.lastLogin,
     required this.horizontal,
     required this.onTap,
   });
 
   final Staff staff;
+  final DateTime? lastLogin;
   final bool horizontal;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final s = staff;
+    final last = lastLogin;
     final sub = [
       if (s.role != null) s.role!.label,
       if (s.workDays.isNotEmpty) '勤務 ${s.workDaysLabel}',
+      if (last != null) '最終ログイン ${DateFormat('M/d HH:mm').format(last)}',
     ].join('　');
     final name = Text(
       s.name,
