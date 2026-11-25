@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../services/settings_service.dart';
 import '../services/vacancy_notification_service.dart';
 import '../theme/app_theme.dart';
+import 'unfocus_offscreen_text_field.dart';
 
 /// LINE ブランドカラー
 const Color kLineGreen = Color(0xFF06C755);
@@ -148,144 +149,146 @@ class _VacancyNoticeDialogState extends State<VacancyNoticeDialog> {
           ),
         ],
       ),
-      content: SizedBox(
-        width: 460,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── 見出し
-              Text(
-                '${widget.absentChildName} さんの欠席により、'
-                '本日（$dateLabel）に空きが出ました。',
-                style: const TextStyle(fontSize: 13, height: 1.5),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                notifiable.isEmpty
-                    ? '現在、通知できるご家庭はありません。'
-                    : '以下の ${notifiable.length} 件のご家庭に通知しますか？',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: notifiable.isEmpty
-                      ? AppColors.onSurfaceVariant
-                      : AppColors.onSurface,
+      content: UnfocusOffscreenTextField(
+        child: SizedBox(
+          width: 460,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── 見出し
+                Text(
+                  '${widget.absentChildName} さんの欠席により、'
+                  '本日（$dateLabel）に空きが出ました。',
+                  style: const TextStyle(fontSize: 13, height: 1.5),
                 ),
-              ),
-              const SizedBox(height: 12),
-
-              // ── 送信可能な候補
-              if (notifiable.isNotEmpty) ...[
-                _sectionLabel('通知対象（チェックを外すと送信しません）',
-                    Icons.check_circle_outline, kLineGreen),
-                const SizedBox(height: 6),
-                ...notifiable.map(_candidateTile),
-                const SizedBox(height: 12),
-              ],
-
-              // ── 既に通知済み
-              if (alreadySent.isNotEmpty) ...[
-                _sectionLabel('送信済み（二重送信を防ぐため再送しません）',
-                    Icons.done_all, AppColors.info),
-                const SizedBox(height: 6),
-                ...alreadySent.map(_sentTile),
-                const SizedBox(height: 12),
-              ],
-
-              // ── 未連携（送信対象外）
-              if (unlinked.isNotEmpty) ...[
-                _sectionLabel('LINE未連携（送信できません／電話案内の参考）',
-                    Icons.phone_outlined, AppColors.onSurfaceVariant),
-                const SizedBox(height: 6),
-                ...unlinked.map(_unlinkedTile),
-                const SizedBox(height: 12),
-              ],
-
-              if (widget.candidates.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    '空き枠を埋められる候補が見つかりませんでした。\n'
-                    '（当日利用予定・支給量残なし・在籍なし のいずれかに該当）',
-                    style: TextStyle(
-                        fontSize: 12,
-                        height: 1.5,
-                        color: AppColors.onSurfaceVariant),
+                const SizedBox(height: 4),
+                Text(
+                  notifiable.isEmpty
+                      ? '現在、通知できるご家庭はありません。'
+                      : '以下の ${notifiable.length} 件のご家庭に通知しますか？',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: notifiable.isEmpty
+                        ? AppColors.onSurfaceVariant
+                        : AppColors.onSurface,
                   ),
                 ),
+                const SizedBox(height: 12),
 
-              // ── 文面プレビュー
-              if (notifiable.isNotEmpty) ...[
-                const Divider(height: 20),
-                Row(
-                  children: [
-                    const Icon(Icons.article_outlined,
-                        size: 15, color: AppColors.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    const Text('送信される文面',
-                        style: TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600)),
-                    const Spacer(),
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size(0, 30),
-                      ),
-                      icon: Icon(_editingMessage ? Icons.done : Icons.edit,
-                          size: 14),
-                      label: Text(_editingMessage ? '編集を終了' : '今回だけ編集',
-                          style: const TextStyle(fontSize: 11)),
-                      onPressed: () =>
-                          setState(() => _editingMessage = !_editingMessage),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                if (_editingMessage)
-                  TextField(
-                    controller: _messageCtrl,
-                    maxLines: 6,
-                    minLines: 4,
-                    style: const TextStyle(fontSize: 12, height: 1.5),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      helperText: '※この変更は今回の送信のみに適用されます',
-                      helperStyle: TextStyle(fontSize: 10),
-                    ),
-                  )
-                else
+                // ── 送信可能な候補
+                if (notifiable.isNotEmpty) ...[
+                  _sectionLabel('通知対象（チェックを外すと送信しません）',
+                      Icons.check_circle_outline, kLineGreen),
+                  const SizedBox(height: 6),
+                  ...notifiable.map(_candidateTile),
+                  const SizedBox(height: 12),
+                ],
+
+                // ── 既に通知済み
+                if (alreadySent.isNotEmpty) ...[
+                  _sectionLabel('送信済み（二重送信を防ぐため再送しません）',
+                      Icons.done_all, AppColors.info),
+                  const SizedBox(height: 6),
+                  ...alreadySent.map(_sentTile),
+                  const SizedBox(height: 12),
+                ],
+
+                // ── 未連携（送信対象外）
+                if (unlinked.isNotEmpty) ...[
+                  _sectionLabel('LINE未連携（送信できません／電話案内の参考）',
+                      Icons.phone_outlined, AppColors.onSurfaceVariant),
+                  const SizedBox(height: 6),
+                  ...unlinked.map(_unlinkedTile),
+                  const SizedBox(height: 12),
+                ],
+
+                if (widget.candidates.isEmpty)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: kLineGreen.withValues(alpha: 0.06),
+                      color: AppColors.background,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: kLineGreen.withValues(alpha: 0.25)),
                     ),
-                    child: Text(
-                      _messageCtrl.text,
-                      style: const TextStyle(fontSize: 12, height: 1.6),
+                    child: const Text(
+                      '空き枠を埋められる候補が見つかりませんでした。\n'
+                      '（当日利用予定・支給量残なし・在籍なし のいずれかに該当）',
+                      style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: AppColors.onSurfaceVariant),
                     ),
                   ),
-                const SizedBox(height: 6),
-                Text(
-                  '事業所名「${settings.facilityName}」・回答期限'
-                  '「${settings.vacancyReplyDeadline}」は設定画面で変更できます。',
-                  style: const TextStyle(
-                      fontSize: 10, color: AppColors.onSurfaceVariant),
-                ),
+
+                // ── 文面プレビュー
+                if (notifiable.isNotEmpty) ...[
+                  const Divider(height: 20),
+                  Row(
+                    children: [
+                      const Icon(Icons.article_outlined,
+                          size: 15, color: AppColors.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      const Text('送信される文面',
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 30),
+                        ),
+                        icon: Icon(_editingMessage ? Icons.done : Icons.edit,
+                            size: 14),
+                        label: Text(_editingMessage ? '編集を終了' : '今回だけ編集',
+                            style: const TextStyle(fontSize: 11)),
+                        onPressed: () =>
+                            setState(() => _editingMessage = !_editingMessage),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  if (_editingMessage)
+                    TextField(
+                      controller: _messageCtrl,
+                      maxLines: 6,
+                      minLines: 4,
+                      style: const TextStyle(fontSize: 12, height: 1.5),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        helperText: '※この変更は今回の送信のみに適用されます',
+                        helperStyle: TextStyle(fontSize: 10),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: kLineGreen.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: kLineGreen.withValues(alpha: 0.25)),
+                      ),
+                      child: Text(
+                        _messageCtrl.text,
+                        style: const TextStyle(fontSize: 12, height: 1.6),
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '事業所名「${settings.facilityName}」・回答期限'
+                    '「${settings.vacancyReplyDeadline}」は設定画面で変更できます。',
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.onSurfaceVariant),
+                  ),
+                ],
+                const SizedBox(height: 8),
               ],
-              const SizedBox(height: 8),
-            ],
+            ),
           ),
         ),
       ),

@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/app_spinner.dart';
+import '../widgets/unfocus_offscreen_text_field.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -113,41 +114,43 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 40),
+          child: UnfocusOffscreenTextField(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 40),
 
-                  // ロゴエリア（既存デザイン維持）
-                  _buildLogoSection(),
+                    // ロゴエリア（既存デザイン維持）
+                    _buildLogoSection(),
 
-                  const SizedBox(height: 48),
+                    const SizedBox(height: 48),
 
-                  // ログインフォーム（既存デザイン維持）
-                  _buildLoginForm(),
+                    // ログインフォーム（既存デザイン維持）
+                    _buildLoginForm(),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-                  // ログインボタン（既存デザイン維持）
-                  _buildLoginButton(),
+                    // ログインボタン（既存デザイン維持）
+                    _buildLoginButton(),
 
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  // パスワード忘れリンク（既存デザイン維持）
-                  _buildForgotPasswordLink(),
+                    // パスワード忘れリンク（既存デザイン維持）
+                    _buildForgotPasswordLink(),
 
-                  const SizedBox(height: 40),
+                    const SizedBox(height: 40),
 
-                  // バージョン情報（既存デザイン維持）
-                  _buildVersionInfo(),
+                    // バージョン情報（既存デザイン維持）
+                    _buildVersionInfo(),
 
-                  const SizedBox(height: 24),
-                ],
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
           ),

@@ -20,6 +20,7 @@ import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/skeleton_gate.dart';
 import '../widgets/motion/success_feedback.dart';
 import '../widgets/skeletons/screen_skeletons.dart';
+import '../widgets/unfocus_offscreen_text_field.dart';
 import '../widgets/vacancy_notice_dialog.dart'
     show kLineGreen, LinkingCodeDialog;
 import '../widgets/motion/app_spinner.dart';
@@ -626,21 +627,23 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 100),
-          child: Column(
-            children: [
-              _buildSection('基本情報', _buildBasicInfo()),
-              _buildSection('保護者情報', _buildGuardianInfo()),
-              _buildSection('受給者証', _buildCertInfo()),
-              _buildSection('定期利用', _buildRegularInfo()),
-              if (_isEditing)
-                _buildSection('今月の利用状況', _buildMonthlyUsageInfo()),
-              _buildSection('送迎場所', _buildTransportInfo()),
-              _buildSection('備考', _buildNotesInfo()),
-            ],
+      body: UnfocusOffscreenTextField(
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 100),
+            child: Column(
+              children: [
+                _buildSection('基本情報', _buildBasicInfo()),
+                _buildSection('保護者情報', _buildGuardianInfo()),
+                _buildSection('受給者証', _buildCertInfo()),
+                _buildSection('定期利用', _buildRegularInfo()),
+                if (_isEditing)
+                  _buildSection('今月の利用状況', _buildMonthlyUsageInfo()),
+                _buildSection('送迎場所', _buildTransportInfo()),
+                _buildSection('備考', _buildNotesInfo()),
+              ],
+            ),
           ),
         ),
       ),

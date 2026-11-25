@@ -13,6 +13,9 @@ import 'package:flutter/widgets.dart';
 /// （engine: semantics/text_field.dart の activate → selectionchange → handleChange）。
 /// フォーカスを外した入力欄ではこの送り返しが起きないことを確かめたので、
 /// 画面外に出た時点でフォーカスを外す。入力した内容はそのまま残る。
+///
+/// 外すのは、スクロールが入力欄を表示範囲から遠ざけているときだけ。隠れていた入力中の欄を
+/// 見える所まで動かすスクロール（カーソルを見せるための自動スクロールなど）では外さない。
 class UnfocusOffscreenTextField extends StatelessWidget {
   const UnfocusOffscreenTextField({super.key, required this.child});
 
@@ -21,17 +24,20 @@ class UnfocusOffscreenTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return NotificationListener<ScrollUpdateNotification>(
-      onNotification: (_) {
-        unfocusIfOffscreen();
+      onNotification: (n) {
+        unfocusIfOffscreen(scrollDelta: n.scrollDelta);
         return false;
       },
       child: child,
     );
   }
 
-  /// 入力中の欄が表示範囲の外に完全に出ていればフォーカスを外す（外したら true）
+  /// 入力中の欄が表示範囲の外に完全に出ていればフォーカスを外す（外したら true）。
+  ///
+  /// [scrollDelta] は今回のスクロール量（正 = 先へ進む）。欄が表示範囲の前（上）にあって
+  /// 戻る向き、または後ろ（下）にあって進む向きのスクロールは、欄を見せる方向なので外さない。
   @visibleForTesting
-  static bool unfocusIfOffscreen() {
+  static bool unfocusIfOffscreen({double? scrollDelta}) {
     final focus = FocusManager.instance.primaryFocus;
     final ctx = focus?.context;
     if (focus == null || ctx == null || !ctx.mounted) return false;
@@ -52,8 +58,11 @@ class UnfocusOffscreenTextField extends StatelessWidget {
         position.axis == Axis.vertical ? box.size.height : box.size.width;
     final visibleStart = position.pixels;
     final visibleEnd = position.pixels + position.viewportDimension;
-    final outside = start >= visibleEnd || start + extent <= visibleStart;
-    if (!outside) return false;
+    final delta = scrollDelta ?? 0;
+    // 後ろ（下）に出ていて遠ざかる / 前（上）に出ていて遠ざかる
+    final awayAfter = start >= visibleEnd && delta <= 0;
+    final awayBefore = start + extent <= visibleStart && delta >= 0;
+    if (!awayAfter && !awayBefore) return false;
     focus.unfocus();
     return true;
   }
