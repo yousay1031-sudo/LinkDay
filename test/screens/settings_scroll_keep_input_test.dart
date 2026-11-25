@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:linkday_app/screens/settings_screen.dart';
 import 'package:linkday_app/services/settings_service.dart';
-import 'package:linkday_app/widgets/staff_minimal_section.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/fake_backend.dart';
@@ -37,8 +36,9 @@ void main() {
   EditableText editable(WidgetTester t, Finder f) => t.widget<EditableText>(
       find.descendant(of: f, matching: find.byType(EditableText)));
 
-  Future<void> roundTrip(WidgetTester t, Finder field, String value) async {
-    await t.binding.setSurfaceSize(const Size(900, 700));
+  Future<void> roundTrip(WidgetTester t, Finder field, String value,
+      {Size size = const Size(900, 700)}) async {
+    await t.binding.setSurfaceSize(size);
     addTearDown(() => t.binding.setSurfaceSize(null));
     await t.pumpWidget(const MaterialApp(home: SettingsScreen()));
     await t.pump(const Duration(milliseconds: 500));
@@ -55,6 +55,10 @@ void main() {
     // 画面の外まで（上の端へ）→ また入力欄まで
     await t.drag(list, const Offset(0, 12000));
     await t.pumpAndSettle();
+    final view = t.getRect(list);
+    final r = t.getRect(field);
+    expect(r.top >= view.bottom || r.bottom <= view.top, isTrue,
+        reason: '上の端へ戻したとき、入力欄が画面の外にあること（テストの前提）');
     await t.scrollUntilVisible(field, 200, scrollable: list);
     await t.pumpAndSettle();
 
@@ -75,7 +79,10 @@ void main() {
   });
 
   testWidgets('車両の定員', (t) async {
-    await roundTrip(t, find.widgetWithText(TextFormField, '定員（名）').last, '9');
+    // 設定画面から職員の欄を職員管理へ移したため、定員の欄が上に寄った。
+    // 上の端へ戻したときに画面の外へ出るよう、画面の高さを低くする
+    await roundTrip(t, find.widgetWithText(TextFormField, '定員（名）').last, '9',
+        size: const Size(900, 420));
   });
 
   testWidgets('管理者 LINE userId', (t) async {
@@ -102,32 +109,6 @@ void main() {
       await t.pump();
     }
     expect(ctrl.text, '検証の事業所');
-    await t.pumpWidget(const SizedBox.shrink());
-  });
-
-  testWidgets('職員の名前（入力欄を自分で持つ部品。画面外に出ても作り直さない）', (t) async {
-    await t.binding.setSurfaceSize(const Size(900, 700));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-    await t.pumpWidget(const MaterialApp(home: SettingsScreen()));
-    await t.pump(const Duration(milliseconds: 500));
-    final list = find.byType(Scrollable).first;
-    Finder field() => find.descendant(
-        of: find.byType(StaffMinimalSection), matching: find.byType(TextField));
-    await t.scrollUntilVisible(field(), 200, scrollable: list);
-    await t.pumpAndSettle();
-    await t.tap(field());
-    await t.enterText(field(), '検証 職員');
-    await t.pump();
-    // フォーカスを外してから（普通の操作。読み上げの有無に関係しない）
-    FocusManager.instance.primaryFocus?.unfocus();
-    await t.pump();
-    await t.drag(list, const Offset(0, -9000));
-    await t.pumpAndSettle();
-    await t.drag(list, const Offset(0, 12000));
-    await t.pumpAndSettle();
-    await t.scrollUntilVisible(field(), 200, scrollable: list);
-    await t.pumpAndSettle();
-    expect(editable(t, field()).controller.text, '検証 職員');
     await t.pumpWidget(const SizedBox.shrink());
   });
 

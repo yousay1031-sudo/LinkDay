@@ -6,9 +6,11 @@ import 'package:flutter/foundation.dart';
 import '../services/attendance_service.dart';
 import '../services/customer_service.dart';
 import '../services/settings_service.dart';
+import '../services/staff_account_service.dart';
 import '../services/staff_service.dart';
 import '../services/transport_plan_service.dart';
 import '../services/weekly_schedule_service.dart';
+import 'account_session.dart';
 import 'data_errors.dart';
 import 'facility_context.dart';
 import 'staff_session.dart';
@@ -87,6 +89,8 @@ class DataSession extends ChangeNotifier {
       }
       FacilityContext.instance.attach(d, fid);
       await StaffService.instance.attach();
+      AccountSession.instance.setShared();
+      StaffAccountService.instance.start();
       await StaffSession.instance.restore(fid);
       await SettingsService.instance.attach();
       await CustomerService.instance.attach();
@@ -129,8 +133,10 @@ class DataSession extends ChangeNotifier {
     await AttendanceService.instance.detach();
     await WeeklyScheduleService.instance.detach();
     await CustomerService.instance.detach();
+    await StaffAccountService.instance.stop();
     await StaffService.instance.detach();
     StaffSession.instance.reset();
+    AccountSession.instance.reset();
     FacilityContext.instance.detach();
   }
 

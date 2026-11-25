@@ -20,6 +20,12 @@ class FsPaths {
   static const String settings = 'settings';
   static const String staff = 'staff';
 
+  /// 職員の Google メールアドレス（個人情報のため管理者だけが読み書きできる）
+  static const String staffAccounts = 'staffAccounts';
+
+  /// ログイン履歴（追記だけ。読めるのは管理者だけ）
+  static const String loginHistory = 'loginHistory';
+
   /// settings コレクション内の唯一のドキュメント ID
   static const String settingsDocId = 'app';
 }

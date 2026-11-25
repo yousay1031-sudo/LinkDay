@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:linkday_app/data/account_session.dart';
 import 'package:linkday_app/data/data_session.dart';
 import 'package:linkday_app/data/facility_context.dart';
 import 'package:linkday_app/data/staff_session.dart';
@@ -8,6 +9,7 @@ import 'package:linkday_app/models/staff.dart';
 import 'package:linkday_app/services/attendance_service.dart';
 import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
+import 'package:linkday_app/services/staff_account_service.dart';
 import 'package:linkday_app/services/staff_service.dart';
 import 'package:linkday_app/services/transport_plan_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
@@ -28,6 +30,8 @@ class FakeBackend {
     String facilityId = defaultFacilityId,
     List<Staff> staff = const [],
     String? currentStaffId,
+    String? personalStaffId,
+    Map<String, String> emails = const {},
   }) async {
     final db = FakeFirebaseFirestore();
     final backend = FakeBackend._(db, facilityId);
@@ -40,8 +44,28 @@ class FakeBackend {
         'updatedByStaffName': 'テスト',
       });
     }
+    for (final e in emails.entries) {
+      await backend.db
+          .collection(FsPaths.facilities)
+          .doc(facilityId)
+          .collection(FsPaths.staffAccounts)
+          .doc(e.key)
+          .set({
+        StaffAccountService.fGoogleEmail: e.value,
+        StaffAccountService.fGoogleEmailLower: e.value.toLowerCase(),
+      });
+    }
     FacilityContext.instance.attach(db, facilityId);
     await StaffService.instance.attach();
+    // 個人アカウント（[personalStaffId] の本人）としてログインした状態。省略時は共用端末
+    if (personalStaffId != null) {
+      AccountSession.instance.debugSet(
+          kind: AccountKind.personal, staffId: personalStaffId);
+    } else {
+      AccountSession.instance.debugSet();
+    }
+    StaffAccountService.instance.start();
+    await pumpUntilAccountsLoaded();
     StaffSession.instance.debugSet(facilityId: facilityId, staffId: currentStaffId);
     await SettingsService.instance.attach();
     await CustomerService.instance.attach();
@@ -61,6 +85,21 @@ class FakeBackend {
       attach(facilityId: facilityId, staff: const [staffA, staffB], currentStaffId: staffA.id);
 
   static FakeBackend? _current;
+
+  /// 管理者のとき、メールアドレスの一覧（管理者だけが読める）の最初の読み込みを待つ
+  static Future<void> pumpUntilAccountsLoaded() async {
+    for (var i = 0; i < 20; i++) {
+      if (!AccountSession.instance.isAdmin ||
+          StaffAccountService.instance.isLoaded) {
+        return;
+      }
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  /// 管理者の職員（在籍中・管理者・ログイン許可）
+  static const Staff adminStaff = Staff(
+      id: 's-admin', name: '管理 一郎', isAdmin: true, loginEnabled: true, hasGoogleEmail: true);
 
   /// 直近に attach した保存先
   static FakeBackend get current {
@@ -167,5 +206,7 @@ class FakeBackend {
     StaffSession.instance.prompter = null;
     await DataSession.instance.stop();
     DataSession.instance.debugReset();
+    await StaffAccountService.instance.stop();
+    AccountSession.instance.reset();
   }
 }

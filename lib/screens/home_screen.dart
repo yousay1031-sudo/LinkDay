@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
 import 'customer_management_screen.dart';
 import 'settings_screen.dart';
+import 'staff_management_screen.dart';
 import 'transport_screen.dart';
 import 'weekly_schedule_screen.dart';
 import '../widgets/motion/app_spinner.dart';
@@ -209,6 +210,14 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (_) => const TransportScreen(),
         ),
       ).then((_) => _loadCounts());
+      return;
+    }
+    // 職員管理
+    if (item.route == '/staff') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const StaffManagementScreen()),
+      );
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
