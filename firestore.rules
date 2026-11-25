@@ -10,16 +10,21 @@ rules_version = '2';
 // - 所属は最上位の memberships/{uid}（{ facilityId }）で表す。
 //   クライアントは自分の分を読めるだけで、作成・変更はできない
 //   （登録は管理者が Firebase コンソール／Admin SDK で行う）。
-// - LINE 連携用のコレクション（line_linkage 以下）は従来どおり。
+// - LINE 連携用のコレクション（line_linkage 以下）は、有効な所属のあるアカウントだけ
+//   （ステップ2で「認証済みなら誰でも」から締めた）。
 // - Cloud Functions は Admin SDK で動作するため、本ルールを
 //   バイパスする（lineWebhook は未認証の LINE からの呼び出しだが、
 //   x-line-signature の HMAC 検証を通過したものだけが Firestore に書く）。
-// - ログインは事業所アカウントを共用端末で使う。誰が操作したかは
-//   各ドキュメントの updatedByStaffId / updatedByStaffName に残す
-//   （本人確認ではない。アプリ内で担当者を選ぶ方式）。
+// - ログインは 2 種類（ステップ2）。
+//   共用端末アカウント（事業所の PC・タブレット）: 誰が操作したかはアプリ内で
+//     担当者を選んで updatedByStaffId / updatedByStaffName に残す（本人確認ではない）。
+//   個人アカウント（職員の Google アカウント）: 担当者はログインした本人に固定。
+//     ルールでも本人の職員 ID でしか記録できない（hasAudit）。
 //
 // 【原則】
 // 1. 未認証（request.auth == null）は全コレクション全面拒否。
+//    認証済みでも、有効な所属（memberships/{uid}）が無ければ全面拒否
+//    （自分の所属の文書を読むことだけはできる）。
 // 2. facilities/{facilityId}/** は「ログイン済み かつ その事業所に所属」の場合だけ。
 //    「ログイン済みなら誰でも」にはしない。他事業所のデータは読めない。
 // 3. 業務データの作成・更新には updatedAt（サーバー時刻）と担当者名を必須にする。
@@ -48,19 +53,64 @@ service cloud.firestore {
       return id is string && id.matches('^U[0-9a-fA-F]{32}$');
     }
 
-    // その事業所に所属するアカウントか（memberships/{uid}.facilityId で判定）
-    function isMemberOf(facilityId) {
-      let m = /databases/$(database)/documents/memberships/$(request.auth.uid);
-      return isSignedIn() && exists(m) && get(m).data.facilityId == facilityId;
+    // ── 所属（ステップ2: 個人アカウントを追加）─────────────────
+    // memberships/{uid} = { facilityId, kind, staffId, email, createdAt }
+    //   kind: 'shared'（共用端末アカウント。kind が無い所属もこれ）
+    //       | 'personal'（職員個人の Google アカウント。staffId の本人）
+    // 所属を作る・消すのは Cloud Functions だけ（クライアントは書けない）。
+    //
+    // 【安全の前提】誰でも Firebase のアカウントを作れても（Google ログインを
+    // 有効にすると誰でも作れる）、有効な所属が無ければ何も読めず何も書けない。
+    // 個人アカウントの所属は、ひも付く職員が「在籍中かつログイン許可」のときだけ
+    // 有効とする（在籍終了・ログイン停止は、Functions が所属を消すのを待たずに、
+    // その時点から拒否される）。
+    function membershipPath() {
+      return /databases/$(database)/documents/memberships/$(request.auth.uid);
     }
 
-    // 業務データの書き込みに担当者の記録が付いているか
+    function staffPath(facilityId, staffId) {
+      return /databases/$(database)/documents/facilities/$(facilityId)/staff/$(staffId);
+    }
+
+    function isPersonal(m) {
+      return m.get('kind', 'shared') == 'personal';
+    }
+
+    // 所属の文書 m が有効か（共用端末なら常に有効。個人なら職員が在籍中かつログイン許可）
+    function membershipOk(m) {
+      return m.facilityId is string
+        && (!isPersonal(m)
+          || (m.get('staffId', null) is string
+            && exists(staffPath(m.facilityId, m.staffId))
+            && get(staffPath(m.facilityId, m.staffId)).data.get('isActive', false) == true
+            && get(staffPath(m.facilityId, m.staffId)).data.get('loginEnabled', false) == true));
+    }
+
+    // 有効な所属があるか（事業所を問わない。LINE 連携の最上位コレクション用）
+    function hasValidMembership() {
+      return isSignedIn() && exists(membershipPath())
+        && membershipOk(get(membershipPath()).data);
+    }
+
+    // その事業所に有効な所属があるか
+    function isMemberOf(facilityId) {
+      return hasValidMembership()
+        && get(membershipPath()).data.facilityId == facilityId;
+    }
+
+    // 業務データの書き込みに担当者の記録が付いているか。
+    // 個人アカウントは本人の職員 ID でしか記録できない（他人の名前で記録させない）。
+    // 例外は画面を開いたときの自動処理（担当者 ID なし・名前「自動」）だけ。
     function hasAudit() {
       let d = request.resource.data;
+      let m = get(membershipPath()).data;
       return d.updatedAt == request.time
         && d.updatedByStaffName is string
         && d.updatedByStaffName.size() > 0
-        && (d.updatedByStaffId == null || d.updatedByStaffId is string);
+        && (d.updatedByStaffId == null || d.updatedByStaffId is string)
+        && (!isPersonal(m)
+          || d.updatedByStaffId == m.staffId
+          || (d.updatedByStaffId == null && d.updatedByStaffName == '自動'));
     }
 
     // ── memberships: アカウント → 事業所の所属 ─────────────
@@ -98,27 +148,29 @@ service cloud.firestore {
 
     // ── line_linkage: 連携済み（customerId ↔ lineUserId）──
     // doc id = customerId
-    // クライアント: 認証済みなら read 可（連携状況の同期に使用）。
-    //              write も認証済みに許可（職員による連携解除のため）。
+    // クライアント: 有効な所属のあるアカウントなら read 可（連携状況の同期に使用）。
+    //              write も同じ（職員による連携解除のため）。
+    //              ステップ2で「認証済みなら誰でも」から締めた（Google ログインで
+    //              誰でもアカウントを作れるようになるため）。
     match /line_linkage/{customerId} {
-      allow read: if isSignedIn();
+      allow read: if hasValidMembership();
 
       // 作成・更新は形式検証つき（customerId は doc id と一致必須）
-      allow create, update: if isSignedIn()
+      allow create, update: if hasValidMembership()
         && request.resource.data.customerId == customerId
         && isValidLineUserId(request.resource.data.lineUserId);
 
       // 連携解除（職員操作）
-      allow delete: if isSignedIn();
+      allow delete: if hasValidMembership();
     }
 
     // ── linking_codes: 連携コード（有効期限7日）──────────
     // doc id = code（6桁英数）
     match /linking_codes/{code} {
-      allow read: if isSignedIn();
+      allow read: if hasValidMembership();
 
-      // 発行は認証済み職員のみ。code / customerId / expiresAt を必須にする。
-      allow create: if isSignedIn()
+      // 発行は有効な所属のあるアカウントのみ。code / customerId / expiresAt を必須にする。
+      allow create: if hasValidMembership()
         && isValidCode(code)
         && request.resource.data.code == code
         && request.resource.data.customerId is string
@@ -129,7 +181,7 @@ service cloud.firestore {
       allow update: if false;
 
       // 失効・取り消しは許可
-      allow delete: if isSignedIn();
+      allow delete: if hasValidMembership();
     }
 
     // ── notification_logs: 通知送信ログ（冪等キー兼用）──
@@ -140,7 +192,7 @@ service cloud.firestore {
     // 二重送信・送信漏れの双方が起こり得る。
     // 作成・更新は Cloud Functions（Admin SDK）のみが行う。
     match /notification_logs/{logId} {
-      allow read: if isSignedIn();
+      allow read: if hasValidMembership();
       allow create, update, delete: if false;
     }
 
@@ -155,7 +207,7 @@ service cloud.firestore {
     // が可能になる。確定は Cloud Functions の transaction のみが行う。
     // 職員向けの応募状況表示のため read は認証済みに許可する。
     match /slots/{slotId} {
-      allow read: if isSignedIn();
+      allow read: if hasValidMembership();
       allow create, update, delete: if false;
     }
 
@@ -171,7 +223,7 @@ service cloud.firestore {
     // 不正検知・トラブル調査用。改ざんされると監査の意味が無いため
     // クライアントからの書き込みは禁止。read は職員に許可する。
     match /slot_audit/{auditId} {
-      allow read: if isSignedIn();
+      allow read: if hasValidMembership();
       allow create, update, delete: if false;
     }
 

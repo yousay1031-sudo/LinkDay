@@ -1,5 +1,10 @@
+import 'dart:convert';
+
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+
+import '../verify/verify_config.dart';
 
 /// Firebase Authentication の操作をラップするサービスクラス
 ///
@@ -53,6 +58,66 @@ class AuthService {
       debugPrint('[AuthService] 予期しないエラー: $e');
       throw const AuthException('予期しないエラーが発生しました。再度お試しください。');
     }
+  }
+
+  /// Google でログイン（職員の個人アカウント）。
+  ///
+  /// ポップアップで Google のアカウントを選ぶ（リダイレクト方式は、Hosting と認証の
+  /// ドメインが違うとブラウザの保存領域の分離で失敗することがあるため使わない）。
+  /// 事業所に入れるかどうかは、ログイン後に所属を確かめて決める（DataSession）。
+  Future<UserCredential> signInWithGoogle() async {
+    try {
+      final provider = GoogleAuthProvider()
+        ..setCustomParameters({'prompt': 'select_account'});
+      final credential = await _auth.signInWithPopup(provider);
+      debugPrint('[AuthService] Google でサインイン成功');
+      return credential;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('[AuthService] Google サインイン失敗: ${e.code}');
+      throw AuthException(_localizeAuthError(e.code), code: e.code);
+    } catch (e) {
+      debugPrint('[AuthService] 予期しないエラー: $e');
+      throw const AuthException('予期しないエラーが発生しました。再度お試しください。');
+    }
+  }
+
+  /// 【検証構成のみ】Auth エミュレータへ、Google ログインの模擬を行う。
+  ///
+  /// エミュレータは署名のない JSON を Google の ID トークンとして受け付ける
+  /// （本物の Google には接続しない）。通常ビルドでは使えない。
+  Future<UserCredential> signInWithEmulatorGoogle(String email) async {
+    if (!VerifyConfig.enabled) {
+      throw StateError('検証構成でのみ使えます');
+    }
+    final e = email.trim().toLowerCase();
+    final claims = jsonEncode({
+      'sub': 'verify-google-${e.replaceAll(RegExp(r'[^a-z0-9]'), '-')}',
+      'email': e,
+      'email_verified': true,
+    });
+    try {
+      return await _auth
+          .signInWithCredential(GoogleAuthProvider.credential(idToken: claims));
+    } on FirebaseAuthException catch (err) {
+      throw AuthException(_localizeAuthError(err.code), code: err.code);
+    }
+  }
+
+  /// いまのアカウントが Google でログインしたものか
+  bool get isGoogleUser =>
+      _auth.currentUser?.providerData
+          .any((p) => p.providerId == 'google.com') ??
+      false;
+
+  /// Google でログインした直後に、所属を作ってもらう（Cloud Functions）。
+  ///
+  /// サーバーは認証トークンの確認済みメールアドレスだけを使う（ここからは何も送らない）。
+  /// 作れたら true。登録が無い・許可が無いときは false（理由は返らない）。
+  Future<bool> claimMembership() async {
+    final res = await FirebaseFunctions.instanceFor(region: 'asia-northeast1')
+        .httpsCallable('claimStaffMembership')
+        .call<Map<String, dynamic>>();
+    return res.data['ok'] == true;
   }
 
   /// サインアウト
@@ -138,6 +203,16 @@ class AuthService {
         return 'この操作は現在許可されていません';
       case 'account-exists-with-different-credential':
         return '同じメールアドレスで別の方法で登録されています';
+      case 'popup-blocked':
+        return 'ログインの画面（ポップアップ）がブラウザに止められました。'
+            'ポップアップを許可してから、もう一度押してください';
+      case 'popup-closed-by-user':
+      case 'cancelled-popup-request':
+        return 'Google のログインが途中で閉じられました。もう一度押してください';
+      case 'unauthorized-domain':
+        return 'このアドレスからは Google でログインできません。管理者にお問い合わせください';
+      case 'admin-restricted-operation':
+        return '新しいアカウントの作成が止められています。管理者にお問い合わせください';
       default:
         return 'エラーが発生しました（コード: $code）。再度お試しください';
     }

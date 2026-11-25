@@ -102,3 +102,6 @@ doc/api/
 firestore-debug.log
 ui-debug.log
 /build/verify_dbg/
+
+# 検証環境: Functions エミュレータ用の入口から functions/node_modules へのリンク（start_emulators.sh が作る）
+/tool/verify/functions_account/node_modules

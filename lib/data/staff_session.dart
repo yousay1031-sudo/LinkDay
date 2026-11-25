@@ -27,11 +27,15 @@ typedef StaffPrompter = Future<Staff?> Function();
 /// - 日付が変わったら未選択に戻す（共用端末で前日の担当者のまま記録しないため）。
 /// - ログアウトしたら端末の保存も消す（[clearSelection]。DataSession.logout から）。
 /// - 他人の名前も選べるため厳密な本人確認ではない（現場の手軽さを優先）。
+///
+/// 個人アカウント（Google。ステップ2）では [fixTo] で本人に固定する。
+/// 固定中は選び直せず、日付が変わっても未選択に戻さず、端末にも保存しない。
 class StaffSession extends ChangeNotifier {
   StaffSession._();
   static final StaffSession instance = StaffSession._();
 
-  static String prefsKey(String facilityId) => 'linkday.currentStaff.$facilityId';
+  static String prefsKey(String facilityId) =>
+      'linkday.currentStaff.$facilityId';
 
   /// 担当者を選んだ日（"YYYY-MM-DD"）。今日と違えば未選択として扱う。
   static String prefsDateKey(String facilityId) =>
@@ -43,6 +47,22 @@ class StaffSession extends ChangeNotifier {
   String? _facilityId;
   String? _staffId;
   String? _selectedDay;
+
+  /// 個人アカウントの本人（固定中なら職員 ID）
+  String? _fixedStaffId;
+
+  /// 担当者が本人に固定されているか（個人アカウント）
+  bool get isFixed => _fixedStaffId != null;
+
+  /// 個人アカウントでログインしたとき、担当者を本人に固定する（null で解除）
+  void fixTo(String? staffId) {
+    _fixedStaffId = staffId;
+    if (!_listening) {
+      StaffService.instance.addListener(_onStaffChanged);
+      _listening = true;
+    }
+    notifyListeners();
+  }
 
   String _today() {
     final n = clock();
@@ -61,6 +81,11 @@ class StaffSession extends ChangeNotifier {
 
   /// 現在の担当者。在籍終了・未登録の職員なら null。
   Staff? get current {
+    final fixed = _fixedStaffId;
+    if (fixed != null) {
+      final s = StaffService.instance.getById(fixed);
+      return (s != null && s.isActive) ? s : null;
+    }
     final id = _staffId;
     if (id == null) return null;
     if (_selectedDay != _today()) {
@@ -84,6 +109,11 @@ class StaffSession extends ChangeNotifier {
   /// ログイン後に呼ぶ: この端末で前回選んだ担当者を読み出す
   Future<void> restore(String facilityId) async {
     _facilityId = facilityId;
+    if (isFixed) {
+      // 個人アカウント: 端末に保存した担当者は使わない（本人に固定）
+      notifyListeners();
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     _staffId = prefs.getString(prefsKey(facilityId));
     _selectedDay = prefs.getString(prefsDateKey(facilityId));
@@ -103,6 +133,7 @@ class StaffSession extends ChangeNotifier {
 
   /// ログアウト時: メモリ上の状態だけ消す（端末の保存は残す）
   void reset() {
+    _fixedStaffId = null;
     _facilityId = null;
     _staffId = null;
     _selectedDay = null;
@@ -110,6 +141,7 @@ class StaffSession extends ChangeNotifier {
   }
 
   Future<void> select(Staff staff) async {
+    if (isFixed) return; // 個人アカウントは担当者を変えられない
     final fid = _facilityId;
     if (staff.hasPin && pinVerifier != null) {
       final ok = await pinVerifier!(staff);
@@ -143,6 +175,7 @@ class StaffSession extends ChangeNotifier {
   void checkDay() => _onDayChanged();
 
   void _onDayChanged() {
+    if (isFixed) return; // 個人アカウントは日付が変わっても本人のまま
     if (_staffId == null || _selectedDay == _today()) return;
     debugPrint('[StaffSession] 日付が変わったため担当者を未選択に戻します');
     unawaited(clearSelection());
@@ -155,6 +188,8 @@ class StaffSession extends ChangeNotifier {
   Future<AuditStamp> requireStamp() async {
     final s = stamp;
     if (s != null) return s;
+    // 個人アカウントで本人が見つからない（在籍終了など）なら、他人を選ばせない
+    if (isFixed) throw const StaffNotSelectedException();
     final p = prompter;
     if (p != null) {
       final chosen = await p();
@@ -173,7 +208,8 @@ class StaffSession extends ChangeNotifier {
   }
 
   @visibleForTesting
-  void debugSet({String? facilityId, String? staffId}) {
+  void debugSet({String? facilityId, String? staffId, String? fixedStaffId}) {
+    _fixedStaffId = fixedStaffId;
     _facilityId = facilityId;
     _staffId = staffId;
     _selectedDay = staffId == null ? null : _today();

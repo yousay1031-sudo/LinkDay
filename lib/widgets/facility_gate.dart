@@ -17,13 +17,18 @@ import 'auth_loading_screen.dart';
 ///   error     → 理由＋再試行＋ログアウト
 ///   ready     → HomeScreen
 class FacilityGate extends StatefulWidget {
-  const FacilityGate({super.key, required this.uid, this.db});
+  const FacilityGate({super.key, required this.uid, this.db, this.claim});
 
   final String uid;
 
   /// テスト用の保存先（省略時は FirebaseFirestore.instance）
   @visibleForTesting
   final FirebaseFirestore? db;
+
+  /// テスト用: 所属を作ってもらう処理（省略時、Google でログインしたアカウントなら
+  /// Cloud Functions の claimStaffMembership を呼ぶ）
+  @visibleForTesting
+  final Future<bool> Function()? claim;
 
   @override
   State<FacilityGate> createState() => _FacilityGateState();
@@ -49,7 +54,12 @@ class _FacilityGateState extends State<FacilityGate> {
     final uid = widget.uid;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || widget.uid != uid) return;
-      DataSession.instance.start(uid, db: widget.db);
+      // テスト（保存先の差し替えあり）では Firebase の認証に触れない
+      final claim = widget.claim ??
+          (widget.db == null && AuthService.instance.isGoogleUser
+              ? AuthService.instance.claimMembership
+              : null);
+      DataSession.instance.start(uid, db: widget.db, claim: claim);
     });
   }
 
@@ -67,7 +77,10 @@ class _FacilityGateState extends State<FacilityGate> {
               key: Key('facilityGateNotMember'),
               icon: Icons.domain_disabled,
               title: 'このアカウントは事業所に登録されていません',
-              body: '管理者に、このアカウントを事業所に登録するよう依頼してください。',
+              body: '管理者に、このアカウントを事業所に登録するよう依頼してください。\n'
+                  'Google でログインした場合は、管理者が職員管理でこのメールアドレスを'
+                  '登録し、ログインを許可すると入れます（在籍終了・ログインを停止された'
+                  '場合も、この画面になります）。',
               showRetry: false,
             );
           case DataSessionStatus.error:

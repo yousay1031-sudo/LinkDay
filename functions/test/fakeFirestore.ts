@@ -200,6 +200,45 @@ export class FakeFirestore {
     this.store.clear();
   }
 
+  /**
+   * ステップ2: collectionGroup(name).where(...).get() の最小実装。
+   * コレクション名が name、または '/name' で終わるもの（例 'facilities/f1/staffAccounts'）
+   * をすべて対象にする。各文書の ref.parent.parent.id は親の文書 ID（事業所 ID）。
+   */
+  collectionGroup(name: string) {
+    const self = this;
+    const run = (conds: Array<{field: string; value: unknown}>) => ({
+      where(field: string, _op: string, value: unknown) {
+        return run([...conds, {field, value}]);
+      },
+      async get() {
+        const docs: Array<{
+          id: string;
+          data: () => Record<string, unknown>;
+          ref: {path: string; parent: {parent: {id: string} | null}};
+        }> = [];
+        for (const [colName, col] of self.store.entries()) {
+          if (colName !== name && !colName.endsWith(`/${name}`)) continue;
+          const parts = colName.split('/');
+          const parentId = parts.length >= 3 ? parts[parts.length - 2] : null;
+          for (const [id, d] of col.entries()) {
+            if (!conds.every((c) => d[c.field] === c.value)) continue;
+            docs.push({
+              id,
+              data: () => ({...d}),
+              ref: {
+                path: `${colName}/${id}`,
+                parent: {parent: parentId === null ? null : {id: parentId}},
+              },
+            });
+          }
+        }
+        return {empty: docs.length === 0, docs, size: docs.length};
+      },
+    });
+    return run([]);
+  }
+
   /** Firestore 型として渡すためのキャスト（使用 API のみ実装済み） */
   asFirestore(): Firestore {
     return this as unknown as Firestore;

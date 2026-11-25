@@ -49,6 +49,31 @@ const BUSINESS = [
 
 let env;
 
+// ステップ2: 個人アカウントにひも付く職員（在籍・ログインの許可の組み合わせ）
+const PERSONAL_STAFF = {
+  haru: { name: '職員 春子', isActive: true, loginEnabled: true, isAdmin: false },
+  natsu: { name: '職員 夏男', isActive: true, loginEnabled: false, isAdmin: false },
+  aki: { name: '職員 秋子', isActive: false, loginEnabled: true, isAdmin: false },
+};
+
+// クライアントが触れうる最上位のコレクション（firestore.rules に書いたものすべて）
+const TOP_LEVEL = [
+  'line_linkage',
+  'linking_codes',
+  'notification_logs',
+  'slots',
+  'webhook_processed',
+  'slot_audit',
+  'slot_admin_targets',
+];
+
+/** Google でログインしたアカウントの認証トークン */
+const googleToken = (email) => ({
+  email,
+  email_verified: true,
+  firebase: { sign_in_provider: 'google.com' },
+});
+
 /** 担当者の記録付きの書き込みデータ */
 const audited = (extra = {}) => ({
   ...extra,
@@ -82,6 +107,23 @@ beforeEach(async () => {
     }
     await setDoc(doc(db, 'notification_logs/2026-11-19_c1'), { status: 'sent' });
     await setDoc(doc(db, 'slots/2026-11-19_c1'), { status: 'open' });
+    // ステップ2: 個人アカウント（Google）。職員の状態で所属の有効・無効が決まる
+    for (const [id, s] of Object.entries(PERSONAL_STAFF)) {
+      await setDoc(doc(db, `facilities/${FAC}/staff/${id}`), s);
+      await setDoc(doc(db, `memberships/p-${id}`), {
+        facilityId: FAC,
+        kind: 'personal',
+        staffId: id,
+      });
+    }
+    for (const c of TOP_LEVEL) {
+      await setDoc(doc(db, `${c}/x1`), { customerId: 'x1', v: 1 });
+    }
+    await setDoc(doc(db, `facilities/${FAC}/staffAccounts/haru`), {
+      googleEmail: 'haruko@example.invalid',
+      googleEmailLower: 'haruko@example.invalid',
+    });
+    await setDoc(doc(db, `facilities/${FAC}/loginHistory/h1`), { uid: 'member-a' });
   });
 });
 
@@ -89,6 +131,20 @@ const unauth = () => env.unauthenticatedContext().firestore();
 const memberA = () => env.authenticatedContext('member-a').firestore();
 const memberB = () => env.authenticatedContext('member-b').firestore();
 const noMembership = () => env.authenticatedContext('stranger').firestore();
+const personal = (id) =>
+  env.authenticatedContext(`p-${id}`, googleToken(`${id}@example.invalid`)).firestore();
+// 未登録の Google アカウント（登録済みの職員と同じアドレスでも、所属が無ければ同じ）
+const unregisteredGoogle = () =>
+  env.authenticatedContext('g-stranger', googleToken('haruko@example.invalid')).firestore();
+// 自分で作ったメールアドレスとパスワードのアカウント
+const selfMadePassword = () =>
+  env
+    .authenticatedContext('pw-stranger', {
+      email: 'someone@example.invalid',
+      email_verified: false,
+      firebase: { sign_in_provider: 'password' },
+    })
+    .firestore();
 
 describe('未認証は拒否', () => {
   for (const c of BUSINESS) {
@@ -213,5 +269,168 @@ describe('既存ルールの回帰（変えていないこと）', () => {
     const db = memberA();
     await assertFails(getDoc(doc(db, 'customers/c1')));
     await assertFails(setDoc(doc(db, 'customers/c1'), { name: 'x' }));
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+// ステップ2: Google ログインと所属
+// ════════════════════════════════════════════════════════════════
+
+describe('条件A: 誰でもアカウントを作れても、有効な所属が無ければ何も読めず何も書けない', () => {
+  const FACILITY_COLS = [...BUSINESS, 'staffAccounts', 'loginHistory'];
+  const existingId = (c) => (c === 'staffAccounts' ? 'haru' : c === 'loginHistory' ? 'h1' : 'd1');
+  for (const [label, who, myUid] of [
+    ['未登録の Google アカウント', unregisteredGoogle, 'g-stranger'],
+    ['自分で作ったメールアドレスのアカウント', selfMadePassword, 'pw-stranger'],
+  ]) {
+    test(`${label}: 事業所の下の全コレクションを読めない・書けない`, async () => {
+      const db = who();
+      await assertFails(getDoc(doc(db, `facilities/${FAC}`)));
+      for (const c of FACILITY_COLS) {
+        const id = existingId(c);
+        await assertFails(getDoc(doc(db, `facilities/${FAC}/${c}/${id}`)));
+        await assertFails(getDocs(collection(db, `facilities/${FAC}/${c}`)));
+        await assertFails(setDoc(doc(db, `facilities/${FAC}/${c}/new`), audited()));
+        await assertFails(updateDoc(doc(db, `facilities/${FAC}/${c}/${id}`), audited({ v: 9 })));
+        await assertFails(deleteDoc(doc(db, `facilities/${FAC}/${c}/${id}`)));
+      }
+      await assertFails(setDoc(doc(db, `facilities/${FAC}/customers/d1/sub/x`), { v: 1 }));
+    });
+
+    test(`${label}: 最上位の全コレクション（LINE 連携を含む）を読めない・書けない`, async () => {
+      const db = who();
+      for (const c of TOP_LEVEL) {
+        await assertFails(getDoc(doc(db, `${c}/x1`)));
+        await assertFails(getDocs(collection(db, c)));
+        await assertFails(setDoc(doc(db, `${c}/new`), { customerId: 'new', v: 1 }));
+        await assertFails(deleteDoc(doc(db, `${c}/x1`)));
+      }
+      // 形式の正しい連携コードの発行・連携の作成も不可
+      await assertFails(
+        setDoc(doc(db, 'linking_codes/ABC123'), {
+          code: 'ABC123',
+          customerId: 'c1',
+          expiresAt: new Date(2030, 0, 1),
+        }),
+      );
+      await assertFails(
+        setDoc(doc(db, 'line_linkage/c1'), { customerId: 'c1', lineUserId: 'U' + 'a'.repeat(32) }),
+      );
+    });
+
+    test(`${label}: 所属を自分で作れない・他人の所属を読めない`, async () => {
+      const db = who();
+      await assertFails(setDoc(doc(db, `memberships/${myUid}`), { facilityId: FAC }));
+      await assertFails(
+        setDoc(doc(db, `memberships/${myUid}`), { facilityId: FAC, kind: 'personal', staffId: 'haru' }),
+      );
+      await assertFails(getDoc(doc(db, 'memberships/member-a')));
+      await assertFails(getDocs(collection(db, 'memberships')));
+      await assertFails(getDoc(doc(db, 'other_top/x')));
+      // 自分の所属（無い）を読むことだけはできる（アプリが「登録されていません」を出すため）
+      await assertSucceeds(getDoc(doc(db, `memberships/${myUid}`)));
+    });
+  }
+});
+
+describe('個人アカウントの所属', () => {
+  test('在籍中・ログイン許可の職員の個人アカウントは読み書きできる', async () => {
+    const db = personal('haru');
+    await assertSucceeds(getDoc(doc(db, `facilities/${FAC}/customers/d1`)));
+    await assertSucceeds(
+      setDoc(doc(db, `facilities/${FAC}/customers/p1`), {
+        updatedAt: serverTimestamp(),
+        updatedByStaffId: 'haru',
+        updatedByStaffName: '職員 春子',
+      }),
+    );
+    await assertSucceeds(getDoc(doc(db, 'line_linkage/x1')));
+  });
+
+  for (const [id, why] of [
+    ['natsu', 'ログインの許可が外れた'],
+    ['aki', '在籍終了になった'],
+  ]) {
+    test(`${why}職員の個人アカウントは、所属の文書が残っていても読み書きできない`, async () => {
+      const db = personal(id);
+      await assertFails(getDoc(doc(db, `facilities/${FAC}/customers/d1`)));
+      await assertFails(getDocs(collection(db, `facilities/${FAC}/customers`)));
+      await assertFails(
+        setDoc(doc(db, `facilities/${FAC}/customers/p1`), {
+          updatedAt: serverTimestamp(),
+          updatedByStaffId: id,
+          updatedByStaffName: 'x',
+        }),
+      );
+      await assertFails(getDoc(doc(db, 'line_linkage/x1')));
+    });
+  }
+
+  test('所属が消えたアカウントは読み書きできない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await deleteDoc(doc(ctx.firestore(), 'memberships/p-haru'));
+    });
+    const db = personal('haru');
+    await assertFails(getDoc(doc(db, `facilities/${FAC}/customers/d1`)));
+    await assertFails(
+      setDoc(doc(db, `facilities/${FAC}/customers/p1`), {
+        updatedAt: serverTimestamp(),
+        updatedByStaffId: 'haru',
+        updatedByStaffName: '職員 春子',
+      }),
+    );
+    await assertFails(getDoc(doc(db, 'line_linkage/x1')));
+  });
+
+  test('職員の文書が無い個人アカウントは読めない', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'memberships/p-ghost'), {
+        facilityId: FAC,
+        kind: 'personal',
+        staffId: 'ghost',
+      });
+    });
+    await assertFails(getDoc(doc(personal('ghost'), `facilities/${FAC}/customers/d1`)));
+  });
+
+  test('個人アカウントは本人の職員 ID でしか記録できない（自動処理は可）', async () => {
+    const db = personal('haru');
+    await assertFails(
+      setDoc(doc(db, `facilities/${FAC}/customers/p2`), {
+        updatedAt: serverTimestamp(),
+        updatedByStaffId: 'natsu',
+        updatedByStaffName: '職員 夏男',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db, `facilities/${FAC}/customers/p2`), {
+        updatedAt: serverTimestamp(),
+        updatedByStaffId: null,
+        updatedByStaffName: '職員 夏男',
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(db, `facilities/${FAC}/attendance/auto2`), {
+        updatedAt: serverTimestamp(),
+        updatedByStaffId: null,
+        updatedByStaffName: '自動',
+      }),
+    );
+  });
+
+  test('共用端末アカウントは従来どおり、選んだ担当者の名前で記録できる', async () => {
+    await assertSucceeds(
+      setDoc(doc(memberA(), `facilities/${FAC}/customers/s1`), {
+        updatedAt: serverTimestamp(),
+        updatedByStaffId: 'natsu',
+        updatedByStaffName: '職員 夏男',
+      }),
+    );
+  });
+
+  test('所属の無いアカウントは LINE 連携のコレクションを読めない（締めた）', async () => {
+    await assertFails(getDoc(doc(noMembership(), 'line_linkage/x1')));
+    await assertFails(getDoc(doc(noMembership(), 'notification_logs/2026-11-19_c1')));
+    await assertSucceeds(getDoc(doc(memberA(), 'line_linkage/x1')));
   });
 });

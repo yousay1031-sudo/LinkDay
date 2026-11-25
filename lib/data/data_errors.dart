@@ -50,9 +50,14 @@ class DataErrors {
     return true;
   }
 
+  /// 権限がないと断られたときに呼ぶ（DataSession が所属を確かめ直す。
+  /// 在籍終了・ログイン停止になった個人アカウントを「登録されていません」へ切り替えるため）
+  static void Function()? onPermissionDenied;
+
   /// 利用者向けの短い説明
   static String describe(Object e) {
     if (e is FirebaseException) {
+      if (e.code == 'permission-denied') onPermissionDenied?.call();
       switch (e.code) {
         case 'unavailable':
         case 'deadline-exceeded':

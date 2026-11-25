@@ -104,11 +104,49 @@ class _StaffBarState extends State<StaffBar> {
       builder: (context, _) {
         final staff = StaffSession.instance.current;
         final selected = staff != null;
+        // 個人アカウント（Google）: 担当者はログインした本人に固定。表示だけで変更は出さない
+        final fixed = StaffSession.instance.isFixed;
         final bg = selected ? const Color(0xFFFFF3E0) : AppColors.warning;
         final fg = selected ? AppColors.onSurface : Colors.black;
         void open() {
           final ctx = navigatorKey.currentContext;
           if (ctx != null) showStaffPicker(ctx);
+        }
+
+        if (fixed) {
+          return Material(
+            color: bg,
+            child: SafeArea(
+              bottom: false,
+              child: Semantics(
+                label: selected ? '担当者 ${staff.name}（ログインした本人）' : '担当者が見つかりません',
+                excludeSemantics: true,
+                child: Padding(
+                  key: const Key('staffBar'),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.badge_outlined, size: 18, color: fg),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          selected ? '担当：${staff.name}' : '担当者が見つかりません',
+                          key: const Key('staffBarLabel'),
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: fg,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
         }
 
         return Material(

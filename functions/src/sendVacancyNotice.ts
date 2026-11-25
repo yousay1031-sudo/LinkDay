@@ -28,6 +28,7 @@ import {
   saveAdminTarget,
   type NotifiedEntry,
 } from './slots';
+import {getValidMembership} from './account/membership';
 
 /** 通知の宛先 1 件 */
 export interface Recipient {
@@ -460,6 +461,19 @@ export async function handleSendVacancyNotice(
   }
 
   const input = validateInput(req.data);
+
+  // ── 有効な所属が必要（ステップ2で追加）。Google ログインでは誰でもアカウントを
+  //    作れるため、「ログインしている」だけでは送信を起動させない。
+  //    入力の検査（保存先に触れない）の後・送信の前に確かめる。
+  if (!(await getValidMembership(db, req.auth.uid))) {
+    logger.warn('[sendVacancyNotice] request without valid membership rejected', {
+      uid: req.auth.uid,
+    });
+    throw new HttpsError(
+      'permission-denied',
+      'このアカウントは事業所に登録されていません。'
+    );
+  }
   return runSendVacancyNotice(
     db,
     req.auth.uid,

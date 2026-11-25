@@ -131,26 +131,52 @@ await putDoc(
   '所属(memberships)の投入'
 );
 // 架空の職員（実在の人物ではない）。ダミー顧客（検証 花子 など）と名前が重ならないようにする
+// ステップ2: Google ログイン用のアドレスは実在しない .invalid。
+//   春子 = 最初の管理者（本番では Firebase コンソールで登録する。docs/RELEASE_FIRESTORE_MIGRATION.md）
+//   夏男 = 管理者でない職員（ログイン許可）
+//   秋子 = Google アカウントを持たない職員（共用端末だけを使う）
 const staff = [
-  ['dummy-s001', '職員 春子'],
-  ['dummy-s002', '職員 夏男'],
-  ['dummy-s003', '職員 秋子'],
+  { id: 'dummy-s001', name: '職員 春子', kana: 'しょくいん はるこ', role: 'childDevManager',
+    workDays: [1, 2, 3, 4, 5], canDrive: false, isAdmin: true, login: true, email: 'haruko@example.invalid' },
+  { id: 'dummy-s002', name: '職員 夏男', kana: 'しょくいん なつお', role: 'driver',
+    workDays: [1, 3, 5], canDrive: true, isAdmin: false, login: true, email: 'natsuo@example.invalid' },
+  { id: 'dummy-s003', name: '職員 秋子', kana: 'しょくいん あきこ', role: 'nurseryTeacher',
+    workDays: [2, 4], canDrive: false, isAdmin: false, login: false, email: '' },
 ];
 let staffCreated = 0;
-for (const [id, name] of staff) {
+for (const s of staff) {
   const created = await createIfMissing(
-    `facilities/${FACILITY_ID}/staff/${id}`,
+    `facilities/${FACILITY_ID}/staff/${s.id}`,
     {
-      name: { stringValue: name },
+      name: { stringValue: s.name },
+      kana: { stringValue: s.kana },
+      role: { stringValue: s.role },
+      qualifications: { stringValue: '' },
+      workDays: { arrayValue: { values: s.workDays.map((d) => ({ integerValue: String(d) })) } },
+      canDrive: { booleanValue: s.canDrive },
       isActive: { booleanValue: true },
       deactivatedAt: { nullValue: null },
+      isAdmin: { booleanValue: s.isAdmin },
+      loginEnabled: { booleanValue: s.login },
+      hasGoogleEmail: { booleanValue: s.email !== '' },
       pinHash: { nullValue: null },
       pinSalt: { nullValue: null },
       ...audit,
     },
-    `職員 ${id} の投入`
+    `職員 ${s.id} の投入`
   );
   if (created) staffCreated++;
+  if (s.email) {
+    await createIfMissing(
+      `facilities/${FACILITY_ID}/staffAccounts/${s.id}`,
+      {
+        googleEmail: { stringValue: s.email },
+        googleEmailLower: { stringValue: s.email.toLowerCase() },
+        ...audit,
+      },
+      `職員 ${s.id} のメールアドレスの投入`
+    );
+  }
 }
 console.log(
   `[seed] 事業所 ${FACILITY_ID} と所属を投入しました。職員: 新規 ${staffCreated} 件 / 既存 ${staff.length - staffCreated} 件`

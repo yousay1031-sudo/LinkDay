@@ -8,6 +8,9 @@
  *  - lineWebhook (HTTPS, asia-northeast1)
  *      LINE からの webhook（follow / 連携コード受付 / Day 13: 応募 postback）。
  *      署名検証必須。
+ *  - claimStaffMembership / onStaffAccessChanged / onStaffAccountChanged
+ *      ステップ2: 職員の個人アカウント（Google）の所属を付ける・外す。
+ *      LINE とは別のファイル（./account）。秘密情報は使わない。
  *
  * secrets:
  *  - LINE_CHANNEL_ACCESS_TOKEN
@@ -71,3 +74,10 @@ export const lineWebhook = onRequest(
     );
   }
 );
+
+// ステップ2: 個人アカウントの所属（LINE の関数とは別ファイル）
+export {
+  claimStaffMembership,
+  onStaffAccessChanged,
+  onStaffAccountChanged,
+} from './account';

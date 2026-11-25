@@ -89,11 +89,57 @@ class FacilityContext {
   static Future<String?> lookupFacilityId(
     FirebaseFirestore db,
     String uid,
-  ) async {
-    final snap = await db.collection(FsPaths.memberships).doc(uid).get();
-    if (!snap.exists) return null;
-    final fid = snap.data()?['facilityId'];
-    if (fid is! String || fid.trim().isEmpty) return null;
-    return fid.trim();
+  ) async =>
+      (await lookupMembership(db, uid))?.facilityId;
+
+  /// memberships/{uid} を読む。所属がなければ null。
+  static Future<Membership?> lookupMembership(
+    FirebaseFirestore db,
+    String uid, {
+    bool fromServer = false,
+  }) async {
+    final snap = await db
+        .collection(FsPaths.memberships)
+        .doc(uid)
+        .get(fromServer ? const GetOptions(source: Source.server) : null);
+    return Membership.fromData(snap.exists ? snap.data() : null);
   }
+}
+
+/// 所属（memberships/{uid}）。作る・消すのは Cloud Functions だけ。
+class Membership {
+  const Membership(
+      {required this.facilityId, required this.personal, this.staffId});
+
+  final String facilityId;
+
+  /// 個人アカウント（Google）か。kind が無い所属は共用端末アカウント。
+  final bool personal;
+
+  /// 個人アカウントにひも付く職員 ID
+  final String? staffId;
+
+  static Membership? fromData(Map<String, dynamic>? d) {
+    if (d == null) return null;
+    final fid = d['facilityId'];
+    if (fid is! String || fid.trim().isEmpty) return null;
+    final personal = d['kind'] == 'personal';
+    final sid = d['staffId'];
+    if (personal && (sid is! String || sid.isEmpty)) return null;
+    return Membership(
+      facilityId: fid.trim(),
+      personal: personal,
+      staffId: personal ? sid as String : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is Membership &&
+      other.facilityId == facilityId &&
+      other.personal == personal &&
+      other.staffId == staffId;
+
+  @override
+  int get hashCode => Object.hash(facilityId, personal, staffId);
 }

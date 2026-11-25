@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../verify/verify_config.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/app_spinner.dart';
 import '../widgets/unfocus_offscreen_text_field.dart';
@@ -44,6 +45,40 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       // 成功時: AuthGate の StreamBuilder が自動で HomeScreen に切り替えるため
       // Navigator による手動遷移は不要
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar(e.message);
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('予期しないエラーが発生しました。再度お試しください。');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // Google でログイン（職員の個人アカウント）
+  // ─────────────────────────────────────────────
+
+  Future<void> _handleGoogleLogin() async {
+    if (_isLoading) return;
+    String? emulatorEmail;
+    if (VerifyConfig.enabled) {
+      // 検証構成: 本物の Google には接続せず、Auth エミュレータへ模擬のログインをする
+      emulatorEmail = await showDialog<String>(
+        context: context,
+        builder: (_) => const _EmulatorGoogleDialog(),
+      );
+      if (emulatorEmail == null) return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      if (emulatorEmail != null) {
+        await AuthService.instance.signInWithEmulatorGoogle(emulatorEmail);
+      } else {
+        await AuthService.instance.signInWithGoogle();
+      }
+      // 成功時: AuthGate が所属の確認（FacilityGate）へ切り替える
     } on AuthException catch (e) {
       if (!mounted) return;
       _showErrorSnackBar(e.message);
@@ -142,6 +177,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     // パスワード忘れリンク（既存デザイン維持）
                     _buildForgotPasswordLink(),
+
+                    const SizedBox(height: 16),
+
+                    // Google でログイン（職員の個人アカウント）
+                    _buildGoogleSection(),
 
                     const SizedBox(height: 40),
 
@@ -356,6 +396,44 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Widget _buildGoogleSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Row(
+          children: [
+            Expanded(child: Divider()),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text('または',
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.onSurfaceVariant)),
+            ),
+            Expanded(child: Divider()),
+          ],
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: AppTheme.buttonHeight,
+          child: OutlinedButton.icon(
+            key: const Key('googleLoginButton'),
+            onPressed: _isLoading ? null : _handleGoogleLogin,
+            icon: const Icon(Icons.account_circle_outlined),
+            label: const Text('Googleでログイン',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '職員個人のスマホなどでは、管理者に登録してもらった Google アカウントでログインします。'
+          '事業所のパソコン・タブレットは、上のメールアドレスとパスワードを使います。',
+          style: TextStyle(
+              fontSize: 12, height: 1.5, color: AppColors.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
   Widget _buildVersionInfo() {
     return const Center(
       child: Text(
@@ -418,8 +496,7 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           duration: const Duration(seconds: 5),
         ),
       );
@@ -443,8 +520,7 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           duration: const Duration(seconds: 4),
         ),
       );
@@ -503,8 +579,7 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
                   if (value == null || value.trim().isEmpty) {
                     return 'メールアドレスを入力してください';
                   }
-                  if (!RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$')
-                      .hasMatch(value)) {
+                  if (!RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$').hasMatch(value)) {
                     return '正しいメールアドレスを入力してください';
                   }
                   return null;
@@ -516,8 +591,7 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
       ),
       actions: [
         TextButton(
-          onPressed:
-              _isSending ? null : () => Navigator.of(context).pop(),
+          onPressed: _isSending ? null : () => Navigator.of(context).pop(),
           child: const Text('キャンセル'),
         ),
         ElevatedButton.icon(
@@ -528,12 +602,72 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
                   height: 16,
                   child: AppSpinner(
                     strokeWidth: 2,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
               : const Icon(Icons.send, size: 18),
           label: Text(_isSending ? '送信中...' : '送信'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// 【検証構成のみ】Google ログインの模擬（Auth エミュレータ）
+// ─────────────────────────────────────────────
+
+/// 検証構成で「Googleでログイン」を押したときに、ダミーのアドレスを入れる画面。
+/// 本物の Google のアカウント選択の代わり（外部へは通信しない）。
+class _EmulatorGoogleDialog extends StatefulWidget {
+  const _EmulatorGoogleDialog();
+
+  @override
+  State<_EmulatorGoogleDialog> createState() => _EmulatorGoogleDialogState();
+}
+
+class _EmulatorGoogleDialogState extends State<_EmulatorGoogleDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('検証用：Google ログインの模擬'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '検証環境では本物の Google に接続しません。'
+            'ログインする Google アカウントのアドレス（ダミー）を入れてください。',
+            style: TextStyle(fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('emulatorGoogleEmail'),
+            controller: _ctrl,
+            autofocus: true,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(hintText: 'name@example.invalid'),
+            onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('キャンセル'),
+        ),
+        ElevatedButton(
+          key: const Key('emulatorGoogleSubmit'),
+          onPressed: () => Navigator.of(context).pop(_ctrl.text.trim()),
+          child: const Text('ログイン'),
         ),
       ],
     );

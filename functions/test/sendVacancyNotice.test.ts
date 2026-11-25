@@ -37,6 +37,9 @@ let line: FakeLineApi;
 
 beforeEach(() => {
   db = new FakeFirestore();
+  // ステップ2: 送信には有効な所属が必要になった（共用端末アカウントの所属を置く）。
+  // 所属の無いアカウントの拒否は test/account.test.ts で確かめる。
+  db.seed('memberships', UID, {facilityId: 'fac-test'});
   line = new FakeLineApi();
   setLineApiForTest(line);
 });
