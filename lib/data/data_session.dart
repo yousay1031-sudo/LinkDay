@@ -105,8 +105,9 @@ class DataSession extends ChangeNotifier {
       if (m == null && claim != null) {
         final ok = await claim();
         if (_uid != uid) return;
-        if (ok)
+        if (ok) {
           m = await FacilityContext.lookupMembership(d, uid, fromServer: true);
+        }
         if (_uid != uid) return;
       }
       if (m == null) {
@@ -203,8 +204,9 @@ class DataSession extends ChangeNotifier {
   /// 所属をサーバーで確かめ直し、無効なら「登録されていません」に切り替える
   Future<void> recheck() async {
     final uid = _uid, m = _membership, d = _db;
-    if (!isReady || uid == null || m == null || d == null || _rechecking)
+    if (!isReady || uid == null || m == null || d == null || _rechecking) {
       return;
+    }
     _rechecking = true;
     try {
       final now =
