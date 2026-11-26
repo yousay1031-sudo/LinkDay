@@ -2,8 +2,10 @@
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
+import '../data/day_ticker.dart';
 import '../models/customer.dart';
 import '../models/support_plan.dart';
+import '../models/support_plan_alerts.dart';
 import '../models/support_plan_policy.dart';
 import '../services/customer_service.dart';
 import '../services/support_plan_service.dart';
@@ -49,42 +51,154 @@ class PlanListEntry {
 
 /// 個別支援計画の一覧（ステップ3）。
 ///
-/// 在籍中の児童を、計画の状態と次の期限とともに、期限が近い順に並べる。
-/// 計画がまだ無い児童はいちばん上に「計画なし」と出す。押すと児童ごとの履歴が開く。
+/// 上に更新時期の知らせ（期限の近い順）。その下に在籍中の児童を、計画の状態と次の期限とともに、
+/// 期限が近い順に並べる（計画がまだ無い児童はいちばん上に「計画なし」）。
+/// 押すと児童ごとの履歴が開く。画面を開いたまま日付が変わっても計算し直す。
 class SupportPlanListScreen extends StatelessWidget {
   const SupportPlanListScreen({super.key, this.today});
 
-  /// テスト用: 今日を差し替える
+  /// テスト用: 今日を差し替える（省略時は [DayTicker] の今日）
   final DateTime? today;
 
   @override
   Widget build(BuildContext context) {
+    DayTicker.instance.ensureStarted();
     return Scaffold(
       appBar: AppBar(title: const Text('個別支援計画')),
       body: ListenableBuilder(
-        listenable: Listenable.merge(
-            [SupportPlanService.instance, CustomerService.instance]),
+        listenable: Listenable.merge([
+          SupportPlanService.instance,
+          CustomerService.instance,
+          DayTicker.instance,
+        ]),
         builder: (context, _) {
-          final entries = PlanListEntry.build(
-              CustomerService.instance.getAllCustomers(),
-              SupportPlanService.instance);
+          final customers = CustomerService.instance.getAllCustomers();
+          final entries =
+              PlanListEntry.build(customers, SupportPlanService.instance);
           if (entries.isEmpty) {
             return const Center(child: Text('在籍中の児童がいません'));
           }
-          final now = today ?? DateTime.now();
-          final t = DateTime(now.year, now.month, now.day);
+          final t = today ?? DayTicker.instance.today;
+          final alerts = PlanAlert.compute(
+            activeCustomers: customers,
+            plansOf: SupportPlanService.instance.plansOf,
+            today: t,
+          );
           return ListView.builder(
             key: const Key('planList'),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            itemCount: entries.length,
+            itemCount: entries.length + 1,
             itemBuilder: (context, i) => Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 960),
-                child: _EntryCard(entry: entries[i], today: t),
+                child: i == 0
+                    ? PlanAlertPanel(alerts: alerts)
+                    : _EntryCard(entry: entries[i - 1], today: t),
               ),
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 一覧の上に出す知らせ（期限の近い順）。押すとその児童の履歴が開く
+class PlanAlertPanel extends StatelessWidget {
+  const PlanAlertPanel({super.key, required this.alerts});
+  final List<PlanAlert> alerts;
+
+  static String _ymd(DateTime d) => '${d.year}/${d.month}/${d.day}';
+
+  @override
+  Widget build(BuildContext context) {
+    if (alerts.isEmpty) {
+      return const Padding(
+        key: Key('planAlertsNone'),
+        padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+        child: Text('更新時期の知らせはありません',
+            style: TextStyle(color: AppColors.onSurfaceVariant)),
+      );
+    }
+    return Card(
+      key: const Key('planAlerts'),
+      color: AppColors.warning.withValues(alpha: 0.08),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text('知らせ（${alerts.length}件）',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+            for (final a in alerts) _alertRow(context, a),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _alertRow(BuildContext context, PlanAlert a) {
+    final due = a.due;
+    final sub =
+        (a.kind == PlanAlertKind.near || a.kind == PlanAlertKind.overdue) &&
+                due != null
+            ? '更新期限 ${_ymd(due)}${a.assessmentPending ? '・アセスメント未実施' : ''}'
+            : null;
+    return InkWell(
+      key: Key('planAlert_${a.customer.id}'),
+      onTap: () => Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+            builder: (_) =>
+                SupportPlanHistoryScreen(customerId: a.customer.id)),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              Icon(
+                a.strong
+                    ? Icons.error
+                    : a.kind == PlanAlertKind.noPlan
+                        ? Icons.assignment_late_outlined
+                        : Icons.schedule,
+                size: 20,
+                color: a.strong ? AppColors.error : AppColors.warning,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      a.message,
+                      key: Key('planAlertText_${a.customer.id}'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            a.strong ? FontWeight.w700 : FontWeight.w500,
+                        color: a.strong ? AppColors.error : AppColors.onSurface,
+                      ),
+                    ),
+                    if (sub != null)
+                      Text(sub,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: AppColors.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }

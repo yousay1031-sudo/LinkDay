@@ -2,6 +2,7 @@
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
+import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../models/staff.dart';
 import '../models/support_plan.dart';
@@ -146,6 +147,13 @@ class SupportPlanHistoryScreen extends StatelessWidget {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
                   children: [
+                    if (base != null)
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 960),
+                          child: _AssessmentCard(plan: base, today: _today),
+                        ),
+                      ),
                     for (final p in plans)
                       Center(
                         child: ConstrainedBox(
@@ -222,6 +230,79 @@ class _PlanCard extends StatelessWidget {
                   color: AppColors.onSurfaceVariant),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 期限の起点の計画の「アセスメントを実施した日」（入れると更新時期の知らせが消える）
+class _AssessmentCard extends StatelessWidget {
+  const _AssessmentCard({required this.plan, required this.today});
+  final SupportPlan plan;
+  final DateTime today;
+
+  Future<void> _pick(BuildContext context) async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: plan.assessmentDoneOn ?? today,
+      firstDate: DateTime(2015),
+      lastDate: today,
+      helpText: 'アセスメントを実施した日',
+      confirmText: '決定',
+      cancelText: 'キャンセル',
+    );
+    if (d == null || !context.mounted) return;
+    try {
+      await SupportPlanService.instance.setAssessmentDone(plan.id, d);
+    } on StaffNotSelectedException {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('担当者を選ぶと保存できます'),
+            behavior: SnackBarBehavior.floating));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final created = plan.createdOn!;
+    final due = SupportPlanPolicy.dueOf(created);
+    final done = plan.assessmentDoneOn;
+    return Card(
+      key: const Key('planAssessmentCard'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      '更新期限 ${due.year}年${due.month}月${due.day}日'
+                      '${plan.isAgreed ? '' : '（作成中の計画の作成年月日から）'}',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(
+                    done == null
+                        ? 'アセスメントを実施した日：未入力'
+                        : 'アセスメントを実施した日：${done.year}年${done.month}月${done.day}日',
+                    key: const Key('planAssessmentText'),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 48,
+              child: TextButton.icon(
+                key: const Key('planAssessmentPick'),
+                onPressed: () => _pick(context),
+                icon: const Icon(Icons.event_available),
+                label: Text(done == null ? '入力する' : '直す'),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../data/audit.dart';
 import '../data/data_errors.dart';
 import '../data/facility_context.dart';
+import '../data/fs_values.dart';
 import '../data/pending_echoes.dart';
 import '../data/staff_session.dart';
 import '../models/customer.dart';
@@ -192,6 +193,38 @@ class SupportPlanService extends ChangeNotifier {
         SetOptions(merge: true),
       ),
       what: '個別支援計画（${p.customerName}）',
+    );
+    return s;
+  }
+
+  /// アセスメントを実施した日を入れる（空にもできる）。担当者が必要。
+  ///
+  /// 中身は変えずにこの項目だけを書く（同意済みの計画でも「同意後に修正あり」に
+  /// ならない。ルールもこの形を許す）。更新時期の知らせ（45 日前から）が消える。
+  Future<AuditStamp> setAssessmentDone(String planId, DateTime? date,
+      {AuditStamp? stamp}) async {
+    final cur = _cache[planId];
+    if (cur == null) throw StateError('計画が見つかりません: $planId');
+    final s = stamp ?? await StaffSession.instance.requireStamp();
+    final next = cur.copyWith(assessmentDoneOn: () => date);
+    _cache[planId] = next.withRecords(
+      revisedAt: cur.revisedAfterAgreementAt,
+      revisedById: cur.revisedAfterAgreementByStaffId,
+      revisedByName: cur.revisedAfterAgreementByStaffName,
+      updatedAt: DateTime.now(),
+      updatedById: s.staffId,
+      updatedByName: s.staffName,
+      createdAt: cur.createdAt,
+    );
+    notifyListeners();
+    if (!FacilityContext.instance.isAttached) return s;
+    _echoes.add(planId, next.toFirestoreData());
+    DataErrors.send(
+      _col.doc(planId).update({
+        'assessmentDoneOn': dateOnlyToString(date),
+        ...s.toFields(),
+      }),
+      what: 'アセスメントを実施した日（${cur.customerName}）',
     );
     return s;
   }

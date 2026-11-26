@@ -373,6 +373,26 @@ void main() {
     expect(printed, isNotNull);
   });
 
+  testWidgets('日付の欄は、読み上げ・操作補助で 1 つずつのボタンとして扱われる', (t) async {
+    final h = t.ensureSemantics();
+    await setUpData(t);
+    await open(
+        t, SupportPlanEditScreen(plan: plan('p9', 'a', now0()), isNew: true));
+    for (final (k, label) in [
+      ('planCreatedOn', '作成年月日'),
+      ('planExplainedOn', '説明した日'),
+      ('planAgreedOn', '同意を得た日'),
+    ]) {
+      await t.ensureVisible(find.byKey(Key(k)));
+      await t.pumpAndSettle();
+      final node = t.getSemantics(find.byKey(Key(k)));
+      final data = node.getSemanticsData();
+      expect(data.flagsCollection.isButton, isTrue, reason: k);
+      expect(data.label, contains(label), reason: k);
+    }
+    h.dispose();
+  });
+
   testWidgets('保存していない変更があるまま閉じようとしたら確かめる', (t) async {
     await setUpData(t, plans: [plan('p1', 'a', DateTime(2026, 6, 1))]);
     await open(t, const SupportPlanHistoryScreen(customerId: 'a'));

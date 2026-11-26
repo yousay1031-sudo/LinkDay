@@ -751,20 +751,26 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
     required VoidCallback? onTap,
     String? note,
   }) {
-    return InkWell(
-      key: key,
-      onTap: onTap,
-      child: InputDecorator(
-        isEmpty: value == null,
-        decoration: InputDecoration(
-          labelText: label,
-          helperText: note,
-          enabled: onTap != null,
-          border: const OutlineInputBorder(),
-          suffixIcon: const Icon(Icons.calendar_today, size: 18),
+    // 読み上げ・操作補助で、日付の欄を 1 つのボタンとして扱う（カードの文にまとめない）
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onTap != null,
+      child: InkWell(
+        key: key,
+        onTap: onTap,
+        child: InputDecorator(
+          isEmpty: value == null,
+          decoration: InputDecoration(
+            labelText: label,
+            helperText: note,
+            enabled: onTap != null,
+            border: const OutlineInputBorder(),
+            suffixIcon: const Icon(Icons.calendar_today, size: 18),
+          ),
+          child: Text(value == null ? '' : _ymd(value),
+              style: const TextStyle(fontSize: 15)),
         ),
-        child: Text(value == null ? '' : _ymd(value),
-            style: const TextStyle(fontSize: 15)),
       ),
     );
   }

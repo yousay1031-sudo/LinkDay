@@ -7,6 +7,9 @@ import '../services/attendance_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/customer_service.dart';
 import '../services/settings_service.dart';
+import '../services/support_plan_service.dart';
+import '../data/day_ticker.dart';
+import '../models/support_plan_alerts.dart';
 import '../models/app_settings.dart';
 import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
@@ -64,6 +67,24 @@ class _HomeScreenState extends State<HomeScreen> {
     CustomerService.instance.addListener(_onCustomersChanged);
     AttendanceService.instance.addListener(_onAttendanceChanged);
     SettingsService.instance.addListener(_onSettingsChanged);
+    // 個別支援計画の知らせ（他の端末の保存・日付が変わったときも計算し直す）
+    SupportPlanService.instance.addListener(_onSettingsChanged);
+    DayTicker.instance.ensureStarted();
+    DayTicker.instance.addListener(_onSettingsChanged);
+  }
+
+  /// 個別支援計画の更新時期の知らせ（在籍中の児童だけ。今日の日付で計算する）
+  List<PlanAlert> get _planAlerts => PlanAlert.compute(
+        activeCustomers: CustomerService.instance.getAllCustomers(),
+        plansOf: SupportPlanService.instance.plansOf,
+        today: DayTicker.instance.today,
+      );
+
+  void _openPlans(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SupportPlanListScreen()),
+    );
   }
 
   /// 設定が変わった（他の端末を含む）: 事業所名を開き直さずに更新する
@@ -87,6 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
     CustomerService.instance.removeListener(_onCustomersChanged);
     AttendanceService.instance.removeListener(_onAttendanceChanged);
     SettingsService.instance.removeListener(_onSettingsChanged);
+    SupportPlanService.instance.removeListener(_onSettingsChanged);
+    DayTicker.instance.removeListener(_onSettingsChanged);
     _usageDebounce?.cancel();
     super.dispose();
   }
@@ -240,10 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     // 個別支援計画（ステップ3）
     if (item.route == '/support-plan') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const SupportPlanListScreen()),
-      );
+      _openPlans(context);
       return;
     }
     // 職員管理
@@ -532,6 +552,29 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
+
+        // 個別支援計画の更新時期の知らせ（受給者証の知らせと同じ作り）
+        if (_planAlerts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Stack(
+              alignment: Alignment.topRight,
+              children: [
+                IconButton(
+                  key: const Key('homePlanAlertButton'),
+                  icon: const Icon(Icons.assignment_late_outlined),
+                  tooltip: '個別支援計画の知らせ',
+                  onPressed: () => _openPlans(context),
+                ),
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: _countDot(_planAlerts.length,
+                      strong: _planAlerts.any((a) => a.strong)),
                 ),
               ],
             ),
@@ -846,7 +889,9 @@ class _HomeScreenState extends State<HomeScreen> {
   ) {
     // 押下で 0.98 に縮む（transform のみ）。InkWell のタップ・ホバー・
     // キーボード（Tab でフォーカス → Enter/Space）はそのまま InkWell が処理する
-    return PressableScale(
+    final planCount =
+        item.route == '/support-plan' ? _planAlerts.length : 0;
+    final card = PressableScale(
       child: Card(
         elevation: 2,
         shape: RoundedRectangleBorder(
@@ -865,6 +910,49 @@ class _HomeScreenState extends State<HomeScreen> {
             child: columnCount == 1
                 ? _buildCardContentHorizontal(item)
                 : _buildCardContentVertical(item),
+          ),
+        ),
+      ),
+    );
+    if (planCount == 0) return card;
+    // 個別支援計画のタイルに知らせの件数の印（過ぎた期限があれば強い色）
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(child: card),
+        Positioned(
+          top: 6,
+          right: 6,
+          child: Semantics(
+            label: '個別支援計画の知らせ $planCount件',
+            child: _countDot(planCount,
+                strong: _planAlerts.any((a) => a.strong),
+                size: 22,
+                key: const Key('homePlanBadge')),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 件数の印
+  Widget _countDot(int n, {required bool strong, double size = 16, Key? key}) {
+    return Container(
+      key: key,
+      constraints: BoxConstraints(minWidth: size, minHeight: size),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: strong ? AppColors.error : AppColors.warning,
+        borderRadius: BorderRadius.circular(size / 2),
+      ),
+      child: Center(
+        widthFactor: 1,
+        child: Text(
+          n > 99 ? '99+' : '$n',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: size > 16 ? 12 : 9,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
