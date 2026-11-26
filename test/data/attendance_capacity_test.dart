@@ -88,8 +88,13 @@ void main() {
     await SettingsService.instance.updateOperatingHours('08:00', '17:00', 2);
     await _settle();
     expect(summary().availableSlots, 0);
+    expect(summary().overCapacity, 2 + 1 - 2); // 超えている人数が分かる（ステップ4）
     await _settingsDoc().update({'maxStudentsPerDay': -5});
     await _settle();
     expect(summary().availableSlots, 0);
+  });
+
+  test('定員を超えていなければ超過は 0（ステップ4）', () async {
+    expect(summary().overCapacity, 0);
   });
 }

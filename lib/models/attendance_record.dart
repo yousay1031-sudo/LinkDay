@@ -249,4 +249,11 @@ class AttendanceSummary {
   }
 
   int get totalActive => scheduledCount + presentCount + departedCount;
+
+  /// 定員を超えている人数（予定 + 在室中 が定員より多いとき。超えていなければ 0）。
+  /// 空き枠の表示を「0」にせず、超えていることが分かるようにするため（ステップ4）
+  int get overCapacity {
+    final over = scheduledCount + presentCount - capacity;
+    return over > 0 ? over : 0;
+  }
 }

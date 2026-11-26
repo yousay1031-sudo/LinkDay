@@ -1028,13 +1028,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               color: AppColors.divider,
             ),
             const SizedBox(width: 12),
-            _summaryChip(
-              label: '空き枠',
-              count: summary.availableSlots,
-              color: AppColors.primary,
-              bg: AppColors.primary.withValues(alpha: 0.1),
-              icon: Icons.event_available,
-            ),
+            // 定員を超えているときは「空き枠 0」ではなく、超えている人数を強い色で出す
+            summary.overCapacity > 0
+                ? _summaryChip(
+                    key: const Key('attendanceOverCapacity'),
+                    label: '定員超過',
+                    count: summary.overCapacity,
+                    color: Colors.white,
+                    bg: AppColors.error,
+                    icon: Icons.warning_amber_rounded,
+                  )
+                : _summaryChip(
+                    key: const Key('attendanceFreeSlots'),
+                    label: '空き枠',
+                    count: summary.availableSlots,
+                    color: AppColors.primary,
+                    bg: AppColors.primary.withValues(alpha: 0.1),
+                    icon: Icons.event_available,
+                  ),
           ],
         ),
       ),
@@ -1042,6 +1053,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Widget _summaryChip({
+    Key? key,
     required String label,
     required int count,
     required Color color,
@@ -1050,6 +1062,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     bool inRoomDot = false,
   }) {
     return Container(
+      key: key,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: bg,
