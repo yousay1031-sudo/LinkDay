@@ -112,10 +112,15 @@ void main() {
       });
 
   Future<void> open(WidgetTester t, Widget home,
-      {Size size = const Size(1280, 1000)}) async {
+      {Size size = const Size(1280, 1000), bool compact = false}) async {
     await t.binding.setSurfaceSize(size);
     addTearDown(() => t.binding.setSurfaceSize(null));
-    await t.pumpWidget(MaterialApp(theme: AppTheme.lightTheme, home: home));
+    // compact: PC のブラウザと同じ詰めた表示
+    await t.pumpWidget(MaterialApp(
+        theme: compact
+            ? AppTheme.lightTheme.copyWith(visualDensity: VisualDensity.compact)
+            : AppTheme.lightTheme,
+        home: home));
     await io(t, () async {});
     await t.pumpAndSettle();
   }
@@ -303,6 +308,8 @@ void main() {
     await tap(t, find.byKey(const Key('planStartEdit')));
     await tap(t, find.byKey(const Key('planEditRevert')));
     expect(find.text('作成中に戻して保存した後に、もう一度入れられます'), findsOneWidget);
+    // 保存済みの計画は行がたたんで開く。開いてから直す
+    await tap(t, find.byKey(const Key('planRowToggle_0')));
     await type(t, find.byKey(const Key('planRow_0_goal')), '目標を変えた');
     await tap(t, find.byKey(const Key('planSave')));
     final d = (await stored(t, 'p1'))!;
@@ -391,6 +398,76 @@ void main() {
       expect(data.label, contains(label), reason: k);
     }
     h.dispose();
+  });
+
+  testWidgets('行をたためる: 保存済みは全部たたんで開き、要約・足りない印・すべて開く／たたむ。データは変わらない', (t) async {
+    final base = plan('p1', 'a', DateTime(2026, 6, 1));
+    final withRows = base.copyWith(rows: [
+      const SupportPlanRow(
+        categories: ['self', 'transition'],
+        texts: {
+          SupportPlanForm.rGoal: '架空の本人支援の目標がとても長い場合の一行目の文',
+          SupportPlanForm.rPeriod: '6か月後',
+        },
+        domains: ['health'],
+        staff: [PlanStaff(staffId: 's-a', name: '職員 冬子')],
+      ),
+      const SupportPlanRow(categories: [], texts: {}), // 足りない行
+      ...base.rows.skip(1),
+    ]);
+    await setUpData(t, plans: [withRows]);
+    final storedBefore = (await stored(t, 'p1'))!;
+    await open(t, const SupportPlanHistoryScreen(customerId: 'a'),
+        compact: true);
+    await tap(t, find.byKey(const Key('planCard_p1')));
+    // 開閉のボタンは、詰めた表示でも縦横 48 以上
+    for (final k in [
+      'planRowsExpandAll',
+      'planRowsCollapseAll',
+      'planRowToggle_0'
+    ]) {
+      final size = t.getSize(find.byKey(Key(k)));
+      expect(size.height, greaterThanOrEqualTo(48), reason: k);
+      expect(size.width, greaterThanOrEqualTo(48), reason: k);
+    }
+    // 全部たたんでいる: 入力欄は出ず、要約が出る
+    expect(find.byKey(const Key('planRow_0_goal')), findsNothing);
+    expect(t.widget<Text>(find.byKey(const Key('planRowSummary_0'))).data,
+        '本人支援・移行支援｜架空の本人支援の目標がとても長い場合の一…｜6か月後｜職員 冬子');
+    // 足りない行は、たたんでいても印で分かる
+    expect(find.byKey(const Key('planRowWarn_1')), findsOneWidget);
+    expect(find.byKey(const Key('planRowWarn_0')), findsNothing);
+    // 1 行だけ開く・たたむ
+    await tap(t, find.byKey(const Key('planRowToggle_0')));
+    expect(find.byKey(const Key('planRow_0_goal')), findsOneWidget);
+    expect(find.byKey(const Key('planRow_2_goal')), findsNothing);
+    await tap(t, find.byKey(const Key('planRowToggle_0')));
+    expect(find.byKey(const Key('planRow_0_goal')), findsNothing);
+    // すべて開く・すべてたたむ
+    await tap(t, find.byKey(const Key('planRowsExpandAll')));
+    for (var i = 0; i < 4; i++) {
+      expect(find.byKey(Key('planRow_${i}_goal')), findsOneWidget,
+          reason: '$i');
+    }
+    await tap(t, find.byKey(const Key('planRowsCollapseAll')));
+    for (var i = 0; i < 4; i++) {
+      expect(find.byKey(Key('planRow_${i}_goal')), findsNothing, reason: '$i');
+    }
+    // 新しく足した行は開いている
+    await tap(t, find.byKey(const Key('planAddRow')));
+    expect(find.byKey(const Key('planRow_4_goal')), findsOneWidget);
+    expect(find.byKey(const Key('planRow_0_goal')), findsNothing);
+    // 保存すると、足りない行（1 行目の次・足した行）は開いて見せる
+    await type(t, find.byKey(const Key('planRow_4_goal')), '');
+    await tap(t, find.byKey(const Key('planRowToggle_4'))); // たたんでから保存
+    await tap(t, find.byKey(const Key('planSave')));
+    expect(find.byKey(const Key('planRow_1_goal')), findsOneWidget);
+    expect(find.byKey(const Key('planRow_4_goal')), findsOneWidget);
+    expect(find.byKey(const Key('planRow_0_goal')), findsNothing);
+    // 開閉は保存されるデータを変えない（足した空の行を除き、行の中身は元のまま）
+    final after = (await stored(t, 'p1'))!;
+    expect((after['rows'] as List).take(4).toList(), storedBefore['rows']);
+    expect(after['texts'], storedBefore['texts']);
   });
 
   testWidgets('保存していない変更があるまま閉じようとしたら確かめる', (t) async {

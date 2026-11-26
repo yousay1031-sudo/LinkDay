@@ -40,6 +40,9 @@ class _RowEdit {
 
   /// 画面の中で行を見分ける（並べ替えても入力欄を取り違えない）
   final Key key = UniqueKey();
+
+  /// 開いているか（画面だけの状態。保存しない・印刷にも関係しない）
+  bool expanded = true;
   List<String> categories;
   List<String> domains;
   List<PlanStaff> staff;
@@ -146,7 +149,8 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
     super.initState();
     _isNew = widget.isNew;
     _saved = _isNew ? null : (_svc.getById(widget.plan.id) ?? widget.plan);
-    _load(_saved ?? widget.plan);
+    // 保存済みの計画を開いたときは、行を全部たたんだ状態で開く
+    _load(_saved ?? widget.plan, collapse: !_isNew);
     _svc.addListener(_onPlansChanged);
     StaffService.instance.addListener(_onOther);
   }
@@ -173,7 +177,8 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
     return DateTime(n.year, n.month, n.day);
   }
 
-  void _load(SupportPlan p) {
+  void _load(SupportPlan p, {bool collapse = false}) {
+    final wasExpanded = [for (final r in _rows) r.expanded];
     _base = p;
     _createdOn = p.createdOn;
     _managerId = p.managerStaffId;
@@ -190,6 +195,10 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
       r.dispose();
     }
     _rows = [for (final r in p.rows) _RowEdit(r)];
+    for (var i = 0; i < _rows.length; i++) {
+      _rows[i].expanded =
+          collapse ? false : (i < wasExpanded.length ? wasExpanded[i] : true);
+    }
     _explainedOn = p.explainedOn;
     _agreedOn = p.agreedOn;
   }
@@ -370,7 +379,13 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
       _AgreedEdit.revert => PlanSaveMode.revertToDraft,
       null => PlanSaveMode.normal,
     };
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      // 足りない点のある行は開いて見せる
+      for (final r in _rows) {
+        if (_rowIssues(r).isNotEmpty) r.expanded = true;
+      }
+    });
     try {
       final p = _current;
       await _svc.save(p, exists: !_isNew, mode: mode);
@@ -811,6 +826,40 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_rows.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(spacing: 8, children: [
+                TextButton.icon(
+                  key: const Key('planRowsExpandAll'),
+                  // 詰めた表示（PC のブラウザ）でも高さ 48 を保つ
+                  style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      visualDensity: VisualDensity.standard),
+                  onPressed: () => setState(() {
+                    for (final r in _rows) {
+                      r.expanded = true;
+                    }
+                  }),
+                  icon: const Icon(Icons.unfold_more),
+                  label: const Text('すべて開く'),
+                ),
+                TextButton.icon(
+                  key: const Key('planRowsCollapseAll'),
+                  // 詰めた表示（PC のブラウザ）でも高さ 48 を保つ
+                  style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      visualDensity: VisualDensity.standard),
+                  onPressed: () => setState(() {
+                    for (final r in _rows) {
+                      r.expanded = false;
+                    }
+                  }),
+                  icon: const Icon(Icons.unfold_less),
+                  label: const Text('すべてたたむ'),
+                ),
+              ]),
+            ),
           for (var i = 0; i < _rows.length; i++) ...[
             _rowCard(i, _rows[i]),
             const SizedBox(height: 10),
@@ -850,8 +899,8 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
         // 選んでも幅と位置が変わらないよう、チェックの印は出さず色と枠で示す
         showCheckmark: false,
         selectedColor: AppColors.primary.withValues(alpha: 0.18),
-        side: BorderSide(
-            color: selected ? AppColors.primary : AppColors.divider),
+        side:
+            BorderSide(color: selected ? AppColors.primary : AppColors.divider),
       ),
     );
   }
@@ -879,11 +928,58 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text('${i + 1} 行目',
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+              IconButton(
+                key: Key('planRowToggle_$i'),
+                tooltip: r.expanded ? 'この行をたたむ' : 'この行を開く',
+                style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+                onPressed: () => touch(() => r.expanded = !r.expanded),
+                icon: Icon(r.expanded ? Icons.expand_less : Icons.expand_more),
               ),
-              if (enabled) ...[
+              Expanded(
+                child: InkWell(
+                  onTap: () => touch(() => r.expanded = !r.expanded),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Row(children: [
+                      Text('${i + 1} 行目',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      if (_rowIssues(r).isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Tooltip(
+                          message: _rowIssues(r).join('／'),
+                          child: Row(
+                            key: Key('planRowWarn_$i'),
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.error_outline,
+                                  size: 18, color: AppColors.warning),
+                              SizedBox(width: 2),
+                              Text('未入力あり',
+                                  style: TextStyle(
+                                      fontSize: 12, color: AppColors.warning)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (!r.expanded) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _rowSummary(r),
+                            key: Key('planRowSummary_$i'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ]),
+                  ),
+                ),
+              ),
+              if (enabled && r.expanded) ...[
                 IconButton(
                     tooltip: '上へ',
                     onPressed: i == 0 ? null : () => _moveRow(i, -1),
@@ -902,180 +998,211 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
               ],
             ],
           ),
-          _label('項目'),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final c in SupportPlanForm.categories)
-              _chip(
-                key: Key('planRow_${i}_cat_${c.code}'),
-                label: c.label,
-                selected: r.categories.contains(c.code),
-                onSelected: !enabled
-                    ? null
-                    : (v) => touch(() => v
-                        ? r.categories.add(c.code)
-                        : r.categories.remove(c.code)),
-              ),
-          ]),
-          const SizedBox(height: 8),
-          for (final (k, label, lines) in [
-            (SupportPlanForm.rGoal, SupportPlanForm.goalLabel, 2),
-            (SupportPlanForm.rContent, SupportPlanForm.contentLabel, 3),
-          ]) ...[
-            const SizedBox(height: 8),
-            TextField(
-              key: Key('planRow_${i}_$k'),
-              controller: r.ctrls[k],
-              enabled: enabled,
-              minLines: lines,
-              maxLines: 10,
-              decoration: InputDecoration(
-                  labelText: label,
-                  border: const OutlineInputBorder(),
-                  alignLabelWithHint: true),
-              onChanged: (_) => setState(() {}),
-            ),
-          ],
-          if (r.usesDomains) ...[
-            _label('${SupportPlanForm.domainsLabel}（本人支援の行。いくつでも選べます）'),
+          if (r.expanded) ...[
+            _label('項目'),
             Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final d in SupportPlanForm.domains)
+              for (final c in SupportPlanForm.categories)
                 _chip(
-                  key: Key('planRow_${i}_dom_${d.code}'),
-                  label: d.label,
-                  selected: r.domains.contains(d.code),
+                  key: Key('planRow_${i}_cat_${c.code}'),
+                  label: c.label,
+                  selected: r.categories.contains(c.code),
                   onSelected: !enabled
                       ? null
-                      : (v) => touch(() =>
-                          v ? r.domains.add(d.code) : r.domains.remove(d.code)),
+                      : (v) => touch(() => v
+                          ? r.categories.add(c.code)
+                          : r.categories.remove(c.code)),
                 ),
             ]),
-          ],
-          _label(SupportPlanForm.periodLabel),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              for (final p in SupportPlanForm.periodChoices)
-                _chip(
-                  key: Key('planRow_${i}_period_$p'),
-                  label: p,
-                  selected: period.text.trim() == p,
-                  onSelected: !enabled
-                      ? null
-                      : (v) => touch(() => period.text = v ? p : ''),
-                ),
-              SizedBox(
-                width: 200,
-                child: TextField(
-                  key: Key('planRow_${i}_period'),
-                  controller: period,
-                  enabled: enabled,
-                  decoration: const InputDecoration(
-                      labelText: 'または自由に書く', isDense: true),
-                  onChanged: (_) => setState(() {}),
-                ),
+            const SizedBox(height: 8),
+            for (final (k, label, lines) in [
+              (SupportPlanForm.rGoal, SupportPlanForm.goalLabel, 2),
+              (SupportPlanForm.rContent, SupportPlanForm.contentLabel, 3),
+            ]) ...[
+              const SizedBox(height: 8),
+              TextField(
+                key: Key('planRow_${i}_$k'),
+                controller: r.ctrls[k],
+                enabled: enabled,
+                minLines: lines,
+                maxLines: 10,
+                decoration: InputDecoration(
+                    labelText: label,
+                    border: const OutlineInputBorder(),
+                    alignLabelWithHint: true),
+                onChanged: (_) => setState(() {}),
               ),
             ],
-          ),
-          _label(SupportPlanForm.staffLabel),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final Staff s in staffList)
-              _chip(
-                key: Key('planRow_${i}_staff_${s.id}'),
-                label: s.name,
-                selected: r.staff.any((e) => e.staffId == s.id),
-                onSelected: !enabled
-                    ? null
-                    : (v) => touch(() => v
-                        ? r.staff.add(PlanStaff(staffId: s.id, name: s.name))
-                        : r.staff.removeWhere((e) => e.staffId == s.id)),
-              ),
-            for (final e in r.staff)
-              if (e.staffId == null || !staffList.any((s) => s.id == e.staffId))
-                _chip(
-                  key: Key('planRow_${i}_staffFree_${e.name}'),
-                  label: e.staffId == null ? e.name : '${e.name}（在籍終了）',
-                  selected: true,
-                  onSelected:
-                      !enabled ? null : (_) => touch(() => r.staff.remove(e)),
-                ),
-          ]),
-          if (enabled)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Row(children: [
-                Expanded(
-                  child: TextField(
-                    key: Key('planRow_${i}_staffName'),
-                    controller: r.staffNameCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '職員以外の担当者を書いて足す（例：連携先の担当の方）', isDense: true),
+            if (r.usesDomains) ...[
+              _label('${SupportPlanForm.domainsLabel}（本人支援の行。いくつでも選べます）'),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final d in SupportPlanForm.domains)
+                  _chip(
+                    key: Key('planRow_${i}_dom_${d.code}'),
+                    label: d.label,
+                    selected: r.domains.contains(d.code),
+                    onSelected: !enabled
+                        ? null
+                        : (v) => touch(() => v
+                            ? r.domains.add(d.code)
+                            : r.domains.remove(d.code)),
                   ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 48,
-                  child: OutlinedButton(
-                    key: Key('planRow_${i}_staffAdd'),
-                    style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(64, 48)),
-                    onPressed: () {
-                      final n = r.staffNameCtrl.text.trim();
-                      if (n.isEmpty) return;
-                      touch(() {
-                        if (!r.staff.any((e) => e.name == n)) {
-                          r.staff.add(PlanStaff(name: n));
-                        }
-                        r.staffNameCtrl.clear();
-                      });
-                    },
-                    child: const Text('足す'),
-                  ),
-                ),
               ]),
-            ),
-          const SizedBox(height: 10),
-          TextField(
-            key: Key('planRow_${i}_${SupportPlanForm.rProvider}'),
-            controller: r.ctrls[SupportPlanForm.rProvider],
-            enabled: enabled,
-            decoration: const InputDecoration(
-                labelText: SupportPlanForm.providerLabel,
-                border: OutlineInputBorder()),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            key: Key('planRow_${i}_${SupportPlanForm.rNotes}'),
-            controller: r.ctrls[SupportPlanForm.rNotes],
-            enabled: enabled,
-            minLines: 1,
-            maxLines: 6,
-            decoration: const InputDecoration(
-                labelText: SupportPlanForm.notesLabel,
-                border: OutlineInputBorder()),
-            onChanged: (_) => setState(() {}),
-          ),
-          if (r.usesDomains) ...[
-            const SizedBox(height: 10),
-            DropdownButtonFormField<int?>(
-              key: Key('planRow_${i}_priority'),
-              initialValue: r.priority,
-              decoration: const InputDecoration(
-                  labelText: '${SupportPlanForm.priorityLabel}（本人支援の行）',
-                  border: OutlineInputBorder()),
-              items: [
-                const DropdownMenuItem<int?>(value: null, child: Text('なし')),
-                for (final n in SupportPlanForm.priorityChoices)
-                  DropdownMenuItem<int?>(value: n, child: Text('$n')),
+            ],
+            _label(SupportPlanForm.periodLabel),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                for (final p in SupportPlanForm.periodChoices)
+                  _chip(
+                    key: Key('planRow_${i}_period_$p'),
+                    label: p,
+                    selected: period.text.trim() == p,
+                    onSelected: !enabled
+                        ? null
+                        : (v) => touch(() => period.text = v ? p : ''),
+                  ),
+                SizedBox(
+                  width: 200,
+                  child: TextField(
+                    key: Key('planRow_${i}_period'),
+                    controller: period,
+                    enabled: enabled,
+                    decoration: const InputDecoration(
+                        labelText: 'または自由に書く', isDense: true),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
               ],
-              onChanged: !enabled ? null : (v) => touch(() => r.priority = v),
             ),
+            _label(SupportPlanForm.staffLabel),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final Staff s in staffList)
+                _chip(
+                  key: Key('planRow_${i}_staff_${s.id}'),
+                  label: s.name,
+                  selected: r.staff.any((e) => e.staffId == s.id),
+                  onSelected: !enabled
+                      ? null
+                      : (v) => touch(() => v
+                          ? r.staff.add(PlanStaff(staffId: s.id, name: s.name))
+                          : r.staff.removeWhere((e) => e.staffId == s.id)),
+                ),
+              for (final e in r.staff)
+                if (e.staffId == null ||
+                    !staffList.any((s) => s.id == e.staffId))
+                  _chip(
+                    key: Key('planRow_${i}_staffFree_${e.name}'),
+                    label: e.staffId == null ? e.name : '${e.name}（在籍終了）',
+                    selected: true,
+                    onSelected:
+                        !enabled ? null : (_) => touch(() => r.staff.remove(e)),
+                  ),
+            ]),
+            if (enabled)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(children: [
+                  Expanded(
+                    child: TextField(
+                      key: Key('planRow_${i}_staffName'),
+                      controller: r.staffNameCtrl,
+                      decoration: const InputDecoration(
+                          labelText: '職員以外の担当者を書いて足す（例：連携先の担当の方）',
+                          isDense: true),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 48,
+                    child: OutlinedButton(
+                      key: Key('planRow_${i}_staffAdd'),
+                      style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(64, 48)),
+                      onPressed: () {
+                        final n = r.staffNameCtrl.text.trim();
+                        if (n.isEmpty) return;
+                        touch(() {
+                          if (!r.staff.any((e) => e.name == n)) {
+                            r.staff.add(PlanStaff(name: n));
+                          }
+                          r.staffNameCtrl.clear();
+                        });
+                      },
+                      child: const Text('足す'),
+                    ),
+                  ),
+                ]),
+              ),
+            const SizedBox(height: 10),
+            TextField(
+              key: Key('planRow_${i}_${SupportPlanForm.rProvider}'),
+              controller: r.ctrls[SupportPlanForm.rProvider],
+              enabled: enabled,
+              decoration: const InputDecoration(
+                  labelText: SupportPlanForm.providerLabel,
+                  border: OutlineInputBorder()),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: Key('planRow_${i}_${SupportPlanForm.rNotes}'),
+              controller: r.ctrls[SupportPlanForm.rNotes],
+              enabled: enabled,
+              minLines: 1,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                  labelText: SupportPlanForm.notesLabel,
+                  border: OutlineInputBorder()),
+              onChanged: (_) => setState(() {}),
+            ),
+            if (r.usesDomains) ...[
+              const SizedBox(height: 10),
+              DropdownButtonFormField<int?>(
+                key: Key('planRow_${i}_priority'),
+                initialValue: r.priority,
+                decoration: const InputDecoration(
+                    labelText: '${SupportPlanForm.priorityLabel}（本人支援の行）',
+                    border: OutlineInputBorder()),
+                items: [
+                  const DropdownMenuItem<int?>(value: null, child: Text('なし')),
+                  for (final n in SupportPlanForm.priorityChoices)
+                    DropdownMenuItem<int?>(value: n, child: Text('$n')),
+                ],
+                onChanged: !enabled ? null : (v) => touch(() => r.priority = v),
+              ),
+            ],
           ],
         ],
       ),
     );
+  }
+
+  /// 行の足りない点（項目が未選択・支援目標も支援内容も空）
+  static List<String> _rowIssues(_RowEdit r) => [
+        if (r.categories.isEmpty) '項目が選ばれていません',
+        if (r.ctrls[SupportPlanForm.rGoal]!.text.trim().isEmpty &&
+            r.ctrls[SupportPlanForm.rContent]!.text.trim().isEmpty)
+          '支援目標・支援内容が空です',
+      ];
+
+  /// たたんだ行の 1 行の要約: 項目｜目標の先頭｜達成時期｜担当者
+  static String _rowSummary(_RowEdit r) {
+    final cats = [
+      for (final c in SupportPlanForm.categories)
+        if (r.categories.contains(c.code)) c.label
+    ].join('・');
+    final goal = r.ctrls[SupportPlanForm.rGoal]!.text.trim();
+    final head = goal.length > 20 ? '${goal.substring(0, 20)}…' : goal;
+    final period = r.ctrls[SupportPlanForm.rPeriod]!.text.trim();
+    final staff = r.staff.map((s) => s.name).join('、');
+    return [
+      cats.isEmpty ? '項目なし' : cats,
+      head.isEmpty ? '目標なし' : head,
+      period.isEmpty ? '達成時期なし' : period,
+      staff.isEmpty ? '担当者なし' : staff,
+    ].join('｜');
   }
 
   Widget _consentSection(PlanCheck check) {
