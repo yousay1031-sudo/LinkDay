@@ -16,6 +16,7 @@ import '../services/settings_service.dart';
 import '../services/transport_plan_service.dart';
 import '../services/weekly_schedule_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/name_search.dart';
 import '../utils/week_util.dart';
 import 'attendance_screen.dart';
 
@@ -320,33 +321,79 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
     }
     final picked = await showDialog<Customer>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${_dateLabel(date)}に追加する児童'),
-        content: SizedBox(
-          width: 420,
-          height: 420,
-          child: ListView(
-            children: [
-              for (final c in candidates)
-                ListTile(
-                  key: Key('nextDayAddPick_${c.id}'),
-                  minTileHeight: 48,
-                  title: Text(c.name),
-                  subtitle: Text(c.regularDays.isEmpty
-                      ? '利用曜日なし'
-                      : '利用曜日 ${c.regularDays.map((d) => _weekdays[d - 1]).join('・')}'),
-                  onTap: () => Navigator.pop(ctx, c),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              style: _dialogButton,
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('やめる')),
-        ],
-      ),
+      // 検索欄の controller はダイアログが持つ（閉じる動きの間も使われるため）
+      builder: (ctx) => _WithController(
+          builder: (ctx, queryCtrl) => StatefulBuilder(
+                builder: (ctx, set) {
+                  final q = queryCtrl.text;
+                  final shown = [
+                    for (final c in candidates)
+                      if (NameSearch.matches(q, name: c.name, kana: c.nameKana))
+                        c
+                  ];
+                  return AlertDialog(
+                    title: Text('${_dateLabel(date)}に追加する児童'),
+                    content: SizedBox(
+                      width: 420,
+                      height: 460,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // 氏名・ふりがなの一部で絞り込む（打つたびに絞り込む）
+                          TextField(
+                            key: const Key('nextDayAddSearch'),
+                            controller: queryCtrl,
+                            autofocus: true,
+                            decoration: InputDecoration(
+                              hintText: '氏名・ふりがなで探す',
+                              prefixIcon: const Icon(Icons.search),
+                              suffixIcon: q.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      key: const Key('nextDayAddSearchClear'),
+                                      tooltip: '検索を消す',
+                                      style: IconButton.styleFrom(
+                                          minimumSize: const Size(48, 48)),
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () => set(queryCtrl.clear),
+                                    ),
+                              border: const OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => set(() {}),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: shown.isEmpty
+                                ? const Center(
+                                    child: Text('該当する児童はいません',
+                                        key: Key('nextDayAddNoMatch')))
+                                : ListView(
+                                    children: [
+                                      for (final c in shown)
+                                        ListTile(
+                                          key: Key('nextDayAddPick_${c.id}'),
+                                          minTileHeight: 48,
+                                          title: Text(c.name),
+                                          subtitle: Text(c.regularDays.isEmpty
+                                              ? '利用曜日なし'
+                                              : '利用曜日 ${c.regularDays.map((d) => _weekdays[d - 1]).join('・')}'),
+                                          onTap: () => Navigator.pop(ctx, c),
+                                        ),
+                                    ],
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                          style: _dialogButton,
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('やめる')),
+                    ],
+                  );
+                },
+              )),
     );
     if (picked == null || !mounted) return;
     // 月の利用可能日数を超える見込みなら、顧客管理の超過見込みと同じ考え方で知らせる
@@ -860,4 +907,26 @@ class _EntryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// ダイアログの中で使う TextEditingController を、ダイアログが消えるときに片付ける
+class _WithController extends StatefulWidget {
+  const _WithController({required this.builder});
+  final Widget Function(BuildContext, TextEditingController) builder;
+
+  @override
+  State<_WithController> createState() => _WithControllerState();
+}
+
+class _WithControllerState extends State<_WithController> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _ctrl);
 }
