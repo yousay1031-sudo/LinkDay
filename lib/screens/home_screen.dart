@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/attendance_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/customer_service.dart';
+import '../services/settings_service.dart';
+import '../models/app_settings.dart';
 import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
 import 'customer_management_screen.dart';
@@ -36,6 +38,12 @@ class _MenuItem {
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  /// 上のバーに出す事業所名。設定の事業所名が空なら「事業所名 未設定」
+  static String facilityLabel(AppSettings s) {
+    final name = s.facilityName.trim();
+    return name.isEmpty ? '事業所名 未設定' : name;
+  }
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -53,6 +61,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadCounts();
     CustomerService.instance.addListener(_onCustomersChanged);
     AttendanceService.instance.addListener(_onAttendanceChanged);
+    SettingsService.instance.addListener(_onSettingsChanged);
+  }
+
+  /// 設定が変わった（他の端末を含む）: 事業所名を開き直さずに更新する
+  void _onSettingsChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 出席が変わった（他の端末を含む）: 未処理の件数を開き直さずに更新する
@@ -70,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     CustomerService.instance.removeListener(_onCustomersChanged);
     AttendanceService.instance.removeListener(_onAttendanceChanged);
+    SettingsService.instance.removeListener(_onSettingsChanged);
     _usageDebounce?.cancel();
     super.dispose();
   }
@@ -79,7 +94,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onCustomersChanged() {
     if (!mounted) return;
     setState(() {
-      _expiringCount = CustomerService.instance.getExpiringCertCustomers().length;
+      _expiringCount =
+          CustomerService.instance.getExpiringCertCustomers().length;
     });
     _usageDebounce?.cancel();
     _usageDebounce = Timer(const Duration(milliseconds: 400), () {
@@ -435,15 +451,24 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       actions: [
-        // 施設名表示（将来実装用のプレースホルダー）
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
+        // 事業所名（設定の事業所名。未設定なら「事業所名 未設定」）
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Center(
-            child: Text(
-              'サンプル施設',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
+            child: ConstrainedBox(
+              // 狭い幅では右のアイコンを押し出さないよう短く切る
+              constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width < 600 ? 110 : 240),
+              child: Text(
+                HomeScreen.facilityLabel(
+                    SettingsService.instance.getSettings()),
+                key: const Key('homeFacilityName'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                ),
               ),
             ),
           ),
