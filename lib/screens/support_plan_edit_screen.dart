@@ -8,6 +8,7 @@ import '../models/support_plan.dart';
 import '../models/support_plan_form.dart';
 import '../services/settings_service.dart';
 import '../services/staff_service.dart';
+import '../services/support_plan_pdf_service.dart';
 import '../services/support_plan_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/success_feedback.dart';
@@ -99,7 +100,7 @@ class SupportPlanEditScreen extends StatefulWidget {
     required this.plan,
     required this.isNew,
     this.today,
-    this.onPrint,
+    this.printer,
   });
 
   final SupportPlan plan;
@@ -108,8 +109,8 @@ class SupportPlanEditScreen extends StatefulWidget {
   /// テスト用: 今日を差し替える
   final DateTime? today;
 
-  /// 印刷（段階4で使う。null なら印刷のボタンを出さない）
-  final Future<void> Function(BuildContext context, SupportPlan plan)? onPrint;
+  /// テスト用: 印刷の代わりに呼ぶ
+  final Future<void> Function(PlanPrintData data, SupportPlan plan)? printer;
 
   @override
   State<SupportPlanEditScreen> createState() => _SupportPlanEditScreenState();
@@ -394,6 +395,39 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
     }
   }
 
+  /// 印刷（保存した内容を印刷する。保存していない変更があれば先に保存するか確かめる）
+  Future<void> _print() async {
+    if (_dirty || _isNew) {
+      if (_locked) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('保存してから印刷します'),
+          content: const Text('印刷には保存した内容が出ます。いまの内容を保存して印刷しますか。'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('やめる')),
+            ElevatedButton(
+                key: const Key('planSaveAndPrint'),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存して印刷')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      await _save();
+      if (!mounted || _dirty || _isNew) return; // 保存できなかった
+    }
+    final p = _saved ?? _current;
+    final printer = widget.printer ?? SupportPlanPdfService.printPlan;
+    try {
+      await printer(PlanPrintData.from(p), p);
+    } catch (e) {
+      _snack('印刷の準備ができませんでした（通信を確かめてください）', color: AppColors.error);
+    }
+  }
+
   Future<void> _removeRow(_RowEdit r) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -453,14 +487,13 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
         appBar: AppBar(
           title: Text('${cur.customerName}さん 個別支援計画'),
           actions: [
-            if (widget.onPrint != null)
-              IconButton(
-                key: const Key('planPrint'),
-                tooltip: '印刷',
-                style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
-                icon: const Icon(Icons.print_outlined),
-                onPressed: () => widget.onPrint!(context, _saved ?? cur),
-              ),
+            IconButton(
+              key: const Key('planPrint'),
+              tooltip: '印刷',
+              style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+              icon: const Icon(Icons.print_outlined),
+              onPressed: _saving ? null : _print,
+            ),
             const SizedBox(width: 4),
           ],
         ),

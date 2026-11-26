@@ -16,6 +16,7 @@ import 'package:linkday_app/screens/support_plan_edit_screen.dart';
 import 'package:linkday_app/screens/support_plan_history_screen.dart';
 import 'package:linkday_app/screens/support_plan_list_screen.dart';
 import 'package:linkday_app/services/customer_service.dart';
+import 'package:linkday_app/services/support_plan_pdf_service.dart';
 import 'package:linkday_app/services/support_plan_service.dart';
 import 'package:linkday_app/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -345,6 +346,31 @@ void main() {
     expect(n['agreedOn'], isNull);
     expect(n['explainedOn'], isNull);
     expect((await stored(t, 'p1'))!['status'], 'agreed');
+  });
+
+  testWidgets('印刷: 保存していない変更があれば保存してから、保存した内容を様式の並びで印刷する', (t) async {
+    await setUpData(t, plans: [plan('p1', 'a', DateTime(2026, 6, 1))]);
+    PlanPrintData? printed;
+    await open(
+        t,
+        SupportPlanEditScreen(
+            plan: SupportPlanService.instance.getById('p1')!,
+            isNew: false,
+            printer: (d, _) async => printed = d));
+    await type(t, find.byKey(const Key('planText_policy')), '印刷前に書いた方針');
+    await tap(t, find.byKey(const Key('planPrint')));
+    expect(find.text('保存してから印刷します'), findsOneWidget);
+    await tap(t, find.byKey(const Key('planSaveAndPrint')));
+    expect(printed, isNotNull);
+    expect(printed!.policy[1], ('総合的な支援の方針', '印刷前に書いた方針'));
+    expect(printed!.tableRows.first.first, '本人支援');
+    expect(printed!.agreedDate, PlanPrintData.blankDate);
+    expect((await stored(t, 'p1'))!['texts']['policy'], '印刷前に書いた方針');
+    // 変更が無ければそのまま印刷する
+    printed = null;
+    await tap(t, find.byKey(const Key('planPrint')));
+    expect(find.text('保存してから印刷します'), findsNothing);
+    expect(printed, isNotNull);
   });
 
   testWidgets('保存していない変更があるまま閉じようとしたら確かめる', (t) async {
