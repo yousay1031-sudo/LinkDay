@@ -143,7 +143,57 @@ service cloud.firestore {
     // 専用のルールだけで判定するコレクション（汎用の業務データのルールから外す。
     // ルールは「どれか 1 つが許せば通る」ため、汎用のルールに残すと専用の条件を素通りする）
     function OWN_RULE_COLLECTIONS() {
-      return ACCOUNT_COLLECTIONS().concat(['dailyJournals']);
+      return ACCOUNT_COLLECTIONS().concat(['dailyJournals', 'supportPlans']);
+    }
+
+    // ── 個別支援計画（ステップ3）──────────────────────────────
+    // 1 計画 1 文書（支援の表の行は計画の中）。所属する全員が読める（承認済みの判断点1 (A)）。
+    function isDateOrNull(v) {
+      return v == null || (v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
+    }
+
+    // 計画の形。同意済みなら、説明した日と同意を得た日がある（作成中なら同意を得た日は空）。
+    // 同意後の修正の記録は、同意済みの計画にだけ付く。
+    function validPlan() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['customerId', 'customerName', 'birthday', 'createdOn',
+             'managerStaffId', 'managerName', 'texts', 'rows', 'explainedOn', 'agreedOn',
+             'status', 'assessmentDoneOn', 'copiedFromPlanId',
+             'revisedAfterAgreementAt', 'revisedAfterAgreementByStaffId',
+             'revisedAfterAgreementByStaffName',
+             'createdAt', 'updatedAt', 'updatedByStaffId', 'updatedByStaffName'])
+        && d.customerId is string && d.customerId.size() > 0
+        && d.status in ['draft', 'agreed']
+        && d.texts is map && d.texts.size() <= 30
+        && d.rows is list && d.rows.size() <= 60
+        && isDateOrNull(d.get('createdOn', null))
+        && isDateOrNull(d.get('explainedOn', null))
+        && isDateOrNull(d.get('agreedOn', null))
+        && isDateOrNull(d.get('assessmentDoneOn', null))
+        && (d.status == 'agreed') == (d.get('agreedOn', null) != null)
+        && (d.status == 'draft' || d.get('explainedOn', null) != null)
+        && (d.status == 'agreed' || d.get('revisedAfterAgreementAt', null) == null);
+    }
+
+    // 同意済みの計画の更新は、次のどれかの形だけ（承認済みの判断点6）。
+    //   1. アセスメントを実施した日だけを入れる（中身は変えない）
+    //   2. 軽い修正: 同意済みのまま、説明した日・同意を得た日は変えず、
+    //      「同意後に修正した日時と担当者」を今の時刻・この書き込みの担当者で残す
+    //   3. 内容を変える: 作成中に戻し、説明した日・同意を得た日を空にする
+    function agreedPlanUpdateOk() {
+      let d = request.resource.data;
+      let before = resource.data;
+      return d.diff(before).affectedKeys().hasOnly(
+               ['assessmentDoneOn', 'updatedAt', 'updatedByStaffId', 'updatedByStaffName'])
+        || (d.status == 'agreed'
+          && d.agreedOn == before.agreedOn
+          && d.explainedOn == before.explainedOn
+          && d.get('revisedAfterAgreementAt', null) == request.time
+          && d.get('revisedAfterAgreementByStaffId', null) == d.get('updatedByStaffId', null)
+          && d.get('revisedAfterAgreementByStaffName', null) == d.updatedByStaffName)
+        || (d.status == 'draft'
+          && d.get('agreedOn', null) == null
+          && d.get('explainedOn', null) == null);
     }
 
     // ── 業務日誌（ステップ3）────────────────────────────────
@@ -278,6 +328,20 @@ service cloud.firestore {
           && validJournal(dateKey)
           && !request.resource.data.diff(resource.data).affectedKeys()
                .hasAny(['createdAt', 'date']);
+        allow delete: if false;
+      }
+
+      // ── 個別支援計画（ステップ3）: 所属する全員が読める。書くには担当者の記録が要る。
+      // 同意済みの計画の更新は agreedPlanUpdateOk の形だけ。どの児童の計画かと作成日時は
+      // 後から変えられない。削除は誰もできない（履歴として残す）。
+      match /supportPlans/{planId} {
+        allow read: if isMemberOf(facilityId);
+        allow create: if isMemberOf(facilityId) && hasAudit() && validPlan()
+          && request.resource.data.createdAt == request.time;
+        allow update: if isMemberOf(facilityId) && hasAudit() && validPlan()
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['customerId', 'createdAt'])
+          && (resource.data.status != 'agreed' || agreedPlanUpdateOk());
         allow delete: if false;
       }
 

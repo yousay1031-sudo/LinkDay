@@ -10,6 +10,7 @@ import 'package:linkday_app/data/facility_context.dart';
 import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/screens/daily_journal_screen.dart';
 import 'package:linkday_app/screens/home_screen.dart';
+import 'package:linkday_app/screens/support_plan_list_screen.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/slot_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
@@ -114,6 +115,27 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 100)));
     await _ms(t, 1500);
     expect(find.byType(DailyJournalScreen), findsOneWidget);
+    expect(find.textContaining('準備中です'), findsNothing);
+    await t.pumpWidget(const SizedBox.shrink());
+    await _ms(t, 3000);
+  });
+
+  testWidgets('ホームの「個別支援計画」を押すと一覧が開き、「準備中です」は出ない', (t) async {
+    await t.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    await t.pumpWidget(
+        MaterialApp(theme: AppTheme.lightTheme, home: const HomeScreen()));
+    await t.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await _ms(t, 1500);
+    final tile = find.byKey(const ValueKey('homeMenu_/support-plan'));
+    await t.ensureVisible(tile);
+    await _ms(t, 500);
+    await t.tap(tile);
+    await t.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await _ms(t, 1500);
+    expect(find.byType(SupportPlanListScreen), findsOneWidget);
     expect(find.textContaining('準備中です'), findsNothing);
     await t.pumpWidget(const SizedBox.shrink());
     await _ms(t, 3000);

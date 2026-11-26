@@ -8,7 +8,7 @@
 //   node tool/verify/seed.mjs --reset --data empty   # 顧客なし（空の状態の確認用）
 //
 // 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / 顧客 / 週間利用計画 /
-//   出席 / 送迎 / 設定 / 業務日誌（ステップ3）/ slots
+//   出席 / 送迎 / 設定 / 業務日誌・個別支援計画（ステップ3）/ slots
 // 出席・設定・送迎・通知履歴は、Firestore 移行の各段階で
 // こちらへ移すまでは Hive(IndexedDB) 側（検証ビルドが起動時に投入する。docs/VERIFY_ENV.md）。
 import { assertLocalEmulator, PROJECT, HOST, AUTH_PORT, FS_PORT, loadOrCreateCredentials } from './guard.mjs';
@@ -18,6 +18,7 @@ import { buildDemoAttendance } from './dummy_attendance.mjs';
 import { buildDemoTransport } from './dummy_transport.mjs';
 import { buildDemoSettings } from './dummy_settings.mjs';
 import { buildDemoJournals } from './dummy_journals.mjs';
+import { buildDemoPlans } from './dummy_plans.mjs';
 
 await assertLocalEmulator();
 
@@ -286,6 +287,23 @@ if (dataMode === 'empty') {
     if (ok) journalCreated++;
   }
   console.log(`[seed] 業務日誌: 新規 ${journalCreated} 件 / 既存 ${journals.length - journalCreated} 件`);
+
+  // ── 個別支援計画（ステップ3）: 作成年月日をずらした計画。無いときだけ作る
+  const plans = buildDemoPlans(now);
+  let planCreated = 0;
+  for (let i = 0; i < plans.length; i += 25) {
+    const res = await Promise.all(
+      plans.slice(i, i + 25).map((p) =>
+        createIfMissing(
+          `facilities/${FACILITY_ID}/supportPlans/${p.id}`,
+          { ...toFsFields(p.data), ...audit },
+          `個別支援計画 ${p.id} の投入`
+        )
+      )
+    );
+    planCreated += res.filter(Boolean).length;
+  }
+  console.log(`[seed] 個別支援計画: 新規 ${planCreated} 件 / 既存 ${plans.length - planCreated} 件`);
 }
 
 // ── Firestore: slots（出席画面の「LINE応募」表示用）

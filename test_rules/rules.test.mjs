@@ -107,6 +107,25 @@ const journalDoc = (date, extra = {}) => ({
   ...extra,
 });
 
+// ── ステップ3: 個別支援計画 ─────────────────────────────
+/** 計画の業務データ（記録欄なし。架空の内容） */
+const planDoc = (extra = {}) => ({
+  customerId: 'c1',
+  customerName: '架空 一郎',
+  birthday: '2018-04-01',
+  createdOn: '2026-05-01',
+  managerStaffId: 's-1',
+  managerName: '山田',
+  texts: { intention: '架空の意向' },
+  rows: [{ categories: ['self'], texts: { goal: '架空の目標' }, domains: ['health'], staff: [], priority: 1 }],
+  explainedOn: null,
+  agreedOn: null,
+  status: 'draft',
+  assessmentDoneOn: null,
+  copiedFromPlanId: null,
+  ...extra,
+});
+
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: PROJECT,
@@ -151,6 +170,11 @@ beforeEach(async () => {
     await setDoc(doc(db, `facilities/${FAC}/loginHistory/h1`), { uid: 'member-a' });
     // ステップ3: 業務日誌（過去の日の 1 件）
     await setDoc(doc(db, `facilities/${FAC}/dailyJournals/${JOURNAL_PAST}`), journalDoc(JOURNAL_PAST));
+    // ステップ3: 個別支援計画（作成中 1 件・同意済み 1 件）
+    await setDoc(doc(db, `facilities/${FAC}/supportPlans/draft1`), planDoc());
+    await setDoc(doc(db, `facilities/${FAC}/supportPlans/agreed1`), planDoc({
+      status: 'agreed', explainedOn: '2026-05-10', agreedOn: '2026-05-12',
+    }));
   });
 });
 
@@ -309,9 +333,10 @@ describe('既存ルールの回帰（変えていないこと）', () => {
 // ════════════════════════════════════════════════════════════════
 
 describe('条件A: 誰でもアカウントを作れても、有効な所属が無ければ何も読めず何も書けない', () => {
-  const FACILITY_COLS = [...BUSINESS, 'staffAccounts', 'loginHistory', 'dailyJournals'];
+  const FACILITY_COLS = [...BUSINESS, 'staffAccounts', 'loginHistory', 'dailyJournals', 'supportPlans'];
   const existingId = (c) =>
-    c === 'staffAccounts' ? 'haru' : c === 'loginHistory' ? 'h1' : c === 'dailyJournals' ? JOURNAL_PAST : 'd1';
+    c === 'staffAccounts' ? 'haru' : c === 'loginHistory' ? 'h1' : c === 'dailyJournals' ? JOURNAL_PAST
+      : c === 'supportPlans' ? 'agreed1' : 'd1';
   for (const [label, who, myUid] of [
     ['未登録の Google アカウント', unregisteredGoogle, 'g-stranger'],
     ['自分で作ったメールアドレスのアカウント', selfMadePassword, 'pw-stranger'],
@@ -783,6 +808,102 @@ describe('業務日誌（ステップ3）', () => {
       await assertFails(getDocs(collection(db, `facilities/${FAC}/dailyJournals`)));
       await assertFails(setDoc(doc(db, path(today)), create(today)));
       await assertFails(updateDoc(doc(db, path(JOURNAL_PAST)), audited({ note: 'x' })));
+    }
+  });
+});
+
+describe('個別支援計画（ステップ3）', () => {
+  const path = (id) => `facilities/${FAC}/supportPlans/${id}`;
+  const withAudit = (data, staffId = 's-1', name = '山田') => ({
+    ...data,
+    updatedAt: serverTimestamp(),
+    updatedByStaffId: staffId,
+    updatedByStaffName: name,
+  });
+  const create = (extra = {}, staffId, name) => ({ ...withAudit(planDoc(extra), staffId, name), createdAt: serverTimestamp() });
+
+  test('所属する全員が読める（共用端末・管理者でない個人アカウント・管理者）', async () => {
+    for (const db of [memberA(), personal('haru'), personal('boss')]) {
+      await assertSucceeds(getDoc(doc(db, path('agreed1'))));
+      await assertSucceeds(getDocs(collection(db, `facilities/${FAC}/supportPlans`)));
+    }
+  });
+
+  test('担当者の記録を付けて作れる・作成中の計画は直せる。同意を得た日を入れると同意済みにできる', async () => {
+    const db = memberA();
+    await assertSucceeds(setDoc(doc(db, path('new1')), create()));
+    await assertSucceeds(updateDoc(doc(db, path('draft1')), withAudit({ texts: { intention: '直した' } })));
+    await assertSucceeds(
+      updateDoc(doc(db, path('draft1')), withAudit({ status: 'agreed', explainedOn: '2026-05-02', agreedOn: '2026-05-03' })),
+    );
+    // 個人アカウントは本人の名前で
+    await assertSucceeds(setDoc(doc(personal('haru'), path('new2')), create({}, 'haru', '職員 春子')));
+    await assertFails(setDoc(doc(personal('haru'), path('new3')), create({}, 'boss', '管理 一郎')));
+  });
+
+  test('担当者の記録が無い・作成日時が無い・余計な項目・形の違う値は拒否', async () => {
+    const db = memberA();
+    await assertFails(setDoc(doc(db, path('x')), planDoc()));
+    await assertFails(setDoc(doc(db, path('x')), withAudit(planDoc())));
+    await assertFails(setDoc(doc(db, path('x')), { ...create(), extra: 1 }));
+    await assertFails(setDoc(doc(db, path('x')), create({ status: 'done' })));
+    await assertFails(setDoc(doc(db, path('x')), create({ customerId: '' })));
+    await assertFails(setDoc(doc(db, path('x')), create({ createdOn: '2026/05/01' })));
+    await assertFails(setDoc(doc(db, path('x')), create({ rows: 'a' })));
+    // 状態と同意を得た日・説明した日が合わない
+    await assertFails(setDoc(doc(db, path('x')), create({ status: 'agreed' })));
+    await assertFails(setDoc(doc(db, path('x')), create({ status: 'agreed', agreedOn: '2026-05-03' })));
+    await assertFails(setDoc(doc(db, path('x')), create({ status: 'draft', explainedOn: '2026-05-02', agreedOn: '2026-05-03' })));
+    // 作成中の計画に同意後の修正の記録は付かない
+    await assertFails(setDoc(doc(db, path('x')), create({ revisedAfterAgreementAt: serverTimestamp() })));
+  });
+
+  test('どの児童の計画か・作成日時は変えられない。削除は誰もできない（管理者も）', async () => {
+    const db = memberA();
+    await assertFails(updateDoc(doc(db, path('draft1')), withAudit({ customerId: 'c2' })));
+    await assertFails(updateDoc(doc(db, path('draft1')), withAudit({ createdAt: serverTimestamp() })));
+    await assertFails(deleteDoc(doc(db, path('draft1'))));
+    await assertFails(deleteDoc(doc(personal('boss'), path('agreed1'))));
+  });
+
+  test('同意済みの計画: 軽い修正は、同意済みのまま「同意後に修正した日時と担当者」を残す形だけ', async () => {
+    const db = memberA();
+    const revised = (extra = {}) => withAudit({
+      texts: { intention: '軽く直した' },
+      revisedAfterAgreementAt: serverTimestamp(),
+      revisedAfterAgreementByStaffId: 's-1',
+      revisedAfterAgreementByStaffName: '山田',
+      ...extra,
+    });
+    // 記録が無い・他人の名前・時刻を偽る・同意の日付を変える
+    await assertFails(updateDoc(doc(db, path('agreed1')), withAudit({ texts: { intention: '記録なし' } })));
+    await assertFails(updateDoc(doc(db, path('agreed1')), revised({ revisedAfterAgreementByStaffName: '佐藤' })));
+    await assertFails(updateDoc(doc(db, path('agreed1')), revised({ revisedAfterAgreementAt: new Date(2026, 0, 1) })));
+    await assertFails(updateDoc(doc(db, path('agreed1')), revised({ agreedOn: '2026-05-20' })));
+    await assertFails(updateDoc(doc(db, path('agreed1')), revised({ explainedOn: '2026-05-11' })));
+    await assertSucceeds(updateDoc(doc(db, path('agreed1')), revised()));
+  });
+
+  test('同意済みの計画: 内容を変えるときは、作成中に戻して説明した日・同意を得た日を空にする形だけ', async () => {
+    const db = memberA();
+    await assertFails(updateDoc(doc(db, path('agreed1')), withAudit({ status: 'draft', agreedOn: null })));
+    await assertSucceeds(
+      updateDoc(doc(db, path('agreed1')), withAudit({ status: 'draft', agreedOn: null, explainedOn: null, texts: { intention: '変えた' } })),
+    );
+  });
+
+  test('同意済みの計画: アセスメントを実施した日だけは、修正の記録なしで入れられる', async () => {
+    const db = memberA();
+    await assertFails(updateDoc(doc(db, path('agreed1')), withAudit({ assessmentDoneOn: '2026-09-21', managerName: '別の人' })));
+    await assertSucceeds(updateDoc(doc(db, path('agreed1')), withAudit({ assessmentDoneOn: '2026-09-20' })));
+  });
+
+  test('所属の無い・無効・他事業所のアカウントは読めない・書けない', async () => {
+    for (const db of [unauth(), noMembership(), memberB(), unregisteredGoogle(), selfMadePassword(), personal('natsu'), personal('aki')]) {
+      await assertFails(getDoc(doc(db, path('agreed1'))));
+      await assertFails(getDocs(collection(db, `facilities/${FAC}/supportPlans`)));
+      await assertFails(setDoc(doc(db, path('new9')), create()));
+      await assertFails(updateDoc(doc(db, path('draft1')), withAudit({ texts: {} })));
     }
   });
 });

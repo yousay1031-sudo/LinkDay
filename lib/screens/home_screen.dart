@@ -14,6 +14,7 @@ import 'daily_journal_screen.dart';
 import 'customer_management_screen.dart';
 import 'settings_screen.dart';
 import 'staff_management_screen.dart';
+import 'support_plan_list_screen.dart';
 import 'transport_screen.dart';
 import 'weekly_schedule_screen.dart';
 import '../widgets/motion/app_spinner.dart';
@@ -234,6 +235,14 @@ class _HomeScreenState extends State<HomeScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const DailyJournalScreen()),
+      );
+      return;
+    }
+    // 個別支援計画（ステップ3）
+    if (item.route == '/support-plan') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SupportPlanListScreen()),
       );
       return;
     }

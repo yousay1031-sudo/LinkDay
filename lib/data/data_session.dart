@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../services/attendance_service.dart';
 import '../services/customer_service.dart';
 import '../services/login_history_service.dart';
+import '../services/support_plan_service.dart';
 import '../services/settings_service.dart';
 import '../services/staff_account_service.dart';
 import '../services/staff_service.dart';
@@ -142,6 +143,7 @@ class DataSession extends ChangeNotifier {
       await WeeklyScheduleService.instance.attach();
       await AttendanceService.instance.attach();
       await TransportPlanService.instance.attach();
+      await SupportPlanService.instance.attach();
       if (_uid != uid) return;
       _membership = m;
       _db = d;
@@ -267,6 +269,7 @@ class DataSession extends ChangeNotifier {
     _membership = null;
     _db = null;
     await SettingsService.instance.detach();
+    await SupportPlanService.instance.detach();
     await TransportPlanService.instance.detach();
     await AttendanceService.instance.detach();
     await WeeklyScheduleService.instance.detach();
