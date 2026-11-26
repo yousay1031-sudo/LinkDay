@@ -794,12 +794,17 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                       setState(() => _gender = selected ? g : null);
                     },
                     selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                    // 選んでも幅と位置が変わらないよう、チェックの印と文字の太さは変えない
+                    showCheckmark: false,
+                    side: BorderSide(
+                        color: _gender == g
+                            ? AppColors.primary
+                            : AppColors.divider),
                     labelStyle: TextStyle(
                       color: _gender == g
                           ? AppColors.primary
                           : AppColors.onSurface,
-                      fontWeight:
-                          _gender == g ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 );
@@ -1239,10 +1244,13 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                 });
               },
               selectedColor: AppColors.secondary.withValues(alpha: 0.2),
-              checkmarkColor: AppColors.secondary,
+              // 選んでも幅と位置が変わらないよう、チェックの印と文字の太さは変えない
+              showCheckmark: false,
+              side: BorderSide(
+                  color: isSelected ? AppColors.secondary : AppColors.divider),
               labelStyle: TextStyle(
                 color: isSelected ? AppColors.secondary : AppColors.onSurface,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: FontWeight.w600,
               ),
             );
           }).toList(),

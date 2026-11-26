@@ -332,6 +332,13 @@ class _StaffEditScreenState extends State<StaffEditScreen> {
                 label: Text(Staff.weekdayLabels[d - 1]),
                 selected: _days.contains(d),
                 materialTapTargetSize: MaterialTapTargetSize.padded,
+                // 選んでも幅と位置が変わらないよう、チェックの印は出さず色と枠で示す
+                showCheckmark: false,
+                selectedColor: AppColors.primary.withValues(alpha: 0.18),
+                side: BorderSide(
+                    color: _days.contains(d)
+                        ? AppColors.primary
+                        : AppColors.divider),
                 onSelected: (on) => setState(() {
                   on ? _days.add(d) : _days.remove(d);
                 }),

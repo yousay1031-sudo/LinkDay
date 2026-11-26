@@ -847,6 +847,11 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
         onSelected: onSelected,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         padding: const EdgeInsets.symmetric(horizontal: 6),
+        // 選んでも幅と位置が変わらないよう、チェックの印は出さず色と枠で示す
+        showCheckmark: false,
+        selectedColor: AppColors.primary.withValues(alpha: 0.18),
+        side: BorderSide(
+            color: selected ? AppColors.primary : AppColors.divider),
       ),
     );
   }
