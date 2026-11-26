@@ -11,6 +11,10 @@ class TransportPdfService {
   TransportPdfService._();
   static final TransportPdfService instance = TransportPdfService._();
 
+  /// 事業所名（設定の事業所名。未設定なら「事業所名 未設定」。ホームの上のバーと同じ）
+  static String get facilityName =>
+      SettingsService.instance.getSettings().facilityLabel;
+
   /// 指定日の送迎ルート表 PDF を印刷プレビューで開く
   Future<void> printTransportSheet(
     String dateKey,
@@ -28,7 +32,6 @@ class TransportPdfService {
     List<TransportVehicleRoute> routes,
   ) async {
     final doc = pw.Document();
-    final settings = SettingsService.instance.getSettings();
 
     final font = await PdfGoogleFonts.notoSansJPRegular();
     final boldFont = await PdfGoogleFonts.notoSansJPBold();
@@ -66,7 +69,7 @@ class TransportPdfService {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text('事業所: ${settings.facilityName}', style: baseStyle),
+                pw.Text('事業所: $facilityName', style: baseStyle),
                 pw.Text('日付: $dateJP', style: baseStyle),
                 pw.Text('出力: ${_today()}', style: baseStyle),
               ],
@@ -159,7 +162,7 @@ class TransportPdfService {
 
     // ルートテーブル
     final settings = SettingsService.instance.getSettings();
-    final facilityName = settings.facilityName;
+    final facilityName = TransportPdfService.facilityName;
     // お迎え: 事業所(出発) → 停留所1 → ... → 停留所N → 事業所(帰着)
     // お送り: 事業所(出発) → 停留所1 → ... → 停留所N → 事業所(帰着)
     // 両区分ともラウンドトリップ構成

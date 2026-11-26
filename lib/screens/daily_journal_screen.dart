@@ -307,7 +307,7 @@ class _DailyJournalScreenState extends State<DailyJournalScreen> {
     final data = JournalPrintData.from(
       journal: j,
       attendance: _attendanceRows(),
-      facilityName: SettingsService.instance.getSettings().facilityName,
+      facilityName: SettingsService.instance.getSettings().facilityLabel,
     );
     final printer = widget.printer ?? DailyJournalPdfService.printJournal;
     try {

@@ -7,6 +7,7 @@ import '../models/attendance_record.dart';
 import '../models/customer.dart';
 import '../services/attendance_service.dart';
 import '../services/customer_service.dart';
+import '../services/settings_service.dart';
 
 /// PDF 出力サービス
 /// サービス提供実績記録票（A4縦）を生成し、Web で印刷プレビューを表示する。
@@ -17,8 +18,9 @@ class AttendancePdfService {
   AttendancePdfService._();
   static final AttendancePdfService instance = AttendancePdfService._();
 
-  /// 事業所名（将来は設定画面から取得予定）
-  static const String facilityName = 'LinkDay';
+  /// 事業所名（設定の事業所名。未設定なら「事業所名 未設定」。ホームの上のバーと同じ）
+  static String get facilityName =>
+      SettingsService.instance.getSettings().facilityLabel;
 
   // ── 公開メソッド ─────────────────────────────────────────────
 

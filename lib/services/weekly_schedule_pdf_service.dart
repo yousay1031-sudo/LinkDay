@@ -5,6 +5,7 @@ import 'package:printing/printing.dart';
 
 import '../models/customer.dart';
 import '../models/weekly_schedule.dart';
+import 'settings_service.dart';
 
 /// 週間利用計画表 PDF 出力サービス
 /// A4 横（landscape）で1枚に収める。
@@ -15,8 +16,9 @@ class WeeklySchedulePdfService {
   static final WeeklySchedulePdfService instance =
       WeeklySchedulePdfService._();
 
-  /// 事業所名（将来は設定画面から取得予定）
-  static const String facilityName = 'LinkDay';
+  /// 事業所名（設定の事業所名。未設定なら「事業所名 未設定」。ホームの上のバーと同じ）
+  static String get facilityName =>
+      SettingsService.instance.getSettings().facilityLabel;
 
   // 曜日ラベル（列ヘッダー）
   static const List<String> _dayLabels = ['月', '火', '水', '木', '金', '土', '日'];

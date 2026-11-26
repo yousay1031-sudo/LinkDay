@@ -44,10 +44,7 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   /// 上のバーに出す事業所名。設定の事業所名が空なら「事業所名 未設定」
-  static String facilityLabel(AppSettings s) {
-    final name = s.facilityName.trim();
-    return name.isEmpty ? '事業所名 未設定' : name;
-  }
+  static String facilityLabel(AppSettings s) => s.facilityLabel;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();

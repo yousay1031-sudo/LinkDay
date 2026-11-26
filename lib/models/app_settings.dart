@@ -142,6 +142,13 @@ class AppSettings {
     );
   }
 
+  /// 画面の上のバーと PDF に出す事業所名。設定の事業所名が空（空白だけを含む）なら
+  /// 「事業所名 未設定」
+  String get facilityLabel {
+    final name = facilityName.trim();
+    return name.isEmpty ? '事業所名 未設定' : name;
+  }
+
   // ── ステップ3: 業務日誌「その日の内容」の選択肢 ─────────────────
 
   /// 選択肢の初期値
