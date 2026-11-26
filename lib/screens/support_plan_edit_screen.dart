@@ -295,26 +295,94 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
   Future<void> _startAgreedEdit() async {
     final choice = await showDialog<_AgreedEdit>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('同意済みの計画を直します'),
-        content: const Text('保護者の同意を得た計画です。直し方を選んでください。\n\n'
-            '・軽い修正：誤字などを直します。同意済みのまま、「同意後に修正した日時と担当者」を'
-            '記録し、計画の画面と一覧に「同意後に修正あり」と出します。\n'
-            '・内容を変える：作成中に戻し、説明した日と同意を得た日を空にします。'
-            'もう一度説明して同意を得てください。'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('やめる')),
-          TextButton(
-              key: const Key('planEditRevert'),
-              onPressed: () => Navigator.pop(ctx, _AgreedEdit.revert),
-              child: const Text('内容を変える（作成中に戻す）')),
-          ElevatedButton(
-              key: const Key('planEditLight'),
-              onPressed: () => Navigator.pop(ctx, _AgreedEdit.light),
-              child: const Text('軽い修正（同意済みのまま）')),
-        ],
-      ),
+      builder: (ctx) {
+        // 2 つの直し方は、同じ形・同じ大きさのボタンで並べる（どちらかを目立たせない）
+        Widget choice(Key key, IconData icon, String title, String sub,
+                _AgreedEdit value) =>
+            OutlinedButton(
+              key: key,
+              onPressed: () => Navigator.pop(ctx, value),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 64),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                side: const BorderSide(color: AppColors.primary, width: 1.5),
+              ),
+              child: Row(children: [
+                Icon(icon, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700)),
+                      Text(sub,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+              ]),
+            );
+        final light = choice(const Key('planEditLight'), Icons.edit_note,
+            '軽い修正', '同意済みのまま', _AgreedEdit.light);
+        final revert = choice(const Key('planEditRevert'), Icons.restart_alt,
+            '内容を変える', '作成中に戻す', _AgreedEdit.revert);
+        return AlertDialog(
+          title: const Text('同意済みの計画を直します'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('保護者の同意を得た計画です。直し方を選んでください。\n\n'
+                      '・軽い修正：誤字などを直します。同意済みのまま、「同意後に修正した日時と担当者」を'
+                      '記録し、計画の画面と一覧に「同意後に修正あり」と出します。\n'
+                      '・内容を変える：作成中に戻し、説明した日と同意を得た日を空にします。'
+                      'もう一度説明して同意を得てください。'),
+                  const SizedBox(height: 16),
+                  // 広ければ横に、狭ければ縦に。どちらも同じ大きさ
+                  LayoutBuilder(
+                    builder: (context, box) => box.maxWidth >= 400
+                        ? IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: light),
+                                const SizedBox(width: 12),
+                                Expanded(child: revert),
+                              ],
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              light,
+                              const SizedBox(height: 10),
+                              revert,
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                key: const Key('planEditCancel'),
+                style: TextButton.styleFrom(
+                    minimumSize: const Size(64, 48),
+                    visualDensity: VisualDensity.standard),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('やめる')),
+          ],
+        );
+      },
     );
     if (choice == null || !mounted) return;
     setState(() {

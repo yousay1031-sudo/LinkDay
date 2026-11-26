@@ -266,6 +266,44 @@ void main() {
     expect(find.byKey(const Key('planLockedBanner')), findsOneWidget);
   });
 
+  testWidgets('同意済みの計画を直す画面: 「軽い修正」と「内容を変える」は同じ大きさのボタンで並ぶ', (t) async {
+    await setUpData(t,
+        plans: [plan('p1', 'b', DateTime(2026, 6, 1), agreed: true)]);
+    for (final (size, wide) in [
+      (const Size(1280, 1000), true),
+      (const Size(390, 900), false),
+    ]) {
+      await t.pumpWidget(const SizedBox.shrink()); // 前の画面の積み重ねを消す
+      await open(t, const SupportPlanHistoryScreen(customerId: 'b'),
+          size: size, compact: true);
+      await tap(t, find.byKey(const Key('planCard_p1')));
+      await tap(t, find.byKey(const Key('planStartEdit')));
+      final light = t.getRect(find.byKey(const Key('planEditLight')));
+      final revert = t.getRect(find.byKey(const Key('planEditRevert')));
+      expect(light.size, revert.size, reason: '$size');
+      expect(light.height, greaterThanOrEqualTo(48), reason: '$size');
+      // 同じ形のボタン（どちらかだけを目立たせない）
+      expect(t.widget(find.byKey(const Key('planEditLight'))),
+          isA<OutlinedButton>());
+      expect(t.widget(find.byKey(const Key('planEditRevert'))),
+          isA<OutlinedButton>());
+      if (wide) {
+        expect(light.top, revert.top, reason: '横に並ぶ');
+      } else {
+        expect(light.bottom, lessThanOrEqualTo(revert.top), reason: '縦に並ぶ');
+      }
+      // 「やめる」は別の扱い（文字のボタン）。押せる範囲は 48 以上
+      final cancel = t.getSize(find.byKey(const Key('planEditCancel')));
+      expect(cancel.height, greaterThanOrEqualTo(48));
+      expect(cancel.width, greaterThanOrEqualTo(48));
+      expect(
+          t.widget(find.byKey(const Key('planEditCancel'))), isA<TextButton>());
+      expect(t.takeException(), isNull, reason: '$size');
+      await tap(t, find.byKey(const Key('planEditCancel')));
+      expect(find.text('同意済みの計画を直します'), findsNothing);
+    }
+  });
+
   testWidgets('同意済みの計画: 編集の前に確かめ、軽い修正なら同意済みのまま「同意後に修正あり」', (t) async {
     await setUpData(t,
         plans: [plan('p1', 'b', DateTime(2026, 6, 1), agreed: true)]);
