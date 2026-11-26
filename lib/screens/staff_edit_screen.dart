@@ -10,6 +10,7 @@ import '../services/staff_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/unfocus_offscreen_text_field.dart';
+import '../widgets/select_chip.dart';
 
 /// 在籍終了の確認ダイアログ（職員管理の一覧・編集画面で共通）
 Future<bool> confirmDeactivateStaff(BuildContext context, Staff s) async {
@@ -327,18 +328,10 @@ class _StaffEditScreenState extends State<StaffEditScreen> {
           runSpacing: 4,
           children: [
             for (var d = 1; d <= 7; d++)
-              FilterChip(
+              SelectChip(
                 key: Key('staffDay_$d'),
-                label: Text(Staff.weekdayLabels[d - 1]),
+                label: Staff.weekdayLabels[d - 1],
                 selected: _days.contains(d),
-                materialTapTargetSize: MaterialTapTargetSize.padded,
-                // 選んでも幅と位置が変わらないよう、チェックの印は出さず色と枠で示す
-                showCheckmark: false,
-                selectedColor: AppColors.primary.withValues(alpha: 0.18),
-                side: BorderSide(
-                    color: _days.contains(d)
-                        ? AppColors.primary
-                        : AppColors.divider),
                 onSelected: (on) => setState(() {
                   on ? _days.add(d) : _days.remove(d);
                 }),

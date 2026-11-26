@@ -14,6 +14,7 @@ import 'package:linkday_app/screens/staff_edit_screen.dart';
 import 'package:linkday_app/screens/support_plan_edit_screen.dart';
 import 'package:linkday_app/services/daily_journal_service.dart';
 import 'package:linkday_app/theme/app_theme.dart';
+import 'package:linkday_app/widgets/select_chip.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/fake_backend.dart';
@@ -65,10 +66,28 @@ void main() {
       final sel = isSelected(t.widget(chips.at(i)));
       expect(sel, toTap.contains(i) ? !selBefore[i] : selBefore[i],
           reason: '$i 番目の選んだ状態');
+      // 見た目: 選んだものは白い文字とチェックの印、選んでいないものは空の丸
+      // （色だけに頼らない。印の場所は最初から確保されている）
+      final chip = chips.at(i);
+      final label = find.descendant(
+          of: chip, matching: find.text((t.widget(chip) as SelectChip).label));
+      final color = DefaultTextStyle.of(t.element(label))
+          .style
+          .merge(t.widget<Text>(label).style)
+          .color;
+      expect(color, sel ? Colors.white : isNot(Colors.white),
+          reason: '$i 番目の文字の色');
+      expect(
+          find.descendant(
+              of: chip,
+              matching: find
+                  .byIcon(sel ? Icons.check_circle : Icons.circle_outlined)),
+          findsOneWidget,
+          reason: '$i 番目の印');
     }
   }
 
-  bool filterSel(Widget w) => (w as FilterChip).selected;
+  bool filterSel(Widget w) => (w as SelectChip).selected;
 
   testWidgets('業務日誌: 今日いた職員・その日の内容', (t) async {
     await io(t, () async {
@@ -83,13 +102,13 @@ void main() {
     await check(
         t,
         find.byWidgetPredicate((w) =>
-            w is FilterChip && w.key.toString().contains('journalActivity_')),
+            w is SelectChip && w.key.toString().contains('journalActivity_')),
         [0, 2, 3, 5],
         filterSel);
     await check(
         t,
         find.byWidgetPredicate((w) =>
-            w is FilterChip && w.key.toString().contains('journalStaff_')),
+            w is SelectChip && w.key.toString().contains('journalStaff_')),
         [0, 1],
         filterSel);
   });
@@ -115,7 +134,7 @@ void main() {
             ),
             isNew: true));
     Finder row(String part) => find.byWidgetPredicate(
-        (w) => w is FilterChip && w.key.toString().contains('planRow_0_$part'));
+        (w) => w is SelectChip && w.key.toString().contains('planRow_0_$part'));
     await check(t, row('cat_'), [1, 2], filterSel);
     await check(t, row('dom_'), [0, 2, 4], filterSel);
     await check(t, row('period_'), [1], filterSel);
@@ -130,7 +149,7 @@ void main() {
     await check(
         t,
         find.byWidgetPredicate(
-            (w) => w is FilterChip && w.key.toString().contains('staffDay_')),
+            (w) => w is SelectChip && w.key.toString().contains('staffDay_')),
         [1, 2, 6],
         filterSel);
   });
@@ -151,13 +170,15 @@ void main() {
       await t.tap(editButton);
       await t.pumpAndSettle();
     }
-    final days = find.byType(FilterChip);
+    final days = find.byWidgetPredicate(
+        (w) => w is SelectChip && !['男児', '女児'].contains(w.label));
     await t.ensureVisible(days.first);
     await t.pumpAndSettle();
     await check(t, days, [1, 3], filterSel);
-    final gender = find.byType(ChoiceChip);
+    final gender = find.byWidgetPredicate(
+        (w) => w is SelectChip && ['男児', '女児'].contains(w.label));
     await t.ensureVisible(gender.first);
     await t.pumpAndSettle();
-    await check(t, gender, [0], (w) => (w as ChoiceChip).selected);
+    await check(t, gender, [0], filterSel);
   });
 }

@@ -13,6 +13,7 @@ import '../services/support_plan_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/success_feedback.dart';
 import '../widgets/unfocus_offscreen_text_field.dart';
+import '../widgets/select_chip.dart';
 
 /// 支援の表の 1 行の入力欄
 class _RowEdit {
@@ -887,22 +888,9 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
       required String label,
       required bool selected,
       required ValueChanged<bool>? onSelected}) {
-    return SizedBox(
-      height: 48,
-      child: FilterChip(
-        key: key,
-        label: Text(label),
-        selected: selected,
-        onSelected: onSelected,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        // 選んでも幅と位置が変わらないよう、チェックの印は出さず色と枠で示す
-        showCheckmark: false,
-        selectedColor: AppColors.primary.withValues(alpha: 0.18),
-        side:
-            BorderSide(color: selected ? AppColors.primary : AppColors.divider),
-      ),
-    );
+    // 選んでも位置と大きさは変わらない。選んだものは濃い塗り・白い文字・チェックの印
+    return SelectChip(
+        key: key, label: label, selected: selected, onSelected: onSelected);
   }
 
   Widget _label(String t) => Padding(

@@ -17,6 +17,7 @@ import 'package:linkday_app/services/daily_journal_pdf_service.dart';
 import 'package:linkday_app/services/daily_journal_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/theme/app_theme.dart';
+import 'package:linkday_app/widgets/select_chip.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/fake_backend.dart';
@@ -102,7 +103,7 @@ void main() {
   }
 
   bool selected(WidgetTester t, String key) =>
-      t.widget<FilterChip>(find.byKey(Key(key))).selected;
+      t.widget<SelectChip>(find.byKey(Key(key))).selected;
 
   String text(WidgetTester t, String key) =>
       t.widget<Text>(find.byKey(Key(key))).data ?? '';

@@ -24,6 +24,7 @@ import '../widgets/unfocus_offscreen_text_field.dart';
 import '../widgets/vacancy_notice_dialog.dart'
     show kLineGreen, LinkingCodeDialog;
 import '../widgets/motion/app_spinner.dart';
+import '../widgets/select_chip.dart';
 
 class CustomerEditScreen extends StatefulWidget {
   final Customer? customer;
@@ -787,25 +788,12 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
               children: ['男児', '女児'].map((g) {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(g),
+                  child: SelectChip(
+                    label: g,
                     selected: _gender == g,
                     onSelected: (selected) {
                       setState(() => _gender = selected ? g : null);
                     },
-                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                    // 選んでも幅と位置が変わらないよう、チェックの印と文字の太さは変えない
-                    showCheckmark: false,
-                    side: BorderSide(
-                        color: _gender == g
-                            ? AppColors.primary
-                            : AppColors.divider),
-                    labelStyle: TextStyle(
-                      color: _gender == g
-                          ? AppColors.primary
-                          : AppColors.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 );
               }).toList(),
@@ -1230,8 +1218,8 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
           spacing: 8,
           children: dayLabels.entries.map((entry) {
             final isSelected = _regularDays.contains(entry.key);
-            return FilterChip(
-              label: Text(entry.value),
+            return SelectChip(
+              label: entry.value,
               selected: isSelected,
               onSelected: (selected) {
                 setState(() {
@@ -1243,15 +1231,6 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
                   }
                 });
               },
-              selectedColor: AppColors.secondary.withValues(alpha: 0.2),
-              // 選んでも幅と位置が変わらないよう、チェックの印と文字の太さは変えない
-              showCheckmark: false,
-              side: BorderSide(
-                  color: isSelected ? AppColors.secondary : AppColors.divider),
-              labelStyle: TextStyle(
-                color: isSelected ? AppColors.secondary : AppColors.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
             );
           }).toList(),
         ),
@@ -1461,9 +1440,7 @@ class _CustomerEditScreenState extends State<CustomerEditScreen> {
       ),
       icon: busy
           ? const SizedBox(
-              width: 12,
-              height: 12,
-              child: AppSpinner(strokeWidth: 2))
+              width: 12, height: 12, child: AppSpinner(strokeWidth: 2))
           : Icon(icon, size: 14),
       label: Text(label),
     );

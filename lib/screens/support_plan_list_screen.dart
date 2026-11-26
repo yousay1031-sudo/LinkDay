@@ -12,6 +12,7 @@ import '../services/support_plan_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/name_search.dart';
 import 'support_plan_history_screen.dart';
+import '../widgets/select_chip.dart';
 
 /// 一覧の 1 行（在籍中の児童 1 人）
 class PlanListEntry {
@@ -198,21 +199,11 @@ class _SupportPlanListScreenState extends State<SupportPlanListScreen> {
   }
 
   Widget _kindChip(PlanAlertKind? k, String label, int? n) {
-    final selected = _kind == k;
-    return SizedBox(
-      height: 48,
-      child: FilterChip(
-        key: Key('planListKind_${k?.name ?? 'all'}'),
-        label: Text(n == null ? label : '$label $n'),
-        selected: selected,
-        onSelected: (_) => setState(() => _kind = k),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        // 選んでも幅と位置が変わらないよう、チェックの印は出さず色と枠で示す
-        showCheckmark: false,
-        selectedColor: AppColors.primary.withValues(alpha: 0.18),
-        side:
-            BorderSide(color: selected ? AppColors.primary : AppColors.divider),
-      ),
+    return SelectChip(
+      key: Key('planListKind_${k?.name ?? 'all'}'),
+      label: n == null ? label : '$label $n',
+      selected: _kind == k,
+      onSelected: (_) => setState(() => _kind = k),
     );
   }
 }

@@ -16,6 +16,7 @@ import '../services/staff_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/motion/success_feedback.dart';
 import '../widgets/unfocus_offscreen_text_field.dart';
+import '../widgets/select_chip.dart';
 
 /// 業務日誌（ステップ3）。1 日 1 件。文字を打つのは備考だけ。
 ///
@@ -521,24 +522,9 @@ class _DailyJournalScreenState extends State<DailyJournalScreen> {
     required bool selected,
     required VoidCallback onTap,
   }) {
-    // 見た目の高さも押せる範囲も 48（見た目より押せる範囲が広いと分かりにくいため）
-    return SizedBox(
-      height: 48,
-      child: FilterChip(
-        key: key,
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        labelStyle: const TextStyle(fontSize: 14),
-        // 選んでも幅と位置が変わらないよう、チェックの印は出さず色と枠で示す
-        showCheckmark: false,
-        selectedColor: AppColors.primary.withValues(alpha: 0.18),
-        side: BorderSide(
-            color: selected ? AppColors.primary : AppColors.divider),
-      ),
-    );
+    // 選んでも位置と大きさは変わらない。選んだものは濃い塗り・白い文字・チェックの印
+    return SelectChip(
+        key: key, label: label, selected: selected, onSelected: (_) => onTap());
   }
 
   Widget _staffSection() {
