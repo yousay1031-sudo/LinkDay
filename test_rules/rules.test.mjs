@@ -657,3 +657,42 @@ describe('ログイン履歴（追記だけ・自分の分だけ・読めるの�
     await assertFails(getDocs(collection(withAuthTime('member-a'), `facilities/${FAC}/loginHistory`)));
   });
 });
+
+describe('事業所の下のさらに下の階層（ステップ3で拒否にした）', () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      for (const c of BUSINESS) {
+        await setDoc(doc(db, `facilities/${FAC}/${c}/d1/sub/s1`), { v: 1 });
+        await setDoc(doc(db, `facilities/${FAC}/${c}/d1/sub/s1/deeper/z1`), { v: 1 });
+      }
+    });
+  });
+
+  // 共用端末・管理者でない個人アカウント・管理者（どれも有効な所属あり）
+  const valid = [
+    ['共用端末アカウント', () => memberA(), 's-1'],
+    ['管理者でない個人アカウント', () => personal('haru'), 'haru'],
+    ['管理者の個人アカウント', () => personal('boss'), 'boss'],
+  ];
+  for (const [label, who, staffId] of valid) {
+    test(`${label}: どのコレクションの下の階層も読めない・書けない（担当者の記録があっても）`, async () => {
+      const db = who();
+      for (const c of BUSINESS) {
+        const base = `facilities/${FAC}/${c}/d1/sub`;
+        await assertFails(getDoc(doc(db, `${base}/s1`)));
+        await assertFails(getDocs(collection(db, base)));
+        await assertFails(setDoc(doc(db, `${base}/new`), by(staffId, { v: 1 })));
+        await assertFails(updateDoc(doc(db, `${base}/s1`), by(staffId, { v: 2 })));
+        await assertFails(deleteDoc(doc(db, `${base}/s1`)));
+        await assertFails(getDoc(doc(db, `${base}/s1/deeper/z1`)));
+        await assertFails(setDoc(doc(db, `${base}/s1/deeper/new`), by(staffId, { v: 1 })));
+      }
+    });
+  }
+
+  test('その 1 つ上（事業所の下のコレクション）は、これまでどおり所属アカウントが読める', async () => {
+    await assertSucceeds(getDoc(doc(memberA(), `facilities/${FAC}/customers/d1`)));
+    await assertSucceeds(getDoc(doc(personal('haru'), `facilities/${FAC}/attendance/d1`)));
+  });
+});

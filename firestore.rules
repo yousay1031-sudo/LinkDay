@@ -252,11 +252,13 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // さらに下の階層（後のステップ用）も所属アカウントだけ。
+      // さらに下の階層は誰も読み書きできない（ステップ3で拒否にした）。
+      // 使っている場所が無く、所属だけで担当者の記録が無くても書けてしまうため。
+      // 下の階層を使うときは、そのコレクション専用のルールを書く。
       // 注意: {rest=**} は 0 階層にも一致するため、{sub} を挟んで
       // 「少なくとも 1 階層深い」パスだけに限定する（上の条件を素通りさせない）。
       match /{collection}/{docId}/{sub}/{rest=**} {
-        allow read, write: if isMemberOf(facilityId);
+        allow read, write: if false;
       }
     }
 
