@@ -35,6 +35,78 @@ class TransportScreen extends StatefulWidget {
   final Future<List<Customer>> Function(DateTime date)?
       scheduledCustomersLoader;
 
+  /// [date] の送迎の対象の児童（在籍中）。画面から切り出した（テストで直接呼ぶ）。
+  ///
+  /// 週間利用計画がある週は、その日の有効な予定（キャンセルを除く）だけ。0 件なら 0 人
+  /// （全員をキャンセルにした日に、利用曜日から全員を対象にしない）。
+  /// 週間利用計画が無い週だけ、利用曜日から。
+  static Future<List<Customer>> scheduledCustomersFor(DateTime date) async {
+    final allActive = CustomerService.instance.getAllCustomers();
+    final dateLabel =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+    // ── 優先度 1: 週間利用計画 ──────────────────────────────
+    try {
+      // 選んだ日の週を読み込んでから参照する（Firestore。読み込み済みの週だけを持つ）
+      await WeeklyScheduleService.instance.ensureRange(date, date);
+      final entries =
+          WeeklyScheduleService.instance.getEntriesForDate(date);
+      // planned + additional (cancelled 除外済み)
+
+      // 週間利用計画がある週なら、その日の有効な予定だけを対象にする（0 件なら 0 人。
+      // 全員をキャンセルにした日に、利用曜日から全員を対象にしないため）
+      if (WeeklyScheduleService.instance.hasWeekFor(date)) {
+        // ScheduleEntry.customerId → Customer に変換
+        final result = <Customer>[];
+        final idSet = <String>{};
+        for (final entry in entries) {
+          if (idSet.contains(entry.customerId)) continue;
+          final customer =
+              CustomerService.instance.getCustomerById(entry.customerId);
+          if (customer != null && customer.isActive) {
+            result.add(customer);
+            idSet.add(entry.customerId);
+          }
+        }
+
+        debugPrint('[TransportScreen] [$dateLabel] '
+            'source=weekly_schedule, '
+            'entries=${entries.length}, '
+            'matched=${result.length}, '
+            'ids=${result.map((c) => c.id).toList()}');
+
+        return result;
+      } else {
+        debugPrint('[TransportScreen] [$dateLabel] '
+            '週間計画が無い週。フォールバックへ。');
+      }
+    } catch (e) {
+      debugPrint('[TransportScreen] [$dateLabel] '
+          '週間計画取得エラー: $e。フォールバックへ。');
+    }
+
+    // ── 優先度 2: regularDays（曜日フォールバック）──────────
+    final dayOfWeek = date.weekday; // 1=月〜7=日
+    if (dayOfWeek >= 1 && dayOfWeek <= 6) {
+      final result =
+          allActive.where((c) => c.regularDays.contains(dayOfWeek)).toList();
+
+      debugPrint('[TransportScreen] [$dateLabel] '
+          'source=regular_days, '
+          'weekday=$dayOfWeek, '
+          'matched=${result.length}, '
+          'ids=${result.map((c) => c.id).toList()}');
+
+      if (result.isNotEmpty) return result;
+    }
+
+    // ── 優先度 3: アクティブ顧客全員（最終フォールバック）──
+    debugPrint('[TransportScreen] [$dateLabel] '
+        'source=all_active_customers (final fallback), '
+        'count=${allActive.length}');
+    return [];
+  }
+
   @override
   State<TransportScreen> createState() => _TransportScreenState();
 }
@@ -197,71 +269,8 @@ class _TransportScreenState extends State<TransportScreen>
   /// 優先度 1: WeeklyScheduleService.getEntriesForDate（週間利用計画）
   /// 優先度 2: AttendanceService のスケジュール（未実装なら省略）
   /// 優先度 3: CustomerService の regularDays
-  Future<List<Customer>> _fetchScheduledCustomers() async {
-    final allActive = CustomerService.instance.getAllCustomers();
-    final dateLabel = _dateKey;
-
-    // ── 優先度 1: 週間利用計画 ──────────────────────────────
-    try {
-      // 選んだ日の週を読み込んでから参照する（Firestore。読み込み済みの週だけを持つ）
-      await WeeklyScheduleService.instance.ensureRange(_selectedDate, _selectedDate);
-      final entries =
-          WeeklyScheduleService.instance.getEntriesForDate(_selectedDate);
-      // planned + additional (cancelled 除外済み)
-
-      if (entries.isNotEmpty) {
-        // ScheduleEntry.customerId → Customer に変換
-        final result = <Customer>[];
-        final idSet = <String>{};
-        for (final entry in entries) {
-          if (idSet.contains(entry.customerId)) continue;
-          final customer =
-              CustomerService.instance.getCustomerById(entry.customerId);
-          if (customer != null && customer.isActive) {
-            result.add(customer);
-            idSet.add(entry.customerId);
-          }
-        }
-
-        debugPrint('[TransportScreen] [$dateLabel] '
-            'source=weekly_schedule, '
-            'entries=${entries.length}, '
-            'matched=${result.length}, '
-            'ids=${result.map((c) => c.id).toList()}');
-
-        if (result.isNotEmpty) return result;
-        debugPrint('[TransportScreen] [$dateLabel] '
-            '週間計画にエントリあるが顧客マッチなし。フォールバックへ。');
-      } else {
-        debugPrint('[TransportScreen] [$dateLabel] '
-            '週間計画にエントリなし。フォールバックへ。');
-      }
-    } catch (e) {
-      debugPrint('[TransportScreen] [$dateLabel] '
-          '週間計画取得エラー: $e。フォールバックへ。');
-    }
-
-    // ── 優先度 2: regularDays（曜日フォールバック）──────────
-    final dayOfWeek = _selectedDate.weekday; // 1=月〜7=日
-    if (dayOfWeek >= 1 && dayOfWeek <= 6) {
-      final result =
-          allActive.where((c) => c.regularDays.contains(dayOfWeek)).toList();
-
-      debugPrint('[TransportScreen] [$dateLabel] '
-          'source=regular_days, '
-          'weekday=$dayOfWeek, '
-          'matched=${result.length}, '
-          'ids=${result.map((c) => c.id).toList()}');
-
-      if (result.isNotEmpty) return result;
-    }
-
-    // ── 優先度 3: アクティブ顧客全員（最終フォールバック）──
-    debugPrint('[TransportScreen] [$dateLabel] '
-        'source=all_active_customers (final fallback), '
-        'count=${allActive.length}');
-    return [];
-  }
+  Future<List<Customer>> _fetchScheduledCustomers() =>
+      TransportScreen.scheduledCustomersFor(_selectedDate);
 
   // ── 自動グループ分け ────────────────────────────────────────
 

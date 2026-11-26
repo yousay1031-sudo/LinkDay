@@ -262,7 +262,10 @@ class AttendanceService extends ChangeNotifier {
 
     final candidates = <AttendanceRecord>[];
     final String basis;
-    if (weeklyEntries.isNotEmpty) {
+    // 週間利用計画がある週なら、その日の有効な予定だけを使う（0 件なら誰も作らない。
+    // 全員をキャンセルにした日に、利用曜日から全員を作り直さないため）。
+    // 計画が無い週（目印もマスも無い）だけ、従来どおり利用曜日から作る。
+    if (WeeklyScheduleService.instance.hasWeekFor(date)) {
       // ── 週間利用計画ベース ────────────────────────────────
       // cancelled は既に除外済み（WeeklyScheduleService.getEntriesForDate）
       basis = 'weekly plan';
@@ -343,7 +346,7 @@ class AttendanceService extends ChangeNotifier {
   /// ensureTodayScheduledRecords で利用した週間計画があるかどうかを返す
   /// （デバッグ / ホーム画面のバッジ更新用）
   bool hasWeeklyPlanForDate(DateTime date) {
-    return WeeklyScheduleService.instance.getEntriesForDate(date).isNotEmpty;
+    return WeeklyScheduleService.instance.hasWeekFor(date);
   }
 
   // ── ステータス変更（トランザクション）──────────────────────

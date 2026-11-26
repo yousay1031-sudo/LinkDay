@@ -469,6 +469,14 @@ class WeeklyScheduleService extends ChangeNotifier {
 
   // ── 日付ベースの参照 ─────────────────────────────────────────
 
+  /// [date] を含む週の週間利用計画があるか（週の目印かマスがある。読み込み済みの週だけ）。
+  ///
+  /// 「その日の有効な予定が 0 件」とは違う。全員をキャンセルにした日は、週はあるが
+  /// 有効な予定が 0 件（誰も来ない日）。出席・送迎の「計画が無い週は利用曜日から」の
+  /// 判定はこちらを使う。
+  bool hasWeekFor(DateTime date) =>
+      _weeks.containsKey(WeekUtil.weekKeyFromDate(date));
+
   /// 当日出席管理から呼ぶ: 指定日の有効エントリ（planned + additional）を返す
   /// 該当週のスケジュールがなければ空リストを返す
   /// （読み込み済みの週だけを見る。必要なら先に [ensureRange] を待つ）
