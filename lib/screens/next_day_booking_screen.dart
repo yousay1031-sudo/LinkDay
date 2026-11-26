@@ -142,6 +142,10 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
 
   static const _weekdays = ['月', '火', '水', '木', '金', '土', '日'];
 
+  /// ダイアログのボタンも押す場所は高さ 48 以上
+  static final ButtonStyle _dialogButton =
+      ButtonStyle(minimumSize: WidgetStateProperty.all(const Size(64, 48)));
+
   bool get _editable => _date != null && _date!.isAfter(_today);
 
   void _snack(String m, {Color? color}) {
@@ -231,6 +235,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
                   ),
                 if (start != null || end != null)
                   TextButton(
+                    style: _dialogButton,
                     onPressed: () => set(() {
                       start = null;
                       end = null;
@@ -241,9 +246,11 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
             ),
             actions: [
               TextButton(
+                  style: _dialogButton,
                   onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('やめる')),
               ElevatedButton(
+                  style: _dialogButton,
                   key: const Key('nextDayTimeSave'),
                   onPressed: () => Navigator.pop(ctx, true),
                   child: const Text('保存')),
@@ -299,7 +306,9 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('やめる')),
+              style: _dialogButton,
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('やめる')),
         ],
       ),
     );
@@ -321,9 +330,11 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
               '超過分は利用者負担となる可能性があります。追加しますか。'),
           actions: [
             TextButton(
+                style: _dialogButton,
                 onPressed: () => Navigator.pop(ctx, false),
                 child: const Text('やめる')),
             ElevatedButton(
+                style: _dialogButton,
                 key: const Key('nextDayAddOverOk'),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('追加する')),
@@ -367,15 +378,6 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
             ),
       bottomNavigationBar:
           d != null && !_loading && _error == null ? _confirmBar(d) : null,
-      floatingActionButton:
-          d != null && _editable && !_loading && _error == null
-              ? FloatingActionButton.extended(
-                  key: const Key('nextDayAdd'),
-                  onPressed: _addChild,
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('児童を追加'),
-                )
-              : null,
     );
   }
 
@@ -583,6 +585,22 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
               ? item('定員超過', '${c.over}人超えています',
                   color: AppColors.error, key: const Key('nextDayOver'))
               : item('空き', '${c.free}人', key: const Key('nextDayFree')),
+          // 浮かせたボタンにすると右下の児童のボタンに重なるため、人数の帯に置く
+          if (_editable)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              child: SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  key: const Key('nextDayAdd'),
+                  style:
+                      OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  onPressed: _addChild,
+                  icon: const Icon(Icons.person_add),
+                  label: const Text('児童を追加'),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -595,7 +613,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            _editable ? 'この日の予定はありません。\n右下の「児童を追加」から追加できます。' : 'この日の予定はありません。',
+            _editable ? 'この日の予定はありません。\n上の「児童を追加」から追加できます。' : 'この日の予定はありません。',
             textAlign: TextAlign.center,
           ),
         ),
@@ -620,7 +638,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
       final cols = NextDayBookingScreen.columnCount(box.maxWidth);
       return GridView.builder(
         key: const Key('nextDayList'),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: cols,
           crossAxisSpacing: 10,

@@ -196,6 +196,11 @@ void main() {
     await tap(t, find.byKey(const Key('nextDayAdd')));
     expect(find.byKey(const Key('nextDayAddPick_c1')),
         findsNothing); // 予定がある児童は出ない
+    // ダイアログのボタン・選ぶ行も高さ 48 以上
+    expect(t.getSize(find.widgetWithText(TextButton, 'やめる')).height,
+        greaterThanOrEqualTo(48));
+    expect(t.getSize(find.byKey(const Key('nextDayAddPick_x1'))).height,
+        greaterThanOrEqualTo(48));
     await tap(t, find.byKey(const Key('nextDayAddPick_x1')));
     expect(find.text('今月の支給日数を超過する見込みです'), findsOneWidget);
     await tap(t, find.byKey(const Key('nextDayAddOverOk')));
