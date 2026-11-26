@@ -43,7 +43,8 @@ class NextDayBookingScreen extends StatefulWidget {
   }
 
   /// 1 件の高さ（顧客管理と同じ詰め方。1 列: 横並び、複数列: 縦並び）
-  static double cardExtent(int cols) => cols == 1 ? 84 : 128;
+  /// カードの高さ。送迎の場所の行と車の行（狭いときは 2 行）が入る高さ
+  static double cardExtent(int cols) => cols == 1 ? 116 : 162;
 
   @override
   State<NextDayBookingScreen> createState() => _NextDayBookingScreenState();
@@ -731,7 +732,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
             horizontal: cols == 1,
             editable: _editable && c != null,
             busy: _busy.contains('use_${e.customerId}'),
-            routeText: NextDayTransport.routeText(e.customerId, routes),
+            routeParts: NextDayTransport.routeParts(e.customerId, routes),
             onUse: c == null ? null : () => _setUse(c, true),
             onAbsent: c == null ? null : () => _setUse(c, false),
             onTime: () => _editTime(c, e),
@@ -749,7 +750,7 @@ class _EntryCard extends StatelessWidget {
     required this.horizontal,
     required this.editable,
     required this.busy,
-    required this.routeText,
+    required this.routeParts,
     required this.onUse,
     required this.onAbsent,
     required this.onTime,
@@ -760,7 +761,9 @@ class _EntryCard extends StatelessWidget {
   final bool horizontal;
   final bool editable;
   final bool busy;
-  final String? routeText;
+
+  /// 送迎ルートでの行きと帰りの車（ルートに無ければ空）
+  final List<String> routeParts;
   final VoidCallback? onUse;
   final VoidCallback? onAbsent;
   final VoidCallback onTime;
@@ -777,11 +780,8 @@ class _EntryCard extends StatelessWidget {
       ScheduleStatus.additional => '追加',
       ScheduleStatus.cancelled => 'お休み',
     };
-    final transport = [
-      NextDayTransport.placeText(customer, e),
-      if (routeText != null) routeText!,
-    ].join('　');
-    final warnRoute = absent && routeText != null;
+    final place = NextDayTransport.placeText(customer, e);
+    final warnRoute = absent && routeParts.isNotEmpty;
     final fg = absent ? AppColors.onSurfaceVariant : AppColors.onSurface;
 
     final info = Column(
@@ -798,8 +798,9 @@ class _EntryCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 12.5, color: fg)),
+        // 送迎の場所（長い住所は切れてよい）
         Text(
-          warnRoute ? '送迎計画に入っています（送迎計画で外してください）' : transport,
+          warnRoute ? '送迎計画に入っています（送迎計画で外してください）' : place,
           key: Key('nextDayTransport_${e.customerId}'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -807,6 +808,31 @@ class _EntryCard extends StatelessWidget {
               fontSize: 12,
               color: warnRoute ? AppColors.error : AppColors.onSurfaceVariant),
         ),
+        // 行きと帰りの車は別の行に。入りきらなければ帰りを次の行へ送り、切らない
+        if (routeParts.isNotEmpty)
+          Wrap(
+            key: Key('nextDayRoute_${e.customerId}'),
+            spacing: 10,
+            children: [
+              for (final part in routeParts)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(
+                      part.startsWith('お迎え')
+                          ? Icons.arrow_downward
+                          : Icons.arrow_upward,
+                      size: 12,
+                      color: AppColors.secondary),
+                  const SizedBox(width: 2),
+                  Text(part,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: absent
+                              ? AppColors.onSurfaceVariant
+                              : AppColors.secondaryDark)),
+                ]),
+            ],
+          ),
       ],
     );
 

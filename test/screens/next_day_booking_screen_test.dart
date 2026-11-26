@@ -5,14 +5,17 @@ library;
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/rendering.dart';
 import 'package:linkday_app/data/audit.dart';
 import 'package:linkday_app/data/day_ticker.dart';
 import 'package:linkday_app/data/facility_context.dart';
 import 'package:linkday_app/data/staff_session.dart';
 import 'package:linkday_app/models/app_settings.dart';
 import 'package:linkday_app/models/customer.dart';
+import 'package:linkday_app/models/transport_plan.dart';
 import 'package:linkday_app/screens/next_day_booking_screen.dart';
 import 'package:linkday_app/services/customer_service.dart';
+import 'package:linkday_app/services/transport_plan_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
 import 'package:linkday_app/theme/app_theme.dart';
@@ -109,6 +112,67 @@ void main() {
               .doc(WeeklyScheduleService.entryDocId(wed, cid))
               .get())
           .data()?['status'] as String?);
+
+  testWidgets('送迎の行: 長い住所でも、行きと帰りの車が 3 つの幅とも切れずに読める', (t) async {
+    await setUpData(t);
+    await io(t, () async {
+      await CustomerService.instance.addCustomer(
+          Customer(
+              id: 'c9',
+              name: '架空 送迎',
+              nameKana: 'カクウ ソウゲイ',
+              regularDays: [3],
+              transportLocations: ['帯広市架空町とても長い住所の例 1丁目2番3号 架空マンション 101号室']),
+          stamp: stamp);
+      for (final (type, name) in [
+        (TransportType.pickup, '車両C（ワゴン大型）'),
+        (TransportType.dropoff, '車両D（ワゴン大型）'),
+      ]) {
+        await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
+          vehicleName: name,
+          vehicleIndex: type == TransportType.pickup ? 2 : 3,
+          transportType: type,
+          dateKey: '2026-12-02',
+          stops: [
+            TransportStop(
+                customerId: 'c9', customerName: '架空 送迎', address: '架空')
+          ],
+        ));
+      }
+    });
+    for (final size in const [
+      Size(1280, 900),
+      Size(820, 1180),
+      Size(530, 900)
+    ]) {
+      await open(t, size: size);
+      final card = find.byKey(const Key('nextDayCard_c9'));
+      await t.ensureVisible(card);
+      await t.pumpAndSettle();
+      final box = t.getRect(card);
+      for (final part in ['お迎え 車両C（ワゴン大型）', 'お送り 車両D（ワゴン大型）']) {
+        final f = find.descendant(of: card, matching: find.text(part));
+        expect(f, findsOneWidget, reason: '$size $part');
+        final r = t.getRect(f);
+        // カードの中に収まり、切れていない（1 行で全部出ている）
+        expect(
+            box.contains(r.topLeft) &&
+                box.contains(r.bottomRight - const Offset(1, 1)),
+            isTrue,
+            reason: '$size $part');
+        final para = t.renderObject<RenderParagraph>(f);
+        expect(para.didExceedMaxLines, isFalse, reason: '$size $part');
+        expect(para.size.width,
+            greaterThanOrEqualTo(para.getMaxIntrinsicWidth(20) - 0.5),
+            reason: '$size $part');
+      }
+      // ボタンと重ならない
+      final routeLine = t.getRect(find.byKey(const Key('nextDayRoute_c9')));
+      final useBtn = t.getRect(find.byKey(const Key('nextDayUse_c9')));
+      expect(routeLine.overlaps(useBtn), isFalse, reason: '$size');
+      expect(t.takeException(), isNull, reason: '$size');
+    }
+  });
 
   testWidgets('開くと明日（週はまだ無ければ作る）。週間利用計画のとおりに並び、人数が出る', (t) async {
     await setUpData(t);

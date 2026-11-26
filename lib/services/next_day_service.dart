@@ -49,6 +49,14 @@ class NextDayTransport {
   /// その日の送迎ルートでの車両（「お迎え 車両A・お送り 車両B」。ルートに無ければ null）
   static String? routeText(
       String customerId, Iterable<TransportVehicleRoute> routes) {
+    final parts = routeParts(customerId, routes);
+    return parts.isEmpty ? null : parts.join('・');
+  }
+
+  /// 行きと帰りの車を別々に（[「お迎え 車両A」, 「お送り 車両B」]。ルートに無ければ空）。
+  /// 画面では、幅が足りなければ帰りを次の行に送り、どちらも切らずに出す
+  static List<String> routeParts(
+      String customerId, Iterable<TransportVehicleRoute> routes) {
     String? pick, drop;
     for (final r in routes) {
       if (!r.stops.any((s) => s.customerId == customerId)) continue;
@@ -58,11 +66,10 @@ class NextDayTransport {
         drop ??= r.vehicleName;
       }
     }
-    if (pick == null && drop == null) return null;
     return [
       if (pick != null) 'お迎え $pick',
       if (drop != null) 'お送り $drop',
-    ].join('・');
+    ];
   }
 }
 
