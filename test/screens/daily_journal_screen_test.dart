@@ -91,11 +91,15 @@ void main() {
   Future<void> open(WidgetTester t,
       {Size size = const Size(1280, 900),
       DateTime? date,
-      Future<void> Function(JournalPrintData, DateTime)? printer}) async {
+      Future<void> Function(JournalPrintData, DateTime)? printer,
+      bool compact = false}) async {
     await t.binding.setSurfaceSize(size);
     addTearDown(() => t.binding.setSurfaceSize(null));
     await t.pumpWidget(MaterialApp(
-      theme: AppTheme.lightTheme,
+      // compact: PC のブラウザと同じ詰めた表示
+      theme: compact
+          ? AppTheme.lightTheme.copyWith(visualDensity: VisualDensity.compact)
+          : AppTheme.lightTheme,
       home: DailyJournalScreen(initialDate: date ?? today, printer: printer),
     ));
     await io(t, () async {});
@@ -115,6 +119,16 @@ void main() {
     await io(t, () async {});
     await t.pumpAndSettle();
   }
+
+  testWidgets('日付のボタン（前の日・日付・次の日）は、詰めた表示でも押せる範囲が縦横 48 以上', (t) async {
+    await setUpData(t);
+    await open(t, compact: true);
+    for (final k in ['journalPrevDay', 'journalPickDate', 'journalNextDay']) {
+      final size = t.getSize(find.byKey(Key(k)));
+      expect(size.height, greaterThanOrEqualTo(48), reason: k);
+      expect(size.width, greaterThanOrEqualTo(48), reason: k);
+    }
+  });
 
   testWidgets('今日の日誌: 勤務日が水曜の職員を最初から選び、入退室は出席の記録から出す', (t) async {
     await setUpData(t);

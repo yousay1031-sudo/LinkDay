@@ -266,6 +266,20 @@ void main() {
     expect(find.byKey(const Key('planLockedBanner')), findsOneWidget);
   });
 
+  testWidgets('同意済みの計画の「編集する」は、詰めた表示でも押せる範囲が縦横 48 以上', (t) async {
+    await setUpData(t,
+        plans: [plan('p1', 'b', DateTime(2026, 6, 1), agreed: true)]);
+    for (final size in const [Size(1280, 1000), Size(390, 900)]) {
+      await t.pumpWidget(const SizedBox.shrink());
+      await open(t, const SupportPlanHistoryScreen(customerId: 'b'),
+          size: size, compact: true);
+      await tap(t, find.byKey(const Key('planCard_p1')));
+      final edit = t.getSize(find.byKey(const Key('planStartEdit')));
+      expect(edit.height, greaterThanOrEqualTo(48), reason: '$size');
+      expect(edit.width, greaterThanOrEqualTo(48), reason: '$size');
+    }
+  });
+
   testWidgets('同意済みの計画を直す画面: 「軽い修正」と「内容を変える」は同じ大きさのボタンで並ぶ', (t) async {
     await setUpData(t,
         plans: [plan('p1', 'b', DateTime(2026, 6, 1), agreed: true)]);

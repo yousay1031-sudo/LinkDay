@@ -634,7 +634,10 @@ class _SupportPlanEditScreenState extends State<SupportPlanEditScreen> {
           if (action != null)
             TextButton(
               key: actionKey,
-              style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+              // 詰めた表示（PC のブラウザ）でも縦横 48 を保つ
+              style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                  visualDensity: VisualDensity.standard),
               onPressed: onAction,
               child: Text(action),
             ),

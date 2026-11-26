@@ -435,7 +435,10 @@ class _DailyJournalScreenState extends State<DailyJournalScreen> {
             Expanded(
               child: TextButton.icon(
                 key: const Key('journalPickDate'),
-                style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                // 詰めた表示（PC のブラウザ）でも高さ 48 を保つ
+                style: TextButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    visualDensity: VisualDensity.standard),
                 onPressed: _pickDate,
                 icon: const Icon(Icons.calendar_today, size: 18),
                 label: Text(
