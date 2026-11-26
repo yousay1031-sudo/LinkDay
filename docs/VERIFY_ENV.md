@@ -90,6 +90,12 @@ tool/verify/stop_emulators.sh
 - 印刷：検証用のアプリでも「印刷」は Google のフォント配信（`fonts.gstatic.com`。認められた宛先）から日本語のフォントを取る。ブラウザの印刷画面は自動操作では確かめていない（作られた PDF を取り出して中身を確かめた。`docs/stage_reports/step3_stage4_support_plan_print.md`）。
 - 自動操作の注意：Flutter の Web では、入力欄に入っている文字は読み上げの要素（`aria-label`）からは読めない。また、一覧の画面の外の行は読み上げの要素が無い。確かめるときは、保存先の中身を読むか、スクロールしてから探す。
 
+## 1.7 ステップ4（翌日予約選択。2026-11-26 追加）
+
+- 新しいダミーデータは足していない。翌日予約選択は、`seed.mjs` が入れる週間利用計画（先週・今週・来週）の予定をそのまま使う。検証データは定員（20 人）より予定が多い日があるので、「○人超えています」の表示も確かめられる。
+- 確認の記録（`dayConfirmations`）はルールでは消せない。確かめ直すときは、エミュレータの管理者の権限（`Authorization: Bearer owner` の REST）で消すか、`seed.mjs --reset` で始めからやり直す。
+- 翌日の出席管理・送迎計画を確かめるときは、ブラウザの時計を翌日にする（自動操作では、ページを読み込む前に `Date` を差し替えた）。時計をずらして開いた出席管理は、その日の出席の記録を作るので、確かめた後に消しておく。
+
 ## 2. 本番へ誤接続しない仕組み
 - 切替は `--dart-define=LINKDAY_VERIFY=true`（コンパイル時。debug 限定ではなく release/profile 可）。通常ビルドは `const false` で検証コードは tree-shake される。
 - プロジェクトIDは `demo-*` 必須・`linkday-proud` 拒否・ホストはループバックのみ（`VerifyConfig.validate`）。
