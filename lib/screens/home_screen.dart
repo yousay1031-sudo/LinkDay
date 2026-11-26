@@ -8,6 +8,9 @@ import '../services/monthly_usage_service.dart';
 import '../services/customer_service.dart';
 import '../services/settings_service.dart';
 import '../services/support_plan_service.dart';
+import '../services/day_confirmation_service.dart';
+import '../services/next_day_service.dart';
+import '../services/weekly_schedule_service.dart';
 import '../data/day_ticker.dart';
 import '../models/support_plan_alerts.dart';
 import '../models/app_settings.dart';
@@ -69,6 +72,38 @@ class _HomeScreenState extends State<HomeScreen> {
     SupportPlanService.instance.addListener(_onSettingsChanged);
     DayTicker.instance.ensureStarted();
     DayTicker.instance.addListener(_onSettingsChanged);
+    // 翌日予約選択の「未確認」（予定・確認の記録・日付が変わったら確かめ直す）
+    WeeklyScheduleService.instance.addListener(_scheduleNextDayCheck);
+    DayConfirmationService.instance.addListener(_scheduleNextDayCheck);
+    DayTicker.instance.addListener(_scheduleNextDayCheck);
+    CustomerService.instance.addListener(_scheduleNextDayCheck);
+    _checkNextDay();
+  }
+
+  /// 翌日予約選択がまだ確認されていないか（対象の日に予定があり、確認の記録が無い）
+  bool _nextDayUnconfirmed = false;
+  Timer? _nextDayDebounce;
+
+  void _scheduleNextDayCheck() {
+    _nextDayDebounce?.cancel();
+    _nextDayDebounce =
+        Timer(const Duration(milliseconds: 300), () => _checkNextDay());
+  }
+
+  /// 対象の日は翌日予約選択と同じ決め方（予定の無い日は飛ばす）。ホームでは週を作らない
+  Future<void> _checkNextDay() async {
+    try {
+      final d = await NextDayService.findTargetDate(DayTicker.instance.today,
+          createWeeks: false);
+      final has = await NextDayService.hasAnyEntry(d, createWeeks: false);
+      await DayConfirmationService.instance.ensure(d);
+      final un = has && DayConfirmationService.instance.get(d) == null;
+      if (mounted && un != _nextDayUnconfirmed) {
+        setState(() => _nextDayUnconfirmed = un);
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] next day check failed: $e');
+    }
   }
 
   /// 個別支援計画の更新時期の知らせ（在籍中の児童だけ。今日の日付で計算する）
@@ -108,6 +143,11 @@ class _HomeScreenState extends State<HomeScreen> {
     SettingsService.instance.removeListener(_onSettingsChanged);
     SupportPlanService.instance.removeListener(_onSettingsChanged);
     DayTicker.instance.removeListener(_onSettingsChanged);
+    WeeklyScheduleService.instance.removeListener(_scheduleNextDayCheck);
+    DayConfirmationService.instance.removeListener(_scheduleNextDayCheck);
+    DayTicker.instance.removeListener(_scheduleNextDayCheck);
+    CustomerService.instance.removeListener(_scheduleNextDayCheck);
+    _nextDayDebounce?.cancel();
     _usageDebounce?.cancel();
     super.dispose();
   }
@@ -920,6 +960,35 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+    // 翌日予約選択のタイルに「未確認」の印（確認すると消える。予定が無い日は出さない）
+    if (item.route == '/next-day-booking' && _nextDayUnconfirmed) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(child: card),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Semantics(
+              label: '翌日予約選択 未確認',
+              child: Container(
+                key: const Key('homeNextDayBadge'),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.warning,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Text('未確認',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     if (planCount == 0) return card;
     // 個別支援計画のタイルに知らせの件数の印（過ぎた期限があれば強い色）
     return Stack(

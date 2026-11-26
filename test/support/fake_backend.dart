@@ -11,6 +11,7 @@ import 'package:linkday_app/services/customer_service.dart';
 import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/staff_account_service.dart';
 import 'package:linkday_app/services/staff_service.dart';
+import 'package:linkday_app/services/day_confirmation_service.dart';
 import 'package:linkday_app/services/support_plan_service.dart';
 import 'package:linkday_app/services/transport_plan_service.dart';
 import 'package:linkday_app/services/weekly_schedule_service.dart';
@@ -74,6 +75,7 @@ class FakeBackend {
     await AttendanceService.instance.attach();
     await TransportPlanService.instance.attach();
     await SupportPlanService.instance.attach();
+    await DayConfirmationService.instance.detach();
     _current = backend;
     return backend;
   }

@@ -32,6 +32,9 @@ class FsPaths {
   /// 個別支援計画（ステップ3）: facilities/{facilityId}/supportPlans/{planId}
   static const String supportPlans = 'supportPlans';
 
+  /// 翌日予約選択の確認の記録（ステップ4）: facilities/{facilityId}/dayConfirmations/{YYYY-MM-DD}
+  static const String dayConfirmations = 'dayConfirmations';
+
   /// settings コレクション内の唯一のドキュメント ID
   static const String settingsDocId = 'app';
 }

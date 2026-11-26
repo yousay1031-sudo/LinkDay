@@ -333,7 +333,7 @@ describe('既存ルールの回帰（変えていないこと）', () => {
 // ════════════════════════════════════════════════════════════════
 
 describe('条件A: 誰でもアカウントを作れても、有効な所属が無ければ何も読めず何も書けない', () => {
-  const FACILITY_COLS = [...BUSINESS, 'staffAccounts', 'loginHistory', 'dailyJournals', 'supportPlans'];
+  const FACILITY_COLS = [...BUSINESS, 'staffAccounts', 'loginHistory', 'dailyJournals', 'supportPlans', 'dayConfirmations'];
   const existingId = (c) =>
     c === 'staffAccounts' ? 'haru' : c === 'loginHistory' ? 'h1' : c === 'dailyJournals' ? JOURNAL_PAST
       : c === 'supportPlans' ? 'agreed1' : 'd1';
@@ -904,6 +904,79 @@ describe('個別支援計画（ステップ3）', () => {
       await assertFails(getDocs(collection(db, `facilities/${FAC}/supportPlans`)));
       await assertFails(setDoc(doc(db, path('new9')), create()));
       await assertFails(updateDoc(doc(db, path('draft1')), withAudit({ texts: {} })));
+    }
+  });
+});
+
+describe('翌日予約選択の確認の記録（ステップ4）', () => {
+  const path = (id) => `facilities/${FAC}/dayConfirmations/${id}`;
+  const conf = (date, staffId = 's-1', name = '職員 冬子', extra = {}) => ({
+    date,
+    confirmedAt: serverTimestamp(),
+    confirmedByStaffId: staffId,
+    confirmedByStaffName: name,
+    usingCount: 12,
+    absentCount: 1,
+    updatedAt: serverTimestamp(),
+    updatedByStaffId: staffId,
+    updatedByStaffName: name,
+    ...extra,
+  });
+  const create = (date, staffId, name, extra) => ({ ...conf(date, staffId, name, extra), createdAt: serverTimestamp() });
+
+  test('所属アカウントは明日の分を確認でき、もう一度確認（上書き）もできる。読める', async () => {
+    const db = memberA();
+    const d = jstDay(1);
+    await assertSucceeds(setDoc(doc(db, path(d)), create(d)));
+    await assertSucceeds(getDoc(doc(db, path(d))));
+    await assertSucceeds(updateDoc(doc(db, path(d)), conf(d, 's-1', '職員 冬子', { usingCount: 11, absentCount: 2 })));
+    // 個人アカウントは本人の名前で
+    await assertSucceeds(updateDoc(doc(personal('haru'), path(d)), conf(d, 'haru', 'haru')));
+    await assertFails(updateDoc(doc(personal('haru'), path(d)), conf(d, 'boss', '管理 一郎')));
+    await assertSucceeds(setDoc(doc(db, path(jstDay(5))), create(jstDay(5))));
+  });
+
+  test('今日・過去の日は確認できない', async () => {
+    const db = memberA();
+    await assertFails(setDoc(doc(db, path(jstDay(0))), create(jstDay(0))));
+    await assertFails(setDoc(doc(db, path(jstDay(-1))), create(jstDay(-1))));
+  });
+
+  test('担当者の記録が無い・確認した人や時刻が記録と違う・形の違う値・余計な項目は拒否', async () => {
+    const db = memberA();
+    const d = jstDay(1);
+    const { updatedAt, ...noAudit } = create(d);
+    await assertFails(setDoc(doc(db, path(d)), noAudit));
+    await assertFails(setDoc(doc(db, path(d)), create(d, 's-1', '職員 冬子', { confirmedByStaffName: '別の人' })));
+    await assertFails(setDoc(doc(db, path(d)), create(d, 's-1', '職員 冬子', { confirmedAt: new Date(2026, 0, 1) })));
+    await assertFails(setDoc(doc(db, path(d)), create(d, 's-1', '職員 冬子', { usingCount: -1 })));
+    await assertFails(setDoc(doc(db, path(d)), create(d, 's-1', '職員 冬子', { usingCount: '12' })));
+    await assertFails(setDoc(doc(db, path(d)), create(d, 's-1', '職員 冬子', { extra: 1 })));
+    await assertFails(setDoc(doc(db, path(d)), create(d, 's-1', '職員 冬子', { date: jstDay(2) })));
+    for (const id of ['2026-1-01', 'tomorrow']) {
+      await assertFails(setDoc(doc(db, path(id)), create(id)));
+    }
+  });
+
+  test('作成日時・日付は変えられない。削除は誰もできない（管理者も）', async () => {
+    const db = memberA();
+    const d = jstDay(1);
+    await assertSucceeds(setDoc(doc(db, path(d)), create(d)));
+    await assertFails(updateDoc(doc(db, path(d)), conf(d, 's-1', '職員 冬子', { createdAt: serverTimestamp() })));
+    await assertFails(deleteDoc(doc(db, path(d))));
+    await assertFails(deleteDoc(doc(personal('boss'), path(d))));
+  });
+
+  test('所属の無い・無効・他事業所のアカウントは読めない・書けない', async () => {
+    const d = jstDay(1);
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), path(d)), { date: d, usingCount: 1, absentCount: 0 });
+    });
+    for (const db of [unauth(), noMembership(), memberB(), unregisteredGoogle(), selfMadePassword(), personal('natsu'), personal('aki')]) {
+      await assertFails(getDoc(doc(db, path(d))));
+      await assertFails(getDocs(collection(db, `facilities/${FAC}/dayConfirmations`)));
+      await assertFails(setDoc(doc(db, path(jstDay(2))), create(jstDay(2))));
+      await assertFails(updateDoc(doc(db, path(d)), conf(d)));
     }
   });
 });

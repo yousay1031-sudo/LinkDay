@@ -9,6 +9,7 @@ import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../models/weekly_schedule.dart';
 import '../services/customer_service.dart';
+import '../services/day_confirmation_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/next_day_service.dart';
 import '../services/settings_service.dart';
@@ -71,6 +72,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
         CustomerService.instance,
         SettingsService.instance,
         TransportPlanService.instance,
+        DayConfirmationService.instance,
         DayTicker.instance,
       ];
 
@@ -122,6 +124,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
             CustomerService.instance.getAllCustomers());
       }
       unawaited(TransportPlanService.instance.ensureDate(_key(d)));
+      await DayConfirmationService.instance.ensure(d);
     } on WeekUnavailableException catch (e) {
       if (!mounted || _date != d) return;
       setState(() {
@@ -362,6 +365,8 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
                 ],
               ],
             ),
+      bottomNavigationBar:
+          d != null && !_loading && _error == null ? _confirmBar(d) : null,
       floatingActionButton:
           d != null && _editable && !_loading && _error == null
               ? FloatingActionButton.extended(
@@ -371,6 +376,73 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
                   label: const Text('児童を追加'),
                 )
               : null,
+    );
+  }
+
+  /// 確認した（印を残すだけ。予定は固定しない。確認の後も直せて、直すと「確認後に変更あり」）
+  Widget _confirmBar(DateTime d) {
+    final conf = DayConfirmationService.instance.get(d);
+    final counts = NextDayCounts.of(_w.getAllEntriesForDate(d),
+        SettingsService.instance.getSettings().maxStudentsPerDay);
+    final changed = conf != null &&
+        DayConfirmationService.changedAfter(conf, d, counts.using);
+    final at = conf?.confirmedAt;
+    String hm(DateTime t) =>
+        '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    final status = conf == null
+        ? 'まだ確認していません'
+        : '確認済み：${conf.confirmedByStaffName}${at == null ? '' : '（${hm(at)}）'}'
+            '・確認したとき 利用 ${conf.usingCount}人／お休み ${conf.absentCount}人';
+    return Material(
+      key: const Key('nextDayConfirmBar'),
+      elevation: 8,
+      color: Colors.white,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(status,
+                  key: const Key('nextDayConfirmStatus'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: conf == null
+                          ? AppColors.warning
+                          : AppColors.onSurfaceVariant)),
+              if (changed)
+                const Text('確認後に変更あり',
+                    key: Key('nextDayChangedAfter'),
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.warning)),
+              if (_editable) ...[
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    key: const Key('nextDayConfirm'),
+                    onPressed: _busy.contains('confirm')
+                        ? null
+                        : () => _guard(
+                            'confirm',
+                            () => DayConfirmationService.instance
+                                .confirm(d, counts)),
+                    icon: const Icon(Icons.task_alt),
+                    label: Text(
+                        conf == null || changed ? 'この内容で確認した' : 'もう一度確認する'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
