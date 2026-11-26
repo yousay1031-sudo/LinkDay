@@ -55,7 +55,8 @@ Future<void> _ms(_T t, int ms) async {
 /// Hive など実 I/O を完了させる
 Future<void> _real(_T t, [int ms = 250]) async {
   for (var i = 0; i < 3; i++) {
-    await t.runAsync(() => Future<void>.delayed(Duration(milliseconds: ms ~/ 3)));
+    await t
+        .runAsync(() => Future<void>.delayed(Duration(milliseconds: ms ~/ 3)));
     await t.pump();
   }
 }
@@ -74,7 +75,8 @@ bool _skeletonVisible(_T t, Type type) {
 Future<void> _unmount(_T t) async {
   await t.pumpWidget(const SizedBox.shrink());
   for (var i = 0; i < 4; i++) {
-    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
+    await t
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
     await t.pump();
   }
 }
@@ -151,15 +153,14 @@ void main() {
           }
           for (final n in ['月曜 花子', '月曜 太郎']) {
             await att.upsertRecord(AttendanceRecord(
-                customerId: 'm-$n',
-                customerName: n,
-                dateKey: keyOf(_monday)));
+                customerId: 'm-$n', customerName: n, dateKey: keyOf(_monday)));
           }
         }) as Future<void>;
 
     Future<void> pump(_T t) async {
       await seed(t);
-      await t.pumpWidget(MaterialApp(home: AttendanceScreen(afterEnsureHook: hook)));
+      await t.pumpWidget(
+          MaterialApp(home: AttendanceScreen(afterEnsureHook: hook)));
     }
 
     dynamic st(_T t) => t.state(find.byType(AttendanceScreen));
@@ -219,16 +220,14 @@ void main() {
       await _unmount(t);
     });
 
-    testWidgets('日付切替: 切替中に旧日付の名前を新日付として見せない / 新日付の内容が出る',
-        (t) async {
+    testWidgets('日付切替: 切替中に旧日付の名前を新日付として見せない / 新日付の内容が出る', (t) async {
       await pump(t);
       await _ms(t, 600);
       expect(find.text('今日 一郎'), findsOneWidget);
       gates[keyOf(_monday)] = Completer<void>();
       unawaited(st(t).debugSelectDate(_monday) as Future<void>);
       await t.pump();
-      expect(find.text('今日 一郎'), findsNothing,
-          reason: '日付変更直後から旧日付のデータを出さない');
+      expect(find.text('今日 一郎'), findsNothing, reason: '日付変更直後から旧日付のデータを出さない');
       await _ms(t, 300);
       expect(find.text('今日 一郎'), findsNothing);
       expect(find.text('月曜 花子'), findsNothing);
@@ -239,8 +238,7 @@ void main() {
       await _unmount(t);
     });
 
-    testWidgets('動作軽減: 骨格→内容がフェードなしで切り替わる（読込・エラー導線は同じ）',
-        (t) async {
+    testWidgets('動作軽減: 骨格→内容がフェードなしで切り替わる（読込・エラー導線は同じ）', (t) async {
       gates[keyOf(DateTime.now())] = Completer<void>();
       await seed(t);
       await t.pumpWidget(MaterialApp(
@@ -259,12 +257,13 @@ void main() {
       await _unmount(t);
     });
 
-    testWidgets('古い読込結果の破棄: 遅れて完了した旧日付が新日付を上書きせず、'
+    testWidgets(
+        '古い読込結果の破棄: 遅れて完了した旧日付が新日付を上書きせず、'
         '旧日付の保存（レコード生成）は中断されない', (t) async {
       // 月曜の児童（定期利用: 月）→ 月曜を開くと scheduled レコードが生成される
       await pump(t);
-      await t.runAsync(() => CustomerService.instance
-          .addCustomer(_cust('月曜 生成', days: [1])));
+      await t.runAsync(() =>
+          CustomerService.instance.addCustomer(_cust('月曜 生成', days: [1])));
       await _ms(t, 600);
 
       gates[keyOf(_monday)] = Completer<void>();
@@ -278,8 +277,7 @@ void main() {
       unawaited(st(t).debugSelectDate(_monday) as Future<void>);
       await t.pump();
       await _real(t); // 月曜側の保存（Hive 実 I/O）を完了させる
-      expect(generated(), isTrue,
-          reason: '表示結果を捨てる前に、必要な保存は完了している');
+      expect(generated(), isTrue, reason: '表示結果を捨てる前に、必要な保存は完了している');
 
       await (st(t).debugSelectDate(_sunday) as Future<void>);
       await _ms(t, 700);
@@ -321,11 +319,13 @@ void main() {
           }
         }) as Future<void>;
 
-    Future<void> pump(_T t) =>
-        t.pumpWidget(MaterialApp(home: CustomerManagementScreen(usageLoader: loader)));
+    Future<void> pump(_T t) => t.pumpWidget(
+        MaterialApp(home: CustomerManagementScreen(usageLoader: loader)));
 
     testWidgets('初期読込: 骨格→内容 / 50 件超でも一覧が出る', (t) async {
-      await seed(t, [for (var i = 0; i < 55; i++) _cust('顧客${i.toString().padLeft(2, '0')}')]);
+      await seed(t, [
+        for (var i = 0; i < 55; i++) _cust('顧客${i.toString().padLeft(2, '0')}')
+      ]);
       gate = Completer<List<MonthlyUsage>>();
       await pump(t);
       await _ms(t, 80);
@@ -476,6 +476,52 @@ void main() {
       await _unmount(t);
     });
 
+    testWidgets('定員を超えた車は「満員」ではなく「定員超過 7名」、車が足りないことを画面の上にも出す', (t) async {
+      await t.runAsync(() async {
+        await FakeBackend.resetTransport();
+        final day = keyOf(DateTime.now());
+        TransportStop stop(int i) => TransportStop(
+            customerId: 'c$i', customerName: '送迎 児童$i', address: '帯広市テスト$i');
+        await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
+          vehicleName: '車両A',
+          vehicleIndex: 0,
+          transportType: TransportType.pickup,
+          dateKey: day,
+          capacity: 6,
+          stops: [for (var i = 0; i < 13; i++) stop(i)],
+        ));
+        // ちょうど定員の車は従来どおり「満員」
+        await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
+          vehicleName: '車両B',
+          vehicleIndex: 1,
+          transportType: TransportType.pickup,
+          dateKey: day,
+          capacity: 2,
+          stops: [stop(20), stop(21)],
+        ));
+      });
+      await pump(t);
+      await _ms(t, 900);
+      expect(find.text('13/6名'), findsOneWidget);
+      expect(find.text('定員超過 7名'), findsOneWidget);
+      expect(find.text('2/2名'), findsOneWidget);
+      expect(find.text('満員'), findsOneWidget); // 車両B だけ
+      // 定員超過の印は強い色（赤地に白い文字）
+      final over = t.widget<Text>(find.text('定員超過 7名'));
+      expect(over.style!.color, Colors.white);
+      final banner = find.byKey(const Key('transportShortage'));
+      expect(banner, findsOneWidget);
+      expect(
+          find.descendant(
+              of: banner, matching: find.text('お迎え：車が足りません。乗れない人数 7名')),
+          findsOneWidget);
+      // 画面の上（タブより上）に出る
+      expect(t.getTopLeft(banner).dy,
+          lessThan(t.getTopLeft(find.byType(TabBar)).dy));
+      expect(t.takeException(), isNull);
+      await _unmount(t);
+    });
+
     testWidgets('空: ルートが無い日は空状態（お迎え・お送りとも）', (t) async {
       await seed(t, routeToday: false);
       await pump(t);
@@ -502,8 +548,7 @@ void main() {
       await _unmount(t);
     });
 
-    testWidgets('日付切替: 切替中は旧日付のルートを見せず、遅れて完了した古い結果は破棄',
-        (t) async {
+    testWidgets('日付切替: 切替中は旧日付のルートを見せず、遅れて完了した古い結果は破棄', (t) async {
       await seed(t, routeToday: true);
       await pump(t);
       await _ms(t, 900);
@@ -514,8 +559,7 @@ void main() {
       gates[keyOf(yesterday)] = Completer<List<Customer>>();
       await t.tap(find.byIcon(Icons.chevron_left));
       await t.pump();
-      expect(find.text('車両テスト号'), findsNothing,
-          reason: '日付変更直後から旧日付のルートを出さない');
+      expect(find.text('車両テスト号'), findsNothing, reason: '日付変更直後から旧日付のルートを出さない');
       await _ms(t, 300);
       expect(find.text('車両テスト号'), findsNothing);
 

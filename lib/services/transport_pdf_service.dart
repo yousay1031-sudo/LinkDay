@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../models/transport_load.dart';
 import '../models/transport_plan.dart';
 import 'settings_service.dart';
 
@@ -18,23 +21,33 @@ class TransportPdfService {
   /// 指定日の送迎ルート表 PDF を印刷プレビューで開く
   Future<void> printTransportSheet(
     String dateKey,
-    List<TransportVehicleRoute> routes,
-  ) async {
-    final doc = await _buildDocument(dateKey, routes);
+    List<TransportVehicleRoute> routes, {
+    Set<String> absentIds = const {},
+  }) async {
+    final bytes = await buildPdf(dateKey, routes,
+        absentIds: absentIds,
+        regular: await PdfGoogleFonts.notoSansJPRegular(),
+        bold: await PdfGoogleFonts.notoSansJPBold());
     await Printing.layoutPdf(
-      onLayout: (format) async => doc.save(),
+      onLayout: (format) async => bytes,
       name: '送迎ルート表_$dateKey.pdf',
     );
   }
 
-  Future<pw.Document> _buildDocument(
+  /// 送迎ルート表の PDF を作る（フォントは呼ぶ側が渡す。テストでも作れるように）
+  ///
+  /// [absentIds] の児童（その日お休み）は、車の乗る人数・定員超過の計算に入れない
+  static Future<Uint8List> buildPdf(
     String dateKey,
-    List<TransportVehicleRoute> routes,
-  ) async {
+    List<TransportVehicleRoute> routes, {
+    Set<String> absentIds = const {},
+    required pw.Font regular,
+    required pw.Font bold,
+  }) async {
     final doc = pw.Document();
 
-    final font = await PdfGoogleFonts.notoSansJPRegular();
-    final boldFont = await PdfGoogleFonts.notoSansJPBold();
+    final font = regular;
+    final boldFont = bold;
 
     final baseStyle = pw.TextStyle(font: font, fontSize: 9);
     final boldStyle = pw.TextStyle(
@@ -77,19 +90,35 @@ class TransportPdfService {
             pw.SizedBox(height: 4),
             pw.Divider(thickness: 0.5),
             pw.SizedBox(height: 8),
+            // 車が足りない・定員を超えている車があるときの注意（画面の上と同じ）
+            for (final note
+                in TransportShortage.notes(routes, absentIds: absentIds))
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 4),
+                padding:
+                    const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.red800, width: 1),
+                ),
+                child: pw.Text('注意　$note',
+                    style: boldStyle.copyWith(color: PdfColors.red800)),
+              ),
           ];
 
           // お迎え・お送りをセクションで分ける
-          final pickups =
-              routes.where((r) => r.transportType == TransportType.pickup).toList();
-          final dropoffs =
-              routes.where((r) => r.transportType == TransportType.dropoff).toList();
+          final pickups = routes
+              .where((r) => r.transportType == TransportType.pickup)
+              .toList();
+          final dropoffs = routes
+              .where((r) => r.transportType == TransportType.dropoff)
+              .toList();
 
           if (pickups.isNotEmpty) {
             widgets.add(_sectionHeader('【お迎え】', boldStyle));
             widgets.add(pw.SizedBox(height: 4));
             for (final route in pickups) {
-              widgets.addAll(_buildRouteBlock(route, baseStyle, boldStyle, headerStyle));
+              widgets.addAll(_buildRouteBlock(
+                  route, absentIds, baseStyle, boldStyle, headerStyle));
               widgets.add(pw.SizedBox(height: 10));
             }
           }
@@ -99,7 +128,8 @@ class TransportPdfService {
             widgets.add(_sectionHeader('【お送り】', boldStyle));
             widgets.add(pw.SizedBox(height: 4));
             for (final route in dropoffs) {
-              widgets.addAll(_buildRouteBlock(route, baseStyle, boldStyle, headerStyle));
+              widgets.addAll(_buildRouteBlock(
+                  route, absentIds, baseStyle, boldStyle, headerStyle));
               widgets.add(pw.SizedBox(height: 10));
             }
           }
@@ -108,10 +138,10 @@ class TransportPdfService {
         },
       ),
     );
-    return doc;
+    return doc.save();
   }
 
-  pw.Widget _sectionHeader(String title, pw.TextStyle style) {
+  static pw.Widget _sectionHeader(String title, pw.TextStyle style) {
     return pw.Container(
       color: PdfColors.blueGrey200,
       padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -119,13 +149,15 @@ class TransportPdfService {
     );
   }
 
-  List<pw.Widget> _buildRouteBlock(
+  static List<pw.Widget> _buildRouteBlock(
     TransportVehicleRoute route,
+    Set<String> absentIds,
     pw.TextStyle baseStyle,
     pw.TextStyle boldStyle,
     pw.TextStyle headerStyle,
   ) {
     final widgets = <pw.Widget>[];
+    final load = RouteLoad.of(route, absentIds: absentIds);
 
     // 車両ヘッダー
     widgets.add(
@@ -137,9 +169,14 @@ class TransportPdfService {
             pw.Text(route.vehicleName, style: boldStyle),
             pw.SizedBox(width: 16),
             pw.Text(
-              '${route.passengerCount}名 / ${route.capacity}名',
+              '${load.riding}名 / ${load.capacity}名',
               style: baseStyle,
             ),
+            if (load.overLabel != null) ...[
+              pw.SizedBox(width: 8),
+              pw.Text(load.overLabel!,
+                  style: boldStyle.copyWith(color: PdfColors.red800)),
+            ],
             pw.Spacer(),
             pw.Text(
               '総距離: ${route.totalDistanceLabel}  '
@@ -258,20 +295,20 @@ class TransportPdfService {
     return widgets;
   }
 
-  pw.Widget _cell(String text, pw.TextStyle style) {
+  static pw.Widget _cell(String text, pw.TextStyle style) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
       child: pw.Text(text, style: style, overflow: pw.TextOverflow.clip),
     );
   }
 
-  String _today() {
+  static String _today() {
     return DateFormat('yyyy/M/d HH:mm').format(DateTime.now());
   }
 
   /// お迎えの事業所「出発」時刻を逆算で求める
   /// = 最初の停留所の scheduledTime - 事業所→最初停留所 の durationFromPrevSeconds
-  String _calcPickupDepartureTime(
+  static String _calcPickupDepartureTime(
       TransportVehicleRoute route, String defaultPickupStart) {
     if (route.stops.isEmpty) return defaultPickupStart;
     final firstStop = route.stops.first;
@@ -281,8 +318,8 @@ class TransportPdfService {
     }
     try {
       final parts = firstStop.scheduledTime!.split(':');
-      final base = DateTime(2000, 1, 1,
-          int.parse(parts[0]), int.parse(parts[1]));
+      final base =
+          DateTime(2000, 1, 1, int.parse(parts[0]), int.parse(parts[1]));
       final departure =
           base.subtract(Duration(seconds: firstStop.durationFromPrevSeconds!));
       return '${departure.hour.toString().padLeft(2, '0')}:'
@@ -295,7 +332,7 @@ class TransportPdfService {
   /// 帰着時刻を推定する
   /// = 最終停留所の scheduledTime + 最終停留所→事業所 の durationFromPrevSeconds
   /// （最終 leg の duration は route.totalDurationSeconds - 全停留所間 duration の合計）
-  String? _calcArrivalTime(TransportVehicleRoute route) {
+  static String? _calcArrivalTime(TransportVehicleRoute route) {
     if (route.stops.isEmpty) return null;
     final lastStop = route.stops.last;
     if (lastStop.scheduledTime == null) return null;
@@ -316,10 +353,9 @@ class TransportPdfService {
 
     try {
       final parts = lastStop.scheduledTime!.split(':');
-      final base = DateTime(2000, 1, 1,
-          int.parse(parts[0]), int.parse(parts[1]));
-      final arrival =
-          base.add(Duration(seconds: lastLegDuration));
+      final base =
+          DateTime(2000, 1, 1, int.parse(parts[0]), int.parse(parts[1]));
+      final arrival = base.add(Duration(seconds: lastLegDuration));
       return '${arrival.hour.toString().padLeft(2, '0')}:'
           '${arrival.minute.toString().padLeft(2, '0')}';
     } catch (_) {

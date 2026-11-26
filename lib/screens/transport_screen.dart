@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/customer.dart';
 import '../verify/verify_config.dart';
 import '../verify/verify_faults.dart';
+import '../models/transport_load.dart';
 import '../models/transport_plan.dart';
 import '../models/weekly_schedule.dart';
 import '../services/customer_service.dart';
@@ -50,8 +51,7 @@ class TransportScreen extends StatefulWidget {
     try {
       // 選んだ日の週を読み込んでから参照する（Firestore。読み込み済みの週だけを持つ）
       await WeeklyScheduleService.instance.ensureRange(date, date);
-      final entries =
-          WeeklyScheduleService.instance.getEntriesForDate(date);
+      final entries = WeeklyScheduleService.instance.getEntriesForDate(date);
       // planned + additional (cancelled 除外済み)
 
       // 週間利用計画がある週なら、その日の有効な予定だけを対象にする（0 件なら 0 人。
@@ -154,6 +154,9 @@ class _TransportScreenState extends State<TransportScreen>
   void _onScheduleChanged() {
     if (mounted) setState(() {});
   }
+
+  /// 乗る人数に入れない児童（その日お休み）
+  Set<String> _absentIds() => const {};
 
   /// その日の予定がお休み（キャンセル）になっている児童か（表示だけ。ルートからは外さない）
   bool _isAbsent(String customerId) => WeeklyScheduleService.instance
@@ -512,7 +515,8 @@ class _TransportScreenState extends State<TransportScreen>
       return;
     }
     try {
-      await TransportPdfService.instance.printTransportSheet(_dateKey, all);
+      await TransportPdfService.instance
+          .printTransportSheet(_dateKey, all, absentIds: _absentIds());
     } catch (e) {
       _showSnack('PDF エラー: $e', isError: true);
     }
@@ -636,6 +640,7 @@ class _TransportScreenState extends State<TransportScreen>
       body: Column(
         children: [
           _buildDateNav(),
+          if (!_initialLoading) _buildShortageBanner(),
           _buildTabBar(),
           // 操作中（最適化・グループ分け等）の細い進行バー。初回読込は骨格が担当
           if (_isLoading && !_initialLoading)
@@ -1272,7 +1277,7 @@ class _TransportScreenState extends State<TransportScreen>
   }
 
   Widget _buildRouteCardHeader(TransportVehicleRoute route) {
-    final isFull = route.isFull;
+    final load = _loadOf(route);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       decoration: BoxDecoration(
@@ -1297,22 +1302,30 @@ class _TransportScreenState extends State<TransportScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                // 狭い幅でもはみ出さないよう、入りきらない印は次の行へ
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text(
-                      route.vehicleName,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.onSurface,
+                    Padding(
+                      padding: const EdgeInsets.only(right: 2),
+                      child: Text(
+                        route.vehicleName,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.onSurface,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _buildCapacityBadge(route),
-                    if (isFull) ...[
-                      const SizedBox(width: 6),
+                    _buildCapacityBadge(route, load),
+                    // 定員を超えているときは「満員」ではなく、超えた人数を強い色で出す
+                    if (load.overLabel != null)
+                      _buildStrongBadge(load.overLabel!,
+                          key: ValueKey('${route.id}_over'))
+                    else if (load.full)
                       _buildBadge('満員', AppColors.error),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -1404,10 +1417,67 @@ class _TransportScreenState extends State<TransportScreen>
     }
   }
 
-  Widget _buildCapacityBadge(TransportVehicleRoute route) {
-    return _buildBadge(
-      '${route.passengerCount}/${route.capacity}名',
-      route.isFull ? AppColors.error : AppColors.secondary,
+  /// 車の乗車状況（表示用）
+  RouteLoad _loadOf(TransportVehicleRoute route) => RouteLoad.of(route);
+
+  Widget _buildCapacityBadge(TransportVehicleRoute route, RouteLoad load) {
+    return KeyedSubtree(
+      key: ValueKey('${route.id}_count'),
+      child: _buildBadge(
+        load.countLabel,
+        load.over > 0 || load.full ? AppColors.error : AppColors.secondary,
+      ),
+    );
+  }
+
+  /// 強い色の印（赤地に白の太字）
+  Widget _buildStrongBadge(String text, {Key? key}) {
+    return Container(
+      key: key,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.error,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.warning_amber_rounded, size: 13, color: Colors.white),
+        const SizedBox(width: 3),
+        Text(text,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.white)),
+      ]),
+    );
+  }
+
+  /// 車が足りない・定員を超えている車があるときの注意（画面の上）
+  Widget _buildShortageBanner() {
+    final notes = TransportShortage.notes([..._pickupRoutes, ..._dropoffRoutes],
+        absentIds: _absentIds());
+    if (notes.isEmpty) return const SizedBox.shrink();
+    return Container(
+      key: const Key('transportShortage'),
+      width: double.infinity,
+      color: AppColors.error,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: Colors.white, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              notes.join('\n'),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
