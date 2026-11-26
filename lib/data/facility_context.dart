@@ -26,6 +26,12 @@ class FsPaths {
   /// ログイン履歴（追記だけ。読めるのは管理者だけ）
   static const String loginHistory = 'loginHistory';
 
+  /// 業務日誌（ステップ3）: facilities/{facilityId}/dailyJournals/{YYYY-MM-DD}
+  static const String dailyJournals = 'dailyJournals';
+
+  /// 個別支援計画（ステップ3）: facilities/{facilityId}/supportPlans/{planId}
+  static const String supportPlans = 'supportPlans';
+
   /// settings コレクション内の唯一のドキュメント ID
   static const String settingsDocId = 'app';
 }

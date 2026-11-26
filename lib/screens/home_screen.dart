@@ -10,6 +10,7 @@ import '../services/settings_service.dart';
 import '../models/app_settings.dart';
 import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
+import 'daily_journal_screen.dart';
 import 'customer_management_screen.dart';
 import 'settings_screen.dart';
 import 'staff_management_screen.dart';
@@ -226,6 +227,14 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (_) => const TransportScreen(),
         ),
       ).then((_) => _loadCounts());
+      return;
+    }
+    // 業務日誌（ステップ3）
+    if (item.route == '/daily-journal') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const DailyJournalScreen()),
+      );
       return;
     }
     // 職員管理

@@ -67,6 +67,10 @@ class AppSettings {
   /// 形式は 'U' + 32桁 16進（[isValidLineUserId]）。
   String? adminLineUserId;
 
+  /// 業務日誌「その日の内容」の選択肢（ステップ3。設定で増減できる）。
+  /// 日誌には選んだ名前をそのまま写して残すので、ここから消しても過去の日誌には残る。
+  List<String> journalActivityOptions;
+
   /// 担当者の切り替えに 4 桁の暗証番号を求めるか（予約。このステップでは常に false。
   /// 職員ごとの暗証番号は staff/{id} の pinHash / pinSalt。Firestore のみ）
   bool staffPinEnabled;
@@ -90,7 +94,11 @@ class AppSettings {
     int? slotTtlHours,
     String? adminLineUserId,
     this.staffPinEnabled = false,
-  })  : slotTtlHours = clampSlotTtlHours(slotTtlHours),
+    List<String>? journalActivityOptions,
+  })  : journalActivityOptions = journalActivityOptions == null
+            ? List<String>.from(defaultJournalActivityOptions)
+            : normalizeJournalActivityOptions(journalActivityOptions),
+        slotTtlHours = clampSlotTtlHours(slotTtlHours),
         adminLineUserId = normalizeAdminLineUserId(adminLineUserId),
         vacancyReplyDeadline =
             (vacancyReplyDeadline == null || vacancyReplyDeadline.isEmpty)
@@ -130,7 +138,43 @@ class AppSettings {
       slotTtlHours: slotTtlHours,
       adminLineUserId: adminLineUserId,
       staffPinEnabled: staffPinEnabled,
+      journalActivityOptions: journalActivityOptions,
     );
+  }
+
+  // ── ステップ3: 業務日誌「その日の内容」の選択肢 ─────────────────
+
+  /// 選択肢の初期値
+  static const List<String> defaultJournalActivityOptions = [
+    '外遊び',
+    '室内遊び',
+    '工作',
+    '宿題・学習',
+    'おやつ',
+    '調理',
+    '散歩',
+    '音楽・リズム',
+    '運動',
+    '行事・イベント',
+    '個別の活動',
+  ];
+
+  /// 1 つの選択肢の長さの上限・選択肢の数の上限
+  static const int maxJournalActivityLength = 30;
+  static const int maxJournalActivityCount = 50;
+
+  /// 前後の空白を除き、空・重複・長すぎるものを除いて、上限までに切る（並びは保つ）
+  static List<String> normalizeJournalActivityOptions(Iterable<String> src) {
+    final out = <String>[];
+    for (final raw in src) {
+      final v = raw.trim();
+      if (v.isEmpty || v.length > maxJournalActivityLength || out.contains(v)) {
+        continue;
+      }
+      out.add(v);
+      if (out.length >= maxJournalActivityCount) break;
+    }
+    return out;
   }
 
   // ── Day 15: 管理者 LINE userId の形式 ────────────────────────
@@ -226,6 +270,7 @@ class AppSettings {
         'slotTtlHours': slotTtlHours,
         'adminLineUserId': adminLineUserId,
         'staffPinEnabled': staffPinEnabled,
+        'journalActivityOptions': List<String>.from(journalActivityOptions),
       };
 
   factory AppSettings.fromFirestore(Map<String, dynamic> d) {
@@ -251,6 +296,10 @@ class AppSettings {
       slotTtlHours: d['slotTtlHours'] is num ? (d['slotTtlHours'] as num).toInt() : null,
       adminLineUserId: readString(d['adminLineUserId']),
       staffPinEnabled: d['staffPinEnabled'] == true,
+      // 未保存（項目なし）なら初期値。空のリストは「すべて消した」として空のまま
+      journalActivityOptions: d['journalActivityOptions'] is List
+          ? readStringList(d['journalActivityOptions'])
+          : null,
     );
   }
 }

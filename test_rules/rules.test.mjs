@@ -91,6 +91,22 @@ const audited = (extra = {}) => ({
   updatedByStaffName: '山田',
 });
 
+// ── ステップ3: 業務日誌 ──────────────────────────────────
+/** 日本時間で今日から [days] 日後の "YYYY-MM-DD" */
+const jstDay = (days = 0) => {
+  const d = new Date(Date.now() + 9 * 3600 * 1000 + days * 86400 * 1000);
+  return d.toISOString().slice(0, 10);
+};
+const JOURNAL_PAST = '2026-11-20';
+/** 日誌の業務データ（記録欄なし） */
+const journalDoc = (date, extra = {}) => ({
+  date,
+  staff: [{ staffId: 's-1', name: '山田' }],
+  activities: ['外遊び'],
+  note: '',
+  ...extra,
+});
+
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: PROJECT,
@@ -133,6 +149,8 @@ beforeEach(async () => {
       googleEmailLower: 'haruko@example.invalid',
     });
     await setDoc(doc(db, `facilities/${FAC}/loginHistory/h1`), { uid: 'member-a' });
+    // ステップ3: 業務日誌（過去の日の 1 件）
+    await setDoc(doc(db, `facilities/${FAC}/dailyJournals/${JOURNAL_PAST}`), journalDoc(JOURNAL_PAST));
   });
 });
 
@@ -291,8 +309,9 @@ describe('既存ルールの回帰（変えていないこと）', () => {
 // ════════════════════════════════════════════════════════════════
 
 describe('条件A: 誰でもアカウントを作れても、有効な所属が無ければ何も読めず何も書けない', () => {
-  const FACILITY_COLS = [...BUSINESS, 'staffAccounts', 'loginHistory'];
-  const existingId = (c) => (c === 'staffAccounts' ? 'haru' : c === 'loginHistory' ? 'h1' : 'd1');
+  const FACILITY_COLS = [...BUSINESS, 'staffAccounts', 'loginHistory', 'dailyJournals'];
+  const existingId = (c) =>
+    c === 'staffAccounts' ? 'haru' : c === 'loginHistory' ? 'h1' : c === 'dailyJournals' ? JOURNAL_PAST : 'd1';
   for (const [label, who, myUid] of [
     ['未登録の Google アカウント', unregisteredGoogle, 'g-stranger'],
     ['自分で作ったメールアドレスのアカウント', selfMadePassword, 'pw-stranger'],
@@ -694,5 +713,76 @@ describe('事業所の下のさらに下の階層（ステップ3で拒否にし
   test('その 1 つ上（事業所の下のコレクション）は、これまでどおり所属アカウントが読める', async () => {
     await assertSucceeds(getDoc(doc(memberA(), `facilities/${FAC}/customers/d1`)));
     await assertSucceeds(getDoc(doc(personal('haru'), `facilities/${FAC}/attendance/d1`)));
+  });
+});
+
+describe('業務日誌（ステップ3）', () => {
+  const path = (id) => `facilities/${FAC}/dailyJournals/${id}`;
+  const create = (id, staffId = 's-1', extra = {}) => ({
+    ...journalDoc(id, extra),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    updatedByStaffId: staffId,
+    updatedByStaffName: staffId,
+  });
+
+  test('所属アカウントは、担当者の記録を付けて今日の日誌を作り、読み、直せる', async () => {
+    const db = memberA();
+    const today = jstDay(0);
+    await assertSucceeds(setDoc(doc(db, path(today)), create(today)));
+    await assertSucceeds(getDoc(doc(db, path(today))));
+    await assertSucceeds(getDocs(collection(db, `facilities/${FAC}/dailyJournals`)));
+    await assertSucceeds(updateDoc(doc(db, path(today)), audited({ note: '備考' })));
+    // 過去の日も作れる・直せる
+    await assertSucceeds(setDoc(doc(db, path('2026-11-01')), create('2026-11-01')));
+    await assertSucceeds(updateDoc(doc(db, path(JOURNAL_PAST)), audited({ activities: [] })));
+    // 個人アカウントは本人の名前で
+    const p = personal('haru');
+    await assertSucceeds(updateDoc(doc(p, path(today)), by('haru', { note: '春子' })));
+    await assertFails(updateDoc(doc(p, path(today)), by('boss', { note: '他人の名前' })));
+  });
+
+  test('未来の日（日本時間の明日以降）の日誌は作れない', async () => {
+    const db = memberA();
+    await assertFails(setDoc(doc(db, path(jstDay(1))), create(jstDay(1))));
+    await assertFails(setDoc(doc(db, path(jstDay(40))), create(jstDay(40))));
+  });
+
+  test('文書 ID は日付の形だけ。項目の日付と同じでなければならない', async () => {
+    const db = memberA();
+    for (const id of ['2026-1-01', '2026-02-31', 'today', '2026-11-20x']) {
+      await assertFails(setDoc(doc(db, path(id)), create(id)));
+    }
+    await assertFails(setDoc(doc(db, path('2026-11-02')), create('2026-11-02', 's-1', { date: '2026-11-03' })));
+  });
+
+  test('担当者の記録が無い・作成日時が無い・余計な項目・形の違う値は拒否', async () => {
+    const db = memberA();
+    const id = '2026-11-03';
+    await assertFails(setDoc(doc(db, path(id)), journalDoc(id)));
+    const { createdAt, ...noCreated } = create(id);
+    await assertFails(setDoc(doc(db, path(id)), noCreated));
+    await assertFails(setDoc(doc(db, path(id)), { ...create(id), extra: 1 }));
+    await assertFails(setDoc(doc(db, path(id)), create(id, 's-1', { staff: 'a' })));
+    await assertFails(setDoc(doc(db, path(id)), create(id, 's-1', { activities: 'a' })));
+    await assertFails(setDoc(doc(db, path(id)), create(id, 's-1', { note: 'x'.repeat(4001) })));
+  });
+
+  test('作成日時と日付は後から変えられない。削除は誰もできない（管理者も）', async () => {
+    const db = memberA();
+    await assertFails(updateDoc(doc(db, path(JOURNAL_PAST)), audited({ createdAt: serverTimestamp() })));
+    await assertFails(updateDoc(doc(db, path(JOURNAL_PAST)), audited({ date: '2026-11-21' })));
+    await assertFails(deleteDoc(doc(db, path(JOURNAL_PAST))));
+    await assertFails(deleteDoc(doc(personal('boss'), path(JOURNAL_PAST))));
+  });
+
+  test('所属の無い・無効・他事業所のアカウントは読めない・書けない', async () => {
+    const today = jstDay(0);
+    for (const db of [unauth(), noMembership(), memberB(), unregisteredGoogle(), selfMadePassword(), personal('natsu'), personal('aki')]) {
+      await assertFails(getDoc(doc(db, path(JOURNAL_PAST))));
+      await assertFails(getDocs(collection(db, `facilities/${FAC}/dailyJournals`)));
+      await assertFails(setDoc(doc(db, path(today)), create(today)));
+      await assertFails(updateDoc(doc(db, path(JOURNAL_PAST)), audited({ note: 'x' })));
+    }
   });
 });

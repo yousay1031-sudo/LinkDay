@@ -194,6 +194,7 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '事業所情報');
     debugPrint('[SettingsService] facility updated: $name');
@@ -222,6 +223,7 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '車両');
     debugPrint('[SettingsService] vehicles updated: count=$count');
@@ -249,6 +251,7 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '運営時間');
     debugPrint('[SettingsService] operating hours updated');
@@ -273,6 +276,7 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '事業所の位置');
     debugPrint('[SettingsService] geocode saved: $lat, $lng');
@@ -299,6 +303,7 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: AppSettings.clampSlotTtlHours(hours),
       adminLineUserId: current.adminLineUserId,
+      journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, 'LINE応募の受付時間');
     debugPrint('[SettingsService] slotTtlHours updated: ${updated.slotTtlHours}');
@@ -333,6 +338,7 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: normalized,
+      journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '管理者 LINE userId');
     // 生の userId はログに出さない（設定有無のみ）
@@ -372,9 +378,35 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: safeTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '空き枠通知');
     debugPrint('[SettingsService] vacancy notice updated: deadline=$safeDeadline');
+  }
+
+  /// 業務日誌「その日の内容」の選択肢を保存する（担当者が必要）。
+  /// 空・重複・長すぎるものは除く（[AppSettings.normalizeJournalActivityOptions]）。
+  Future<void> updateJournalActivityOptions(List<String> options) async {
+    final current = getSettings();
+    final updated = AppSettings(
+      facilityName: current.facilityName,
+      facilityAddress: current.facilityAddress,
+      facilityLat: current.facilityLat,
+      facilityLng: current.facilityLng,
+      vehicleCount: current.vehicleCount,
+      vehicleNames: current.vehicleNames,
+      vehicleCapacities: current.vehicleCapacities,
+      maxStudentsPerDay: current.maxStudentsPerDay,
+      defaultPickupStart: current.defaultPickupStart,
+      defaultDropoffEnd: current.defaultDropoffEnd,
+      vacancyReplyDeadline: current.vacancyReplyDeadline,
+      vacancyMessageTemplate: current.vacancyMessageTemplate,
+      slotTtlHours: current.slotTtlHours,
+      adminLineUserId: current.adminLineUserId,
+      staffPinEnabled: current.staffPinEnabled,
+      journalActivityOptions: options,
+    );
+    await _save(updated, '業務日誌の内容の選択肢');
   }
 
   /// "HH:mm" 形式として妥当か

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/fs_values.dart';
 import '../models/app_settings.dart';
 import '../services/app_version.dart';
 import '../verify/verify_config.dart';
@@ -11,6 +12,7 @@ import '../verify/verify_faults.dart';
 import '../data/staff_session.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/journal_activity_options_section.dart';
 import '../widgets/unfocus_offscreen_text_field.dart';
 import '../widgets/motion/app_buttons.dart';
 import '../widgets/motion/skeleton_gate.dart';
@@ -134,6 +136,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     final prev = _applied;
+    // 業務日誌の選択肢だけが変わった（この画面の入力欄とは関係ない。その欄は
+    // 自分で保存と表示をする）: 入力中の内容を残したまま、知らせも出さない
+    if (prev != null && _onlyJournalOptionsChanged(prev, latest)) {
+      _applied = latest;
+      return;
+    }
     if (prev == null || _formMatches(prev)) {
       // 保存していない入力は無い → 開き直さずに最新の内容を表示する
       setState(() => _applySettingsSync(latest));
@@ -142,6 +150,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 入力中の内容は消さない（保存すると、その項目は入力した内容になる）
     _showSnack(
         '他の端末で設定が変更されました。保存していない入力があるため、画面には反映していません。', AppColors.warning);
+  }
+
+  static bool _onlyJournalOptionsChanged(AppSettings a, AppSettings b) {
+    final x = a.toFirestoreData()..remove('journalActivityOptions');
+    final y = b.toFirestoreData()..remove('journalActivityOptions');
+    return fsChangedFields(x, y).isEmpty && fsChangedFields(y, x).isEmpty;
   }
 
   /// 担当者の選択を閉じたら保存しない（true = 保存した）
@@ -619,6 +633,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildVehicleSection(),
                   const SizedBox(height: 16),
                   _buildOperatingHoursSection(),
+                  const SizedBox(height: 16),
+                  // ステップ3: 業務日誌「その日の内容」の選択肢（その場で保存する）
+                  const _SectionCard(
+                    title: '業務日誌の内容の選択肢',
+                    icon: Icons.description_outlined,
+                    child: JournalActivityOptionsSection(),
+                  ),
                   const SizedBox(height: 16),
                   _buildSlotTtlSection(),
                   const SizedBox(height: 16),

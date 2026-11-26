@@ -7,7 +7,8 @@
 //   node tool/verify/seed.mjs --clear    # エミュレータ内を全消去のみ
 //   node tool/verify/seed.mjs --reset --data empty   # 顧客なし（空の状態の確認用）
 //
-// 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / 顧客 / 週間利用計画 / slots
+// 投入するもの: 認証ユーザー / 事業所 demo-facility / 所属(memberships) / 職員 / 顧客 / 週間利用計画 /
+//   出席 / 送迎 / 設定 / 業務日誌（ステップ3）/ slots
 // 出席・設定・送迎・通知履歴は、Firestore 移行の各段階で
 // こちらへ移すまでは Hive(IndexedDB) 側（検証ビルドが起動時に投入する。docs/VERIFY_ENV.md）。
 import { assertLocalEmulator, PROJECT, HOST, AUTH_PORT, FS_PORT, loadOrCreateCredentials } from './guard.mjs';
@@ -16,6 +17,7 @@ import { buildDemoWeeks, scheduleDocs } from './dummy_schedule.mjs';
 import { buildDemoAttendance } from './dummy_attendance.mjs';
 import { buildDemoTransport } from './dummy_transport.mjs';
 import { buildDemoSettings } from './dummy_settings.mjs';
+import { buildDemoJournals } from './dummy_journals.mjs';
 
 await assertLocalEmulator();
 
@@ -271,6 +273,19 @@ if (dataMode === 'empty') {
     '設定の投入'
   );
   console.log(`[seed] 設定: ${settingsCreated ? '新規' : '既存のまま（触らない）'}`);
+
+  // ── 業務日誌（ステップ3）: 昨日と一昨日。無いときだけ作る
+  let journalCreated = 0;
+  const journals = buildDemoJournals(now);
+  for (const j of journals) {
+    const ok = await createIfMissing(
+      `facilities/${FACILITY_ID}/dailyJournals/${j.id}`,
+      { ...toFsFields(j.data), ...audit },
+      `業務日誌 ${j.id} の投入`
+    );
+    if (ok) journalCreated++;
+  }
+  console.log(`[seed] 業務日誌: 新規 ${journalCreated} 件 / 既存 ${journals.length - journalCreated} 件`);
 }
 
 // ── Firestore: slots（出席画面の「LINE応募」表示用）
