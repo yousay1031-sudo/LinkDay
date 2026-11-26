@@ -194,6 +194,8 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      // 予約の項目も引き継ぐ（落とすと保存のたびに既定値へ戻る）
+      staffPinEnabled: current.staffPinEnabled,
       journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '事業所情報');
@@ -223,6 +225,8 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      // 予約の項目も引き継ぐ（落とすと保存のたびに既定値へ戻る）
+      staffPinEnabled: current.staffPinEnabled,
       journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '車両');
@@ -251,6 +255,8 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      // 予約の項目も引き継ぐ（落とすと保存のたびに既定値へ戻る）
+      staffPinEnabled: current.staffPinEnabled,
       journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '運営時間');
@@ -276,6 +282,8 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      // 予約の項目も引き継ぐ（落とすと保存のたびに既定値へ戻る）
+      staffPinEnabled: current.staffPinEnabled,
       journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '事業所の位置');
@@ -303,6 +311,8 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: AppSettings.clampSlotTtlHours(hours),
       adminLineUserId: current.adminLineUserId,
+      // 予約の項目も引き継ぐ（落とすと保存のたびに既定値へ戻る）
+      staffPinEnabled: current.staffPinEnabled,
       journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, 'LINE応募の受付時間');
@@ -338,6 +348,8 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: current.vacancyMessageTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: normalized,
+      // 予約の項目も引き継ぐ（落とすと保存のたびに既定値へ戻る）
+      staffPinEnabled: current.staffPinEnabled,
       journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '管理者 LINE userId');
@@ -378,6 +390,8 @@ class SettingsService extends ChangeNotifier {
       vacancyMessageTemplate: safeTemplate,
       slotTtlHours: current.slotTtlHours,
       adminLineUserId: current.adminLineUserId,
+      // 予約の項目も引き継ぐ（落とすと保存のたびに既定値へ戻る）
+      staffPinEnabled: current.staffPinEnabled,
       journalActivityOptions: current.journalActivityOptions,
     );
     await _save(updated, '空き枠通知');
