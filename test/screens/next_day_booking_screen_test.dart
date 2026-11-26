@@ -153,6 +153,59 @@ void main() {
     expect(text(t, 'nextDayUsing'), '3人');
   });
 
+  testWidgets('続けて「お休み」を押しても並びは動かず、押した児童だけが変わる。開き直すと整う', (t) async {
+    await setUpData(t, count: 6);
+    await open(t);
+    final ids = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'];
+    Map<String, Offset> pos() => {
+          for (final id in ids)
+            id: t.getTopLeft(find.byKey(Key('nextDayCard_$id')))
+        };
+    final before = pos();
+    // 同じ場所（先頭の児童の「お休み」）を続けて押す → 先頭の児童のまま
+    final firstAbsent = t.getCenter(find.byKey(const Key('nextDayAbsent_c1')));
+    await t.tapAt(firstAbsent);
+    await io(t, () async {});
+    await t.pumpAndSettle();
+    expect(pos(), before, reason: '押した直後に並びが動いた');
+    await t.tapAt(firstAbsent); // もう一度押しても同じ児童（お休みのまま）
+    await io(t, () async {});
+    await t.pumpAndSettle();
+    for (final id in ['c3', 'c5']) {
+      await tap(t, find.byKey(Key('nextDayAbsent_$id')));
+      expect(pos(), before, reason: '$id を押した後に並びが動いた');
+    }
+    expect(await storedStatus(t, 'c1'), 'cancelled');
+    expect(await storedStatus(t, 'c3'), 'cancelled');
+    expect(await storedStatus(t, 'c5'), 'cancelled');
+    for (final id in ['c2', 'c4', 'c6']) {
+      expect(await storedStatus(t, id), 'planned', reason: id);
+    }
+    // 他の端末からの変更でも並びは動かない
+    await io(
+        t,
+        () => FakeBackend.current.db
+            .collection(FsPaths.facilities)
+            .doc(FakeBackend.current.facilityId)
+            .collection(FsPaths.scheduleEntries)
+            .doc(WeeklyScheduleService.entryDocId(wed, 'c2'))
+            .update({'status': 'cancelled'}));
+    await t.pumpAndSettle();
+    expect(pos(), before);
+    expect(text(t, 'nextDayAbsent'), '4人');
+    // 開き直すと、利用する人が先に整う
+    await t.pumpWidget(const SizedBox.shrink());
+    await open(t);
+    final y = pos();
+    for (final using in ['c4', 'c6']) {
+      for (final absent in ['c1', 'c2', 'c3', 'c5']) {
+        final a = y[using]!, b = y[absent]!;
+        expect(a.dy < b.dy || (a.dy == b.dy && a.dx < b.dx), isTrue,
+            reason: '$using が $absent より前に来ていない');
+      }
+    }
+  });
+
   testWidgets('担当者が未選択なら直せず、選ぶと記録に担当者が残る', (t) async {
     await setUpData(t, currentStaffId: null);
     var choose = false;

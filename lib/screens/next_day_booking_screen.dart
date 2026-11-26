@@ -112,6 +112,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
 
   Future<void> _open(DateTime d) async {
     setState(() {
+      _order = null; // 開いた日ごとに並びを整える
       _date = d;
       _loading = true;
       _error = null;
@@ -135,6 +136,41 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
     }
     if (!mounted || _date != d) return;
     setState(() => _loading = false);
+  }
+
+  /// 一覧の並び（児童 ID の順）。画面を開いた・日付を移ったときにだけ整える
+  /// （利用する人が先、その中は名前の順）。押した直後や他の端末の変更では並びを
+  /// 動かさない（続けて押したとき、押した位置に別の児童が来ないように）。
+  /// その後に増えた予定は最後に足し、消えた予定は外す。
+  List<String>? _order;
+  DateTime? _orderDate;
+
+  List<ScheduleEntry> _ordered(DateTime d, List<ScheduleEntry> entries,
+      Map<String, Customer> customers) {
+    int byOpenRule(ScheduleEntry a, ScheduleEntry b) {
+      final ca = a.status == ScheduleStatus.cancelled ? 1 : 0;
+      final cb = b.status == ScheduleStatus.cancelled ? 1 : 0;
+      if (ca != cb) return ca.compareTo(cb);
+      final ka = customers[a.customerId]?.nameKana ?? a.customerName;
+      final kb = customers[b.customerId]?.nameKana ?? b.customerName;
+      return ka.compareTo(kb);
+    }
+
+    if (_order == null || _orderDate != d) {
+      _order = [
+        for (final e in [...entries]..sort(byOpenRule)) e.customerId
+      ];
+      _orderDate = d;
+    }
+    final byId = {for (final e in entries) e.customerId: e};
+    final order = _order!;
+    final added = entries.where((e) => !order.contains(e.customerId)).toList()
+      ..sort(byOpenRule);
+    order.addAll(added.map((e) => e.customerId));
+    return [
+      for (final id in order)
+        if (byId[id] case final e?) e
+    ];
   }
 
   static String _key(DateTime d) =>
@@ -626,14 +662,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
     };
     final routes = TransportPlanService.instance.getRoutesByDate(_key(d));
     // 利用する人が先、その中は名前の順
-    final sorted = [...entries]..sort((a, b) {
-        final ca = a.status == ScheduleStatus.cancelled ? 1 : 0;
-        final cb = b.status == ScheduleStatus.cancelled ? 1 : 0;
-        if (ca != cb) return ca.compareTo(cb);
-        final ka = customers[a.customerId]?.nameKana ?? a.customerName;
-        final kb = customers[b.customerId]?.nameKana ?? b.customerName;
-        return ka.compareTo(kb);
-      });
+    final sorted = _ordered(d, entries, customers);
     return LayoutBuilder(builder: (context, box) {
       final cols = NextDayBookingScreen.columnCount(box.maxWidth);
       return GridView.builder(
