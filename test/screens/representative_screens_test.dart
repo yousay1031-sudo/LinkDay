@@ -21,6 +21,9 @@ import 'package:linkday_app/services/transport_plan_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
 import 'package:linkday_app/widgets/skeletons/screen_skeletons.dart';
 
+import 'package:linkday_app/services/weekly_schedule_service.dart';
+import 'package:linkday_app/utils/week_util.dart';
+import 'package:linkday_app/models/weekly_schedule.dart';
 import '../support/fake_backend.dart';
 
 /// 代表画面（出席管理・顧客一覧・送迎計画）の
@@ -435,6 +438,41 @@ void main() {
       expect(find.text('送迎 太郎'), findsOneWidget);
       expect(find.text('利用予定 1 名'), findsOneWidget);
       expect(t.takeException(), isNull);
+      await _unmount(t);
+    });
+
+    testWidgets('お休みになった児童の停留所に「お休み」と出る（ルートからは外さない。ステップ4）', (t) async {
+      await seed(t, routeToday: true);
+      await t.runAsync(() async {
+        final today = DateTime.now();
+        final w = WeeklyScheduleService.instance;
+        await w.getOrCreateSchedule(WeekUtil.weekStartFromDate(today), [
+          Customer(
+              id: 'x',
+              name: '送迎 太郎',
+              nameKana: 'ソウゲイ タロウ',
+              regularDays: [today.weekday])
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await pump(t);
+      await _ms(t, 900);
+      expect(find.text('送迎 太郎'), findsOneWidget);
+      expect(find.text('お休み'), findsNothing);
+      await t.runAsync(() async {
+        final today = DateTime.now();
+        await WeeklyScheduleService.instance.updateEntryStatus(
+            WeekUtil.weekKeyFromDate(today),
+            today.weekday,
+            'x',
+            ScheduleStatus.cancelled);
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await _ms(t, 300);
+      expect(find.text('お休み'), findsOneWidget);
+      expect(find.text('送迎 太郎'), findsOneWidget); // 自動では外さない
+      expect(t.takeException(), isNull);
+      await t.runAsync(() => FakeBackend.resetSchedules());
       await _unmount(t);
     });
 

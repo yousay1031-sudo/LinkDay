@@ -5,6 +5,7 @@ import '../models/customer.dart';
 import '../verify/verify_config.dart';
 import '../verify/verify_faults.dart';
 import '../models/transport_plan.dart';
+import '../models/weekly_schedule.dart';
 import '../services/customer_service.dart';
 import '../services/settings_service.dart';
 import '../services/transport_pdf_service.dart';
@@ -145,8 +146,20 @@ class _TransportScreenState extends State<TransportScreen>
     _loadSettings();
     _loadAll();
     TransportPlanService.instance.addListener(_onRoutesChanged);
+    // 翌日予約選択・週間利用計画で「お休み」にしたら、停留所の表示を変える（ステップ4）
+    WeeklyScheduleService.instance.addListener(_onScheduleChanged);
     debugPrint('[TransportScreen] initState end');
   }
+
+  void _onScheduleChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// その日の予定がお休み（キャンセル）になっている児童か（表示だけ。ルートからは外さない）
+  bool _isAbsent(String customerId) => WeeklyScheduleService.instance
+      .getAllEntriesForDate(_selectedDate)
+      .any((e) =>
+          e.customerId == customerId && e.status == ScheduleStatus.cancelled);
 
   /// 他の端末（またはこの端末の別の画面）で送迎計画が変わった: 開き直さずに反映する
   void _onRoutesChanged() {
@@ -157,6 +170,7 @@ class _TransportScreenState extends State<TransportScreen>
   @override
   void dispose() {
     TransportPlanService.instance.removeListener(_onRoutesChanged);
+    WeeklyScheduleService.instance.removeListener(_onScheduleChanged);
     _loadSeq.invalidate();
     _tabController.dispose();
     super.dispose();
@@ -1510,6 +1524,22 @@ class _TransportScreenState extends State<TransportScreen>
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
+          // お休みになった児童は分かるようにする（自動では外さない。外すときは「除外」）
+          if (_isAbsent(stop.customerId))
+            Container(
+              key: ValueKey('${route.id}_stop_${index}_absent'),
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('お休み',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.error,
+                      fontWeight: FontWeight.w700)),
+            ),
           if (stop.durationLabel.isNotEmpty)
             Text(
               stop.durationLabel,
