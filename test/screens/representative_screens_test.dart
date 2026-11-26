@@ -522,6 +522,61 @@ void main() {
       await _unmount(t);
     });
 
+    testWidgets('お休みの児童は、タブと車ごとの人数に入れない。お休みが何人含まれているかも出す', (t) async {
+      final today = DateTime.now();
+      await t.runAsync(() async {
+        await FakeBackend.resetTransport();
+        await WeeklyScheduleService.instance
+            .getOrCreateSchedule(WeekUtil.weekStartFromDate(today), [
+          for (final id in ['p', 'q', 'r'])
+            Customer(
+                id: id,
+                name: '送迎 $id',
+                nameKana: 'ソウゲイ $id',
+                regularDays: [today.weekday])
+        ]);
+        await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
+          vehicleName: '車両A',
+          vehicleIndex: 0,
+          transportType: TransportType.pickup,
+          dateKey: keyOf(today),
+          capacity: 2,
+          stops: [
+            for (final id in ['p', 'q', 'r'])
+              TransportStop(
+                  customerId: id, customerName: '送迎 $id', address: '帯広市テスト')
+          ],
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await pump(t);
+      await _ms(t, 900);
+      String tab() =>
+          t.widget<Text>(find.byKey(const Key('transportTabPickup'))).data!;
+      expect(tab(), 'お迎え（3名）');
+      expect(find.text('3/2名'), findsOneWidget);
+      expect(find.text('定員超過 1名'), findsOneWidget);
+      // q をお休みにする: 人数から引き、お休みの人数を出す。定員超過も消える
+      await t.runAsync(() async {
+        await WeeklyScheduleService.instance.updateEntryStatus(
+            WeekUtil.weekKeyFromDate(today),
+            today.weekday,
+            'q',
+            ScheduleStatus.cancelled);
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      await _ms(t, 300);
+      expect(tab(), 'お迎え（2名・お休み1）');
+      expect(find.text('2/2名'), findsOneWidget);
+      expect(find.text('お休み 1名'), findsOneWidget);
+      expect(find.text('定員超過 1名'), findsNothing);
+      expect(find.text('満員'), findsOneWidget);
+      expect(find.text('送迎 q'), findsOneWidget); // ルートからは外さない
+      expect(t.takeException(), isNull);
+      await t.runAsync(() => FakeBackend.resetSchedules());
+      await _unmount(t);
+    });
+
     testWidgets('空: ルートが無い日は空状態（お迎え・お送りとも）', (t) async {
       await seed(t, routeToday: false);
       await pump(t);

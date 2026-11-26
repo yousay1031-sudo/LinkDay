@@ -155,8 +155,12 @@ class _TransportScreenState extends State<TransportScreen>
     if (mounted) setState(() {});
   }
 
-  /// 乗る人数に入れない児童（その日お休み）
-  Set<String> _absentIds() => const {};
+  /// 乗る人数に入れない児童（その日お休みの印が付いた児童）
+  Set<String> _absentIds() => {
+        for (final e in WeeklyScheduleService.instance
+            .getAllEntriesForDate(_selectedDate))
+          if (e.status == ScheduleStatus.cancelled) e.customerId
+      };
 
   /// その日の予定がお休み（キャンセル）になっている児童か（表示だけ。ルートからは外さない）
   bool _isAbsent(String customerId) => WeeklyScheduleService.instance
@@ -823,8 +827,8 @@ class _TransportScreenState extends State<TransportScreen>
                 const Icon(Icons.arrow_downward, size: 18),
                 const SizedBox(width: 6),
                 Text(
-                  'お迎え'
-                  '（${_pickupRoutes.fold(0, (s, r) => s + r.stops.length)}名）',
+                  'お迎え${_tabCount(_pickupRoutes)}',
+                  key: const Key('transportTabPickup'),
                 ),
               ],
             ),
@@ -836,8 +840,8 @@ class _TransportScreenState extends State<TransportScreen>
                 const Icon(Icons.arrow_upward, size: 18),
                 const SizedBox(width: 6),
                 Text(
-                  'お送り'
-                  '（${_dropoffRoutes.fold(0, (s, r) => s + r.stops.length)}名）',
+                  'お送り${_tabCount(_dropoffRoutes)}',
+                  key: const Key('transportTabDropoff'),
                 ),
               ],
             ),
@@ -1321,6 +1325,13 @@ class _TransportScreenState extends State<TransportScreen>
                     ),
                     _buildCapacityBadge(route, load),
                     // 定員を超えているときは「満員」ではなく、超えた人数を強い色で出す
+                    // お休みの児童がルートに残っていれば、その人数（乗る人数には入れない）
+                    if (load.absent > 0)
+                      KeyedSubtree(
+                        key: ValueKey('${route.id}_absent'),
+                        child: _buildBadge(
+                            'お休み ${load.absent}名', AppColors.onSurfaceVariant),
+                      ),
                     if (load.overLabel != null)
                       _buildStrongBadge(load.overLabel!,
                           key: ValueKey('${route.id}_over'))
@@ -1418,7 +1429,17 @@ class _TransportScreenState extends State<TransportScreen>
   }
 
   /// 車の乗車状況（表示用）
-  RouteLoad _loadOf(TransportVehicleRoute route) => RouteLoad.of(route);
+  RouteLoad _loadOf(TransportVehicleRoute route) =>
+      RouteLoad.of(route, absentIds: _absentIds());
+
+  /// タブの人数: お休みを除いた人数と、含まれているお休みの人数
+  String _tabCount(List<TransportVehicleRoute> routes) {
+    final absent = _absentIds();
+    final loads = [for (final r in routes) RouteLoad.of(r, absentIds: absent)];
+    final riding = loads.fold(0, (s, l) => s + l.riding);
+    final off = loads.fold(0, (s, l) => s + l.absent);
+    return off > 0 ? '（$riding名・お休み$off）' : '（$riding名）';
+  }
 
   Widget _buildCapacityBadge(TransportVehicleRoute route, RouteLoad load) {
     return KeyedSubtree(

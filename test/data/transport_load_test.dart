@@ -57,6 +57,18 @@ void main() {
         isEmpty);
   });
 
+  test('お休みの児童は乗る人数に入れず、何人含まれているかを数える', () {
+    final r = route(TransportType.pickup, 0, 6, ids('a', 8));
+    final load = RouteLoad.of(r, absentIds: {'a1', 'a5', 'zz'});
+    expect(load.riding, 6);
+    expect(load.absent, 2);
+    expect(load.overLabel, isNull);
+    expect(load.full, isTrue);
+    // 注意もお休みを除いた人数で決める
+    expect(TransportShortage.notes([r]), ['お迎え：車が足りません。乗れない人数 2名']);
+    expect(TransportShortage.notes([r], absentIds: {'a1', 'a5'}), isEmpty);
+  });
+
   group('印刷', () {
     setUpAll(() => initializeDateFormatting('ja'));
     Future<(pw.Font, pw.Font)> fonts() async {
