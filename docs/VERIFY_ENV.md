@@ -58,6 +58,8 @@ tool/verify/stop_emulators.sh
 - **秘密情報を渡さない**: `functions/.secret.local` などがあれば起動を中断する。`LINE_CHANNEL_*` の環境変数も外す。
 - **外部への接続を止めて記録する**: `tool/verify/block_external.cjs` を `NODE_OPTIONS=--require` で読み込ませ、エミュレータの Node の処理（firebase-tools 本体・Functions の実行環境・npm）がループバック以外へ接続しようとしたら止めて `/tmp/linkday_emulator_net.log` に記録する（宛先・ポートだけ。中身は記録しない）。起動時に件数を表示する。合格条件は 0 件。
   - 2026-11-25 に見つけて止めたもの（送信されていない）: firebase-tools が資格情報を探す GCE の metadata サーバー（169.254.169.254・metadata.google.internal）と、Functions の SDK の最新版を調べる `npm show`（registry.npmjs.org）。`METADATA_SERVER_DETECTION=none` と `npm_config_offline=true` で、試みないようにした。
+  - 起動時に firebase-tools が `firebase-public.firebaseio.com:443` へ接続を試みることがある（2026-11-26 に 1 件）。資格情報やデータは含まず、`block_external.cjs` が止めていて送信されていない（設定は変えていない）。
+  - 検証環境で `firebase-public.firebaseio.com` への接続が試みられて遮断されることがあるが、設定は変えず遮断のままでよい。
 - 古い構成（Functions なし）で起動中なら、`start_emulators.sh` は止まるよう案内する。`stop_emulators.sh` → `start_emulators.sh` で起動し直す。
 
 ### Google ログインの模擬（本物の Google には接続しない）
