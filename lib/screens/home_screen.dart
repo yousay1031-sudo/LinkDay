@@ -767,19 +767,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const Spacer(),
-          // クイック情報（将来実装用プレースホルダー）
+          // 本日の利用（入室済み・退室済み）。
+          // 「送迎待ち」は送迎の記録に済み／未済みが無く実際の値を出せないため外した
           _buildQuickStat(
             icon: Icons.people,
             label: '本日利用',
             value: '$todayCount名',
             color: AppColors.secondary,
-          ),
-          const SizedBox(width: 16),
-          _buildQuickStat(
-            icon: Icons.directions_car,
-            label: '送迎待ち',
-            value: '--件',
-            color: AppColors.primary,
           ),
         ],
       ),

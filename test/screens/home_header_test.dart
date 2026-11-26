@@ -71,7 +71,7 @@ void main() {
         '架空の事業所');
   });
 
-  testWidgets('上のバーに設定の事業所名が出て、他の端末で変わると開き直さずに変わる', (t) async {
+  testWidgets('上のバーに設定の事業所名が出て、他の端末で変わると開き直さずに変わる。「送迎待ち」は出ない', (t) async {
     await t.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => t.binding.setSurfaceSize(null));
     await setName(t, '架空の事業所');
@@ -83,6 +83,8 @@ void main() {
     Text label() => t.widget<Text>(find.byKey(const Key('homeFacilityName')));
     expect(label().data, '架空の事業所');
     expect(find.text('サンプル施設'), findsNothing);
+    expect(find.text('送迎待ち'), findsNothing);
+    expect(find.text('本日利用'), findsOneWidget);
 
     await setName(t, '');
     await _ms(t, 100);
