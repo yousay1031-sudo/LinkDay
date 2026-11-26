@@ -30,7 +30,7 @@ void main() {
     final d = (await _stored())!;
     expect(d['vehicleCount'], 3);
     expect(d['vehicleCapacities'], [6, 6, 4]);
-    expect(d['updatedByStaffName'], '山田');
+    expect(d['updatedByStaffName'], '職員 冬子');
     expect(d['createdAt'], isA<Timestamp>());
     expect(d['staffPinEnabled'], isFalse, reason: '暗証番号は予約のみ（常に false）');
   });
@@ -79,7 +79,7 @@ void main() {
         facilityId: FakeBackend.defaultFacilityId, staffId: FakeBackend.staffB.id);
     await _svc.updateSlotTtlHours(8);
     await _settle();
-    expect((await _stored())!['updatedByStaffName'], '山田');
+    expect((await _stored())!['updatedByStaffName'], '職員 冬子');
   });
 
   test('担当者が未選択なら保存しない', () async {

@@ -22,8 +22,8 @@ void main() {
   const admin = FakeBackend.adminStaff;
   const a = Staff(
     id: 's-a',
-    name: '山田 花子',
-    kana: 'やまだ はなこ',
+    name: '職員 冬子',
+    kana: 'しょくいん ふゆこ',
     role: StaffRole.childDevManager,
     workDays: [1, 3, 5],
     canDrive: true,
@@ -77,7 +77,7 @@ void main() {
             moreOrLessEquals(StaffManagementScreen.cardExtent(cols),
                 epsilon: 1));
         expect(t.getSize(card).height, greaterThanOrEqualTo(48));
-        expect(find.text('山田 花子'), findsOneWidget);
+        expect(find.text('職員 冬子'), findsOneWidget);
         expect(find.textContaining('勤務 月・水・金'), findsOneWidget);
         expect(find.text('送迎可'), findsWidgets);
         expect(find.text('ログイン：未登録'), findsWidgets);

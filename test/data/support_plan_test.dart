@@ -30,7 +30,7 @@ void main() {
         customerId: 'c1',
         customerName: '架空 一郎',
         createdOn: createdOn ?? DateTime(2026, 5, 1),
-        managerName: '山田',
+        managerName: '職員 冬子',
         texts: const {SupportPlanForm.kIntention: '架空の意向'},
         rows: [
           row(['self'], domains: ['health', 'motor', 'cognition']),
@@ -169,7 +169,7 @@ void main() {
       expect(n.status, PlanStatus.draft);
       expect(n.texts, prev.texts);
       expect(n.rows.length, prev.rows.length);
-      expect(n.managerName, '山田');
+      expect(n.managerName, '職員 冬子');
     });
   });
 
@@ -190,7 +190,7 @@ void main() {
       await svc.save(full(), exists: false);
       var d = await stored(b, 'p1');
       expect(d['status'], 'draft');
-      expect(d['updatedByStaffName'], '山田');
+      expect(d['updatedByStaffName'], '職員 冬子');
       expect(d.containsKey('createdAt'), isTrue);
       expect(d['createdOn'], '2026-05-01');
       expect((d['rows'] as List).length, 3);

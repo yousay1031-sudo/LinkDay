@@ -296,7 +296,7 @@ void main() {
     StaffService.instance.removeListener(listener);
     expect(notified, greaterThan(0));
     expect(StaffService.instance.getActiveStaff().map((e) => e.name),
-        containsAll(['山田', '佐藤', '鈴木']));
+        containsAll(['職員 冬子', '佐藤', '鈴木']));
   });
 
   test('項目の無い既存の職員（ステップ1の形）は初期値で読める', () {

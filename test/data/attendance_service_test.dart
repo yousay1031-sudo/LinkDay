@@ -118,7 +118,7 @@ void main() {
           DepartResult.success);
       final d = (await _stored('c1'))!;
       expect(d['status'], 'departed');
-      expect(d['checkInByStaffName'], '山田');
+      expect(d['checkInByStaffName'], '職員 冬子');
       expect(d['checkOutByStaffName'], '佐藤');
       expect(d['updatedByStaffName'], '佐藤');
     });

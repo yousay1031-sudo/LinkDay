@@ -14,7 +14,7 @@ Future<void> _startSession() async {
   final db = FakeFirebaseFirestore();
   await db.collection('memberships').doc('u1').set({'facilityId': 'fac-1'});
   final staff = db.collection('facilities').doc('fac-1').collection('staff');
-  await staff.doc('s1').set({'name': '山田', 'isActive': true});
+  await staff.doc('s1').set({'name': '職員 冬子', 'isActive': true});
   await staff.doc('s2').set({'name': '佐藤', 'isActive': true});
   await staff.doc('s3').set({'name': '退職者', 'isActive': false});
   await DataSession.instance.start('u1', db: db);
@@ -55,7 +55,7 @@ void main() {
     await tester.tap(find.byKey(const Key('staffBar')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('staffPickerDialog')), findsOneWidget);
-    expect(find.text('山田'), findsOneWidget);
+    expect(find.text('職員 冬子'), findsOneWidget);
     expect(find.text('佐藤'), findsOneWidget);
     expect(find.text('退職者'), findsNothing);
 

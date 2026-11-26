@@ -108,7 +108,7 @@ void main() {
       DailyJournalService.instance.now = () => at(18, 0);
       const j = DailyJournal(
         dateKey: '2026-11-25',
-        staff: [JournalStaff(staffId: 's-a', name: '山田')],
+        staff: [JournalStaff(staffId: 's-a', name: '職員 冬子')],
         activities: ['外遊び', 'おやつ'],
       );
       await DailyJournalService.instance.save(j, exists: false);
@@ -118,12 +118,12 @@ void main() {
       final d = docs.single.data();
       expect(d['date'], '2026-11-25');
       expect(d['staff'], [
-        {'staffId': 's-a', 'name': '山田'}
+        {'staffId': 's-a', 'name': '職員 冬子'}
       ]);
       expect(d['activities'], ['外遊び', 'おやつ']);
       expect(d['note'], ''); // 備考は空でも保存できる
       expect(d['updatedByStaffId'], 's-a');
-      expect(d['updatedByStaffName'], '山田');
+      expect(d['updatedByStaffName'], '職員 冬子');
       expect(d.containsKey('createdAt'), isTrue);
 
       await DailyJournalService.instance
@@ -164,7 +164,7 @@ void main() {
       const j = DailyJournal(
         dateKey: '2026-11-25',
         staff: [
-          JournalStaff(staffId: 's-a', name: '山田'),
+          JournalStaff(staffId: 's-a', name: '職員 冬子'),
           JournalStaff(staffId: null, name: '外部の応援'),
         ],
         activities: ['消した選択肢'],
@@ -213,7 +213,7 @@ void main() {
               .get())
           .data()!;
       expect(stored['journalActivityOptions'], ['読み聞かせ', '外遊び']);
-      expect(stored['updatedByStaffName'], '山田');
+      expect(stored['updatedByStaffName'], '職員 冬子');
     });
   });
 
@@ -221,13 +221,13 @@ void main() {
     final journal = DailyJournal(
       dateKey: '2026-11-25',
       staff: const [
-        JournalStaff(staffId: 's-a', name: '山田'),
+        JournalStaff(staffId: 's-a', name: '職員 冬子'),
         JournalStaff(staffId: 's-b', name: '佐藤'),
       ],
       activities: const ['外遊び', '設定から消した選択肢'],
       note: '架空の備考',
       updatedAt: at(18, 5),
-      updatedByStaffName: '山田',
+      updatedByStaffName: '職員 冬子',
     );
     final rows = [
       JournalAttendanceRow(
@@ -251,7 +251,7 @@ void main() {
         '日付　2026年11月25日（水）',
         '事業所名　架空の事業所',
         '今日いた職員',
-        '山田、佐藤',
+        '職員 冬子、佐藤',
         '利用者の入退室時間',
         '氏名',
         '入室',
@@ -269,7 +269,7 @@ void main() {
         '外遊び、設定から消した選択肢',
         '備考',
         '架空の備考',
-        '記入者　山田　11月25日 18:05',
+        '記入者　職員 冬子　11月25日 18:05',
       ]);
     });
 

@@ -84,7 +84,7 @@ void main() {
     await _settle();
     final stored = await _storedEntries();
     expect(stored['2026-11-25_c1']!['plannedStartTime'], '10:00');
-    expect(stored['2026-11-25_c1']!['updatedByStaffName'], '山田');
+    expect(stored['2026-11-25_c1']!['updatedByStaffName'], '職員 冬子');
     expect(stored['2026-11-23_c1']!['updatedByStaffName'], '自動',
         reason: '他のマスは書かない');
   });

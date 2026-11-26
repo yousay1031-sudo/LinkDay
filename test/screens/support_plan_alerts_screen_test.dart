@@ -38,7 +38,7 @@ Future<void> _ms(WidgetTester t, int ms) async {
 
 void main() {
   late Directory tmp;
-  const stamp = AuditStamp(staffId: 's-a', staffName: '山田');
+  const stamp = AuditStamp(staffId: 's-a', staffName: '職員 冬子');
 
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -77,7 +77,7 @@ void main() {
         customerId: cid,
         customerName: '架空 $cid',
         createdOn: created,
-        managerName: '山田',
+        managerName: '職員 冬子',
         explainedOn: created,
         agreedOn: created,
       );

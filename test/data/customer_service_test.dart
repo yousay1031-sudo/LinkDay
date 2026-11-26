@@ -64,7 +64,7 @@ void main() {
           'types': <String>[],
         },
       ]);
-      expect(stored['updatedByStaffName'], '山田');
+      expect(stored['updatedByStaffName'], '職員 冬子');
       expect(stored['updatedByStaffId'], 's-a');
       expect(stored['createdAt'], isA<Timestamp>());
 
@@ -129,7 +129,7 @@ void main() {
       await CustomerService.instance
           .updateCustomer(CustomerService.instance.getCustomerById('c1')!);
       await _settle();
-      expect((await b.storedCustomers())['c1']!['updatedByStaffName'], '山田');
+      expect((await b.storedCustomers())['c1']!['updatedByStaffName'], '職員 冬子');
     });
 
     test('利用日数の自動補正は担当者なしで「自動」と記録し、その項目だけを書く', () async {
@@ -178,7 +178,7 @@ void main() {
       final stored = (await b.storedCustomers())['c1']!;
       expect(stored['isActive'], isTrue);
       expect(stored['deactivatedAt'], isNull);
-      expect(stored['updatedByStaffName'], '山田');
+      expect(stored['updatedByStaffName'], '職員 冬子');
     });
   });
 

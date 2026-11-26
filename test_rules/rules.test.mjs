@@ -88,7 +88,7 @@ const audited = (extra = {}) => ({
   ...extra,
   updatedAt: serverTimestamp(),
   updatedByStaffId: 's-1',
-  updatedByStaffName: '山田',
+  updatedByStaffName: '職員 冬子',
 });
 
 // ── ステップ3: 業務日誌 ──────────────────────────────────
@@ -101,7 +101,7 @@ const JOURNAL_PAST = '2026-11-20';
 /** 日誌の業務データ（記録欄なし） */
 const journalDoc = (date, extra = {}) => ({
   date,
-  staff: [{ staffId: 's-1', name: '山田' }],
+  staff: [{ staffId: 's-1', name: '職員 冬子' }],
   activities: ['外遊び'],
   note: '',
   ...extra,
@@ -115,7 +115,7 @@ const planDoc = (extra = {}) => ({
   birthday: '2018-04-01',
   createdOn: '2026-05-01',
   managerStaffId: 's-1',
-  managerName: '山田',
+  managerName: '職員 冬子',
   texts: { intention: '架空の意向' },
   rows: [{ categories: ['self'], texts: { goal: '架空の目標' }, domains: ['health'], staff: [], priority: 1 }],
   explainedOn: null,
@@ -278,7 +278,7 @@ describe('書き込みの条件', () => {
       setDoc(doc(db, `facilities/${FAC}/customers/x`), {
         name: 'a',
         updatedAt: new Date(2020, 0, 1),
-        updatedByStaffName: '山田',
+        updatedByStaffName: '職員 冬子',
       }),
     );
   });
@@ -814,7 +814,7 @@ describe('業務日誌（ステップ3）', () => {
 
 describe('個別支援計画（ステップ3）', () => {
   const path = (id) => `facilities/${FAC}/supportPlans/${id}`;
-  const withAudit = (data, staffId = 's-1', name = '山田') => ({
+  const withAudit = (data, staffId = 's-1', name = '職員 冬子') => ({
     ...data,
     updatedAt: serverTimestamp(),
     updatedByStaffId: staffId,
@@ -872,7 +872,7 @@ describe('個別支援計画（ステップ3）', () => {
       texts: { intention: '軽く直した' },
       revisedAfterAgreementAt: serverTimestamp(),
       revisedAfterAgreementByStaffId: 's-1',
-      revisedAfterAgreementByStaffName: '山田',
+      revisedAfterAgreementByStaffName: '職員 冬子',
       ...extra,
     });
     // 記録が無い・他人の名前・時刻を偽る・同意の日付を変える

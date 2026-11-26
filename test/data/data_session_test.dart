@@ -23,13 +23,13 @@ void main() {
           .doc('fac-1')
           .collection('staff')
           .doc('s1')
-          .set({'name': '山田', 'isActive': true});
+          .set({'name': '職員 冬子', 'isActive': true});
 
       await DataSession.instance.start('u1', db: db);
 
       expect(DataSession.instance.status, DataSessionStatus.ready);
       expect(FacilityContext.instance.facilityId, 'fac-1');
-      expect(StaffService.instance.getActiveStaff().single.name, '山田');
+      expect(StaffService.instance.getActiveStaff().single.name, '職員 冬子');
     });
 
     test('所属がなければ notMember（業務データには接続しない）', () async {
@@ -64,9 +64,9 @@ void main() {
           .doc('fac-1')
           .collection('staff')
           .doc('s1')
-          .set({'name': '山田', 'isActive': true});
+          .set({'name': '職員 冬子', 'isActive': true});
       await DataSession.instance.start('u1', db: db);
-      expect(StaffSession.instance.current?.name, '山田');
+      expect(StaffSession.instance.current?.name, '職員 冬子');
     });
   });
 

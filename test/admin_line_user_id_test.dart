@@ -29,7 +29,7 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('linkday_admin_uid_');
     Hive.init(tmp.path);
     await SettingsService.instance.init();
-    // 設定は Firestore（段階7）。偽の保存先と担当者（山田）で接続する
+    // 設定は Firestore（段階7）。偽の保存先と担当者（職員 冬子）で接続する
     await FakeBackend.attachWithStaff();
   });
 

@@ -53,7 +53,7 @@ void main() {
     final ids = (await _col().get()).docs.map((d) => d.id).toSet();
     expect(ids, {'${_date}_pickup_0', '${_date}_dropoff_1'});
     final d = (await _col().doc('${_date}_pickup_0').get()).data()!;
-    expect(d['updatedByStaffName'], '山田');
+    expect(d['updatedByStaffName'], '職員 冬子');
     expect((d['stops'] as List).length, 2, reason: '停留所の並びはルートの中に持つ');
 
     await FakeBackend.reloadTransport();

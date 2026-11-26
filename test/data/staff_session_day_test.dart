@@ -30,14 +30,14 @@ void main() {
         .doc('fac-1')
         .collection('staff')
         .doc('s1')
-        .set({'name': '山田', 'isActive': true});
+        .set({'name': '職員 冬子', 'isActive': true});
     return db;
   }
 
   test('日付が変わると担当者は未選択に戻り、記録には担当者を求める', () async {
     await DataSession.instance.start('u1', db: await member());
     await StaffSession.instance.select(await _firstStaff());
-    expect(StaffSession.instance.current?.name, '山田');
+    expect(StaffSession.instance.current?.name, '職員 冬子');
 
     now = DateTime(2026, 11, 20, 0, 1); // 0 時をまたいだ
     expect(StaffSession.instance.current, isNull);
@@ -94,7 +94,7 @@ void main() {
       clearCache: (_) async => true,
     );
     expect(outcome, LogoutOutcome.pendingWrites);
-    expect(StaffSession.instance.current?.name, '山田');
+    expect(StaffSession.instance.current?.name, '職員 冬子');
   });
 }
 

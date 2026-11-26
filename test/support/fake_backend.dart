@@ -79,10 +79,10 @@ class FakeBackend {
   }
 
   /// テストで使う標準の職員 2 名
-  static const Staff staffA = Staff(id: 's-a', name: '山田');
+  static const Staff staffA = Staff(id: 's-a', name: '職員 冬子');
   static const Staff staffB = Staff(id: 's-b', name: '佐藤');
 
-  /// 職員 2 名・山田を選択済みで接続する（多くのテストの既定）
+  /// 職員 2 名・職員 冬子を選択済みで接続する（多くのテストの既定）
   static Future<FakeBackend> attachWithStaff({String facilityId = defaultFacilityId}) =>
       attach(facilityId: facilityId, staff: const [staffA, staffB], currentStaffId: staffA.id);
 

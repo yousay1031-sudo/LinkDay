@@ -28,10 +28,10 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   tearDown(FakeBackend.detach);
 
-  const yamada = Staff(
-      id: 's-a', name: '山田', role: StaffRole.childDevManager, workDays: [1]);
+  const fuyuko = Staff(
+      id: 's-a', name: '職員 冬子', role: StaffRole.childDevManager, workDays: [1]);
   const sato = Staff(id: 's-b', name: '佐藤');
-  const stamp = AuditStamp(staffId: 's-a', staffName: '山田');
+  const stamp = AuditStamp(staffId: 's-a', staffName: '職員 冬子');
   final today = DateTime(2026, 11, 26);
   DateTime now0() {
     final n = DateTime.now();
@@ -79,7 +79,7 @@ void main() {
       birthday: DateTime(2019, 4, 30),
       createdOn: createdOn,
       managerStaffId: 's-a',
-      managerName: '山田',
+      managerName: '職員 冬子',
       texts: const {SupportPlanForm.kIntention: '架空の意向（前回）'},
       rows: [
         row(['self'], '架空の本人支援の目標', domains: ['health', 'motor']),
@@ -96,7 +96,7 @@ void main() {
           {List<SupportPlan> plans = const []}) =>
       io(t, () async {
         await FakeBackend.attach(
-            staff: const [yamada, sato], currentStaffId: 's-a');
+            staff: const [fuyuko, sato], currentStaffId: 's-a');
         for (final c in [
           cust('a', '架空 あ子', 'カクウ アコ'),
           cust('b', '架空 い太', 'カクウ イタ'),
@@ -205,7 +205,7 @@ void main() {
     expect(d['customerId'], 'a');
     expect(d['createdOn'], isNotNull);
     expect(d['texts']['intention'], '架空の意向');
-    expect(d['updatedByStaffName'], '山田');
+    expect(d['updatedByStaffName'], '職員 冬子');
     // 履歴に出る
     await t.pageBack();
     await io(t, () async {});
@@ -284,7 +284,7 @@ void main() {
     final d = (await stored(t, 'p1'))!;
     expect(d['status'], 'agreed');
     expect(d['agreedOn'], '2026-06-01');
-    expect(d[SupportPlan.fRevisedByName], '山田');
+    expect(d[SupportPlan.fRevisedByName], '職員 冬子');
     expect(d[SupportPlan.fRevisedAt], isNotNull);
     expect(find.textContaining('同意後に修正あり'), findsWidgets);
     await t.pageBack();
@@ -415,7 +415,7 @@ void main() {
               'customerId': 'a',
               'customerName': '架空 あ子',
               'createdOn': '2026-06-01',
-              'managerName': '山田',
+              'managerName': '職員 冬子',
               'texts': {'intention': '架空の意向 ', 'policy': ''},
               'rows': [
                 {

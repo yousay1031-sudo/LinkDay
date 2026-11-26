@@ -16,7 +16,7 @@ void main() {
         customerId: cid,
         customerName: '架空 $cid',
         createdOn: created,
-        managerName: '山田',
+        managerName: '職員 冬子',
         status: agreed ? PlanStatus.agreed : PlanStatus.draft,
         explainedOn: agreed ? created : null,
         agreedOn: agreed ? created : null,

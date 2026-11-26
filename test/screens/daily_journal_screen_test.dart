@@ -31,8 +31,8 @@ void main() {
     await FakeBackend.detach();
   });
 
-  // 2026-11-25 は水曜日。山田は月水金、佐藤は火木、鈴木は勤務日なし
-  const yamada = Staff(id: 's-a', name: '山田', workDays: [1, 3, 5]);
+  // 2026-11-25 は水曜日。職員 冬子は月水金、佐藤は火木、鈴木は勤務日なし
+  const fuyuko = Staff(id: 's-a', name: '職員 冬子', workDays: [1, 3, 5]);
   const sato = Staff(id: 's-b', name: '佐藤', workDays: [2, 4]);
   const suzuki = Staff(id: 's-c', name: '鈴木');
   final today = DateTime(2026, 11, 25);
@@ -57,7 +57,7 @@ void main() {
   Future<void> setUpData(WidgetTester t, {String? currentStaffId = 's-a'}) =>
       io(t, () async {
         await FakeBackend.attach(
-            staff: const [yamada, sato, suzuki],
+            staff: const [fuyuko, sato, suzuki],
             currentStaffId: currentStaffId);
         DailyJournalService.instance.now = () => at(18, 0);
         await AttendanceService.instance.ensureDate(today);
@@ -83,7 +83,7 @@ void main() {
               absenceReason: '通院'),
         ]) {
           await AttendanceService.instance.upsertRecord(r,
-              stamp: const AuditStamp(staffId: 's-a', staffName: '山田'));
+              stamp: const AuditStamp(staffId: 's-a', staffName: '職員 冬子'));
         }
       });
 
@@ -142,12 +142,12 @@ void main() {
     await tapAndSettle(t, find.byKey(const Key('journalSave')));
     final d = (await io(t, () => journalDoc('2026-11-25').get())).data()!;
     expect(d['staff'], [
-      {'staffId': 's-a', 'name': '山田'},
+      {'staffId': 's-a', 'name': '職員 冬子'},
       {'staffId': 's-b', 'name': '佐藤'},
     ]);
     expect(d['activities'], ['外遊び', 'おやつ']);
     expect(d['note'], '');
-    expect(d['updatedByStaffName'], '山田');
+    expect(d['updatedByStaffName'], '職員 冬子');
     expect(find.byKey(const Key('journalDirty')), findsNothing);
 
     // 開き直す（再読み込み・別の端末で開くのに相当）
@@ -158,7 +158,7 @@ void main() {
     expect(selected(t, 'journalActivity_外遊び'), isTrue);
     expect(selected(t, 'journalActivity_おやつ'), isTrue);
     expect(selected(t, 'journalActivity_工作'), isFalse);
-    expect(text(t, 'journalWriter'), startsWith('記入者：山田'));
+    expect(text(t, 'journalWriter'), startsWith('記入者：職員 冬子'));
   });
 
   testWidgets('担当者が未選択なら保存されず、選ぶと保存されて記録にその担当者が残る', (t) async {
@@ -283,7 +283,7 @@ void main() {
         ],
         'activities': ['調理'],
         'note': '架空の備考',
-        'updatedByStaffName': '山田',
+        'updatedByStaffName': '職員 冬子',
       });
       await SettingsService.instance
           .updateJournalActivityOptions(['外遊び', 'おやつ']); // 「調理」を消した
@@ -304,10 +304,10 @@ void main() {
     expect(find.text('保存してから印刷します'), findsOneWidget);
     await tapAndSettle(t, find.byKey(const Key('journalSaveAndPrint')));
     expect(printed, isNotNull);
-    expect(printed!.staffNames, ['山田']);
+    expect(printed!.staffNames, ['職員 冬子']);
     expect(printed!.activities, ['外遊び']);
     expect(printed!.attendanceRows.first, ['架空 一郎', '14:00', '17:00', '退室済み']);
-    expect(printed!.writer, startsWith('山田'));
+    expect(printed!.writer, startsWith('職員 冬子'));
     expect((await io(t, () => journalDoc('2026-11-25').get())).exists, isTrue);
   });
 
@@ -323,7 +323,7 @@ void main() {
                 status: AttendanceStatus.departed,
                 checkInTime: at(14, i),
                 checkOutTime: at(17, i)),
-            stamp: const AuditStamp(staffId: 's-a', staffName: '山田'));
+            stamp: const AuditStamp(staffId: 's-a', staffName: '職員 冬子'));
       }
     });
     for (final size in const [Size(1280, 900), Size(530, 900)]) {
