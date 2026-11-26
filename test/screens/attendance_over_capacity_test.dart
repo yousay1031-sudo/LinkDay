@@ -77,6 +77,18 @@ void main() {
     await _ms(t, 1500);
   }
 
+  /// 数字の色と、そのすぐ後ろの丸の色
+  (Color?, Color?) digitAndPill(WidgetTester t, Finder chip, String n) {
+    final digit = find.descendant(of: chip, matching: find.text(n));
+    final text = t.widget<Text>(digit);
+    final style = DefaultTextStyle.of(t.element(digit)).style.merge(text.style);
+    final pill = t
+        .widgetList<Container>(
+            find.ancestor(of: digit, matching: find.byType(Container)))
+        .firstWhere((c) => c.decoration is BoxDecoration);
+    return (style.color, (pill.decoration! as BoxDecoration).color);
+  }
+
   testWidgets('予定 3 人・定員 1 人: 「定員超過 2」を出し、「空き枠」は出さない', (t) async {
     await seed(t, capacity: 1);
     await open(t);
@@ -85,6 +97,11 @@ void main() {
     expect(
         find.descendant(of: over, matching: find.text('定員超過')), findsOneWidget);
     expect(find.descendant(of: over, matching: find.text('2')), findsOneWidget);
+    // 人数の数字が、後ろの丸と違う色で出ている（白に白で読めない不具合）
+    final (digit, pill) = digitAndPill(t, over, '2');
+    expect(digit, isNot(pill));
+    expect(digit, AppColors.error);
+    expect(pill, Colors.white);
     expect(find.byKey(const Key('attendanceFreeSlots')), findsNothing);
     await t.pumpWidget(const SizedBox.shrink());
     await _ms(t, 3000);
@@ -96,6 +113,10 @@ void main() {
     final free = find.byKey(const Key('attendanceFreeSlots'));
     expect(free, findsOneWidget);
     expect(find.descendant(of: free, matching: find.text('7')), findsOneWidget);
+    // 空き枠の見た目は変えない（主色の丸に白い数字）
+    final (digit, pill) = digitAndPill(t, free, '7');
+    expect(digit, Colors.white);
+    expect(pill, AppColors.primary);
     expect(find.byKey(const Key('attendanceOverCapacity')), findsNothing);
     await t.pumpWidget(const SizedBox.shrink());
     await _ms(t, 3000);

@@ -1036,6 +1036,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     count: summary.overCapacity,
                     color: Colors.white,
                     bg: AppColors.error,
+                    // 白い丸に赤い数字（丸と数字が同じ白にならないように）
+                    countColor: AppColors.error,
                     icon: Icons.warning_amber_rounded,
                   )
                 : _summaryChip(
@@ -1060,6 +1062,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     required Color bg,
     required IconData icon,
     bool inRoomDot = false,
+    Color countColor = Colors.white,
   }) {
     return Container(
       key: key,
@@ -1094,9 +1097,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
             child: AnimatedCount(
               value: count,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: Colors.white,
+                color: countColor,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1151,7 +1154,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   /// 読み込み中の骨格用（カードと同じ大きさになる比率）
   double _aspectRatio(int columns, double width) {
     final cellWidth =
-        (width - _gridPadding(width) * 2 - _gridSpacing * (columns - 1)) / columns;
+        (width - _gridPadding(width) * 2 - _gridSpacing * (columns - 1)) /
+            columns;
     return cellWidth / _cardExtent;
   }
 
