@@ -14,6 +14,7 @@ import '../models/app_settings.dart';
 import '../theme/app_theme.dart';
 import 'attendance_screen.dart';
 import 'daily_journal_screen.dart';
+import 'next_day_booking_screen.dart';
 import 'customer_management_screen.dart';
 import 'settings_screen.dart';
 import 'staff_management_screen.dart';
@@ -248,6 +249,14 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (_) => const TransportScreen(),
         ),
       ).then((_) => _loadCounts());
+      return;
+    }
+    // 翌日予約選択（ステップ4）
+    if (item.route == '/next-day-booking') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NextDayBookingScreen()),
+      );
       return;
     }
     // 業務日誌（ステップ3）

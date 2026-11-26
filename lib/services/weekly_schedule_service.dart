@@ -127,6 +127,12 @@ class WeeklyScheduleService extends ChangeNotifier {
           ch.type == DocumentChangeType.removed ? null : ch.doc.data();
       final fields = data == null ? null : _entryFields(data);
       st.lastSeen[id] = fields;
+      if (data == null) {
+        st.updatedAt.remove(id);
+      } else {
+        // 未確定の書き込みはサーバーの時刻がまだ無い（届いた時刻で代える）
+        st.updatedAt[id] = readTimestamp(data['updatedAt']) ?? DateTime.now();
+      }
       // この端末の書き込みが未確定のマスは、古い通知で上書きしない
       if ((st.pending[id] ?? 0) > 0) continue;
       changed |= _applyDoc(st, id, fields);
@@ -493,6 +499,86 @@ class WeeklyScheduleService extends ChangeNotifier {
         .toList();
   }
 
+  // ── 翌日予約選択（ステップ4）──────────────────────────────────
+
+  /// 指定日のすべての予定（キャンセルを含む。読み込み済みの週だけ）
+  List<ScheduleEntry> getAllEntriesForDate(DateTime date) {
+    final schedule = _weeks[WeekUtil.weekKeyFromDate(date)];
+    final slot = schedule?.slotForDate(date);
+    return slot == null ? const [] : List.of(slot.entries);
+  }
+
+  /// 指定日の予定のうち、いちばん新しい更新時刻（予定が無ければ null）
+  DateTime? latestUpdateOn(DateTime date) {
+    final st = _states[WeekUtil.weekKeyFromDate(date)];
+    if (st == null) return null;
+    final prefix = '${dateOnlyToString(date)}_';
+    DateTime? latest;
+    for (final e in st.updatedAt.entries) {
+      if (!e.key.startsWith(prefix)) continue;
+      if (latest == null || e.value.isAfter(latest)) latest = e.value;
+    }
+    return latest;
+  }
+
+  /// 「利用する」に戻したときの状態（その曜日が利用曜日なら通常、違えば追加）
+  static ScheduleStatus useStatusFor(Customer c, DateTime date) =>
+      c.regularDays.contains(date.weekday)
+          ? ScheduleStatus.planned
+          : ScheduleStatus.additional;
+
+  /// 「利用する／お休み」（担当者が必要）。お休みは予定をキャンセルにする（消さない）。
+  /// 利用するに戻すと、利用曜日なら通常、違えば追加の予定になる。
+  Future<void> setUse(DateTime date, Customer c, {required bool use}) =>
+      updateEntryStatus(WeekUtil.weekKeyFromDate(date), date.weekday, c.id,
+          use ? useStatusFor(c, date) : ScheduleStatus.cancelled);
+
+  /// 同じ週のほかの日の、その児童の予定時刻（追加したときの初期値。無ければ null）。
+  /// いちばん多い組み合わせ、同じ数なら [date] に近い日のもの。
+  (String?, String?)? sameWeekTimesFor(String customerId, DateTime date) {
+    final schedule = _weeks[WeekUtil.weekKeyFromDate(date)];
+    if (schedule == null) return null;
+    final counts = <(String?, String?), int>{};
+    final nearest = <(String?, String?), int>{};
+    for (final slot in schedule.dailySlots) {
+      if (slot.date == date) continue;
+      for (final e in slot.entries) {
+        if (e.customerId != customerId) continue;
+        if (e.plannedStartTime == null && e.plannedEndTime == null) continue;
+        final k = (e.plannedStartTime, e.plannedEndTime);
+        counts[k] = (counts[k] ?? 0) + 1;
+        final dist = slot.date.difference(date).inDays.abs();
+        nearest[k] = nearest[k] == null || dist < nearest[k]! ? dist : nearest[k]!;
+      }
+    }
+    (String?, String?)? best;
+    for (final k in counts.keys) {
+      if (best == null ||
+          counts[k]! > counts[best]! ||
+          (counts[k] == counts[best] && nearest[k]! < nearest[best]!)) {
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  /// その日に予定の無い児童を「追加」の予定として足す（担当者が必要）。
+  /// 予定時刻は同じ週のほかの日の予定時刻（無ければ空）。
+  Future<void> addExtra(DateTime date, Customer c) async {
+    final times = sameWeekTimesFor(c.id, date);
+    await addEntry(
+      WeekUtil.weekKeyFromDate(date),
+      date.weekday,
+      ScheduleEntry(
+        customerId: c.id,
+        customerName: c.name,
+        status: ScheduleStatus.additional,
+        plannedStartTime: times?.$1,
+        plannedEndTime: times?.$2,
+      ),
+    );
+  }
+
   // ── 利用日数集計 ─────────────────────────────────────────────
 
   /// 指定顧客の月間利用予定日数を集計（cancelled 除く。読み込み済みの週だけ）
@@ -643,6 +729,7 @@ class WeeklyScheduleService extends ChangeNotifier {
 
   void _markPending(_WeekState st, String id) {
     st.pending[id] = (st.pending[id] ?? 0) + 1;
+    st.updatedAt[id] = DateTime.now();
   }
 
   void _sendBatch(_WeekState st, WriteBatch batch, List<String> ids,
@@ -811,6 +898,10 @@ class _WeekState {
 
   /// この端末の書き込みが未確定のマス（docId → 件数）
   final Map<String, int> pending = {};
+
+  /// マスごとの最後の更新時刻（保存先の updatedAt。この端末の未確定の書き込みは
+  /// 書いた時刻）。翌日予約選択の「確認後に変更あり」に使う
+  final Map<String, DateTime> updatedAt = {};
 
   /// 目印（null = 未作成）
   Map<String, dynamic>? markerBase;
