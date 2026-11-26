@@ -234,13 +234,37 @@ void main() {
   testWidgets('時間の変更: その日の予定の時間だけを直す', (t) async {
     await setUpData(t);
     await open(t);
-    await tap(t, find.byKey(const Key('nextDayCard_c2')));
+    // 時間の変更は、枠と時計の印のボタン（縦横 48 以上）
+    final btn = find.byKey(const Key('nextDayTimeBtn_c2'));
+    expect(t.getSize(btn).height, greaterThanOrEqualTo(48));
+    expect(t.getSize(btn).width, greaterThanOrEqualTo(48));
+    expect(find.descendant(of: btn, matching: find.byIcon(Icons.schedule)),
+        findsOneWidget);
+    // カードの他の場所を押しても開かない（押せる所をはっきりさせる）
+    await tap(t, find.byKey(const Key('nextDayTimeText_c2')));
+    expect(find.byKey(const Key('nextDayTimeSave')), findsNothing);
+    await tap(t, btn);
     await tap(t, find.byKey(const Key('nextDayTime_start')));
     await tap(t, find.text('決定'));
     await tap(t, find.byKey(const Key('nextDayTime_end')));
     await tap(t, find.text('決定'));
     await tap(t, find.byKey(const Key('nextDayTimeSave')));
     expect(text(t, 'nextDayTimeText_c2'), '14:00〜17:00　通常');
+  });
+
+  testWidgets('時間のボタン: お休みの児童・今日は押せない（押せない見た目）', (t) async {
+    await setUpData(t);
+    await open(t);
+    OutlinedButton b(String id) =>
+        t.widget<OutlinedButton>(find.byKey(Key('nextDayTimeBtn_$id')));
+    expect(b('c1').onPressed, isNotNull);
+    await tap(t, find.byKey(const Key('nextDayAbsent_c1')));
+    expect(b('c1').onPressed, isNull);
+    expect(b('c2').onPressed, isNotNull);
+    await tap(t, find.byKey(const Key('nextDayUse_c1')));
+    expect(b('c1').onPressed, isNotNull);
+    await tap(t, find.byKey(const Key('nextDayPrev'))); // 今日
+    expect(b('x1').onPressed, isNull);
   });
 
   testWidgets('児童を追加: 利用可能日数を超える見込みなら知らせ、追加すると「追加」で並ぶ', (t) async {

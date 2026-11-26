@@ -687,7 +687,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
             routeText: NextDayTransport.routeText(e.customerId, routes),
             onUse: c == null ? null : () => _setUse(c, true),
             onAbsent: c == null ? null : () => _setUse(c, false),
-            onTap: () => _editTime(c, e),
+            onTime: () => _editTime(c, e),
           );
         },
       );
@@ -705,7 +705,7 @@ class _EntryCard extends StatelessWidget {
     required this.routeText,
     required this.onUse,
     required this.onAbsent,
-    required this.onTap,
+    required this.onTime,
   });
 
   final ScheduleEntry entry;
@@ -716,7 +716,7 @@ class _EntryCard extends StatelessWidget {
   final String? routeText;
   final VoidCallback? onUse;
   final VoidCallback? onAbsent;
-  final VoidCallback onTap;
+  final VoidCallback onTime;
 
   @override
   Widget build(BuildContext context) {
@@ -798,13 +798,41 @@ class _EntryCard extends StatelessWidget {
         toggle('利用する', !absent, onUse, Key('nextDayUse_${e.customerId}'));
     final off =
         toggle('お休み', absent, onAbsent, Key('nextDayAbsent_${e.customerId}'));
+    // 時間の変更: 枠と時計の印で、押せるとひと目で分かるボタンにする。
+    // お休みの児童・表示だけの日は押せない（押せない見た目になる）
+    final timeEnabled = editable && !absent && !busy;
+    // container: 読み上げで独立したボタンにする（カード全体をこのボタンにしない）
+    final timeButton = Semantics(
+      container: true,
+      label: '${e.customerName}さんの時間を変える',
+      button: true,
+      excludeSemantics: true,
+      enabled: timeEnabled,
+      child: SizedBox(
+        height: 48,
+        child: OutlinedButton.icon(
+          key: Key('nextDayTimeBtn_${e.customerId}'),
+          onPressed: timeEnabled ? onTime : null,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          icon: const Icon(Icons.schedule, size: 18),
+          label: const Text('時間'),
+        ),
+      ),
+    );
     final buttons = horizontal
         ? Row(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(width: 80, child: timeButton),
+            const SizedBox(width: 6),
             SizedBox(width: 84, child: use),
             const SizedBox(width: 6),
             SizedBox(width: 76, child: off),
           ])
         : Row(children: [
+            Expanded(child: timeButton),
+            const SizedBox(width: 6),
             Expanded(child: use),
             const SizedBox(width: 6),
             Expanded(child: off),
@@ -813,26 +841,22 @@ class _EntryCard extends StatelessWidget {
     return Card(
       key: Key('nextDayCard_${e.customerId}'),
       color: absent ? const Color(0xFFF5F5F5) : null,
-      child: InkWell(
-        onTap: editable ? onTap : null,
-        borderRadius: BorderRadius.circular(AppTheme.cardBorderRadius),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
-          child: horizontal
-              ? Row(children: [
-                  Expanded(child: info),
-                  const SizedBox(width: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+        child: horizontal
+            ? Row(children: [
+                Expanded(child: info),
+                const SizedBox(width: 8),
+                buttons,
+              ])
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  info,
+                  const Spacer(),
                   buttons,
-                ])
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    info,
-                    const Spacer(),
-                    buttons,
-                  ],
-                ),
-        ),
+                ],
+              ),
       ),
     );
   }
