@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:linkday_app/data/facility_context.dart';
 import 'package:linkday_app/services/settings_service.dart';
+import 'package:linkday_app/theme/app_theme.dart';
 import 'package:linkday_app/widgets/journal_activity_options_section.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -86,6 +87,34 @@ void main() {
     expect(s.take(2), ['室内遊び', '外遊び']);
     expect(SettingsService.instance.getSettings().journalActivityOptions, s);
   });
+
+  // アプリのテーマ（ボタンの最小サイズが横幅いっぱい）でも「足す」が描かれて押せる
+  for (final w in const [1280.0, 820.0, 530.0]) {
+    testWidgets('幅 ${w.toInt()}・アプリのテーマ: 「足す」が入力欄の右に見えて押せる', (t) async {
+      await io(t, FakeBackend.attachWithStaff);
+      await t.binding.setSurfaceSize(Size(w, 1400));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      await t.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme
+              .copyWith(visualDensity: VisualDensity.compact),
+          home: const Scaffold(
+              body: SingleChildScrollView(
+                  child: JournalActivityOptionsSection()))));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull, reason: '描けないボタンがない');
+      final add = find.byKey(const Key('journalOptionAdd'));
+      expect(add.hitTestable(), findsOneWidget);
+      final r = t.getRect(add);
+      final input = t.getRect(find.byKey(const Key('journalOptionInput')));
+      expect(r.height, greaterThanOrEqualTo(48));
+      expect(r.width, greaterThanOrEqualTo(48));
+      expect(r.left, greaterThanOrEqualTo(input.right));
+      expect(r.right, lessThanOrEqualTo(w));
+      await t.enterText(find.byKey(const Key('journalOptionInput')), '読み聞かせ');
+      await tap(t, add);
+      expect((await io(t, stored))!.last, '読み聞かせ');
+    });
+  }
 
   testWidgets('押す場所は高さ 48 以上', (t) async {
     await open(t);

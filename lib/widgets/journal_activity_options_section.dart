@@ -186,6 +186,10 @@ class _JournalActivityOptionsSectionState
                 height: 48,
                 child: ElevatedButton.icon(
                   key: const Key('journalOptionAdd'),
+                  // テーマの最小サイズは横幅いっぱい（Size.fromHeight）なので、
+                  // 入力欄の横に並べると幅が決まらず描かれない。最小を 48×48 にする
+                  style:
+                      ElevatedButton.styleFrom(minimumSize: const Size(48, 48)),
                   onPressed: _add,
                   icon: const Icon(Icons.add),
                   label: const Text('足す'),
