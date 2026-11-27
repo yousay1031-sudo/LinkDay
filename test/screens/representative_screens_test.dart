@@ -577,6 +577,78 @@ void main() {
       await _unmount(t);
     });
 
+    // PC のブラウザ（Windows・詰めた表示）でも、ボタンの押せる範囲は 48 以上。
+    // 「除外」は並べ替えのつまみと押し間違えない間隔を空ける
+    for (final size in const [
+      Size(1280, 900),
+      Size(820, 1180),
+      Size(530, 900)
+    ]) {
+      testWidgets('幅 ${size.width.toInt()}: 送迎計画のボタンは押せる範囲 48 以上', (t) async {
+        await t.binding.setSurfaceSize(size);
+        addTearDown(() => t.binding.setSurfaceSize(null));
+        await t.runAsync(() async {
+          await FakeBackend.resetTransport();
+          await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
+            vehicleName: '車両A',
+            vehicleIndex: 0,
+            transportType: TransportType.pickup,
+            dateKey: keyOf(DateTime.now()),
+            stops: [
+              for (final n in ['一', '二'])
+                TransportStop(
+                    customerId: n, customerName: '送迎 $n', address: '帯広市テスト')
+            ],
+          ));
+        });
+        await t.pumpWidget(MaterialApp(
+            theme: ThemeData(
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            home: TransportScreen(scheduledCustomersLoader: loader)));
+        await _ms(t, 900);
+        expect(find.text('送迎 二'), findsOneWidget);
+        void atLeast48(Finder f, String what) {
+          expect(f, findsWidgets, reason: what);
+          for (final e in f.evaluate()) {
+            final r = t.getRect(find.byElementPredicate((x) => x == e));
+            expect(r.height, greaterThanOrEqualTo(47.9), reason: '$what $r');
+            expect(r.width, greaterThanOrEqualTo(47.9), reason: '$what $r');
+          }
+        }
+
+        final screen = find.byType(TransportScreen);
+        Finder inScreen(Finder f) => find.descendant(of: screen, matching: f);
+        atLeast48(inScreen(find.byType(IconButton)), '戻る・日付の前後・除外・メニュー');
+        atLeast48(
+            inScreen(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
+            '今日・自動グループ分け・全最適化');
+        atLeast48(inScreen(find.byType(PopupMenuButton<String>)),
+            '自動グループ分け（上）・カードのメニュー');
+        atLeast48(find.byKey(const Key('transportPickDate')), '日付');
+        for (final l in const ['最適化', '地図', 'G-Maps']) {
+          atLeast48(find.byKey(Key('transportFooter_$l')), l);
+        }
+        // 除外と並べ替えのつまみの間は 8 以上空いている
+        final handles = find.byIcon(Icons.drag_handle);
+        expect(find.byTooltip('除外'), findsNWidgets(2));
+        for (final e in find.byTooltip('除外').evaluate()) {
+          final rm = t.getRect(find.byElementPredicate((x) => x == e));
+          final near = handles
+              .evaluate()
+              .map((h) => t.getRect(find.byElementPredicate((x) => x == h)))
+              .where((h) => (h.center.dy - rm.center.dy).abs() < 24);
+          expect(near, isNotEmpty);
+          for (final h in near) {
+            expect(h.left - rm.right, greaterThanOrEqualTo(8),
+                reason: '除外 $rm・つまみ $h');
+          }
+        }
+        expect(t.takeException(), isNull);
+        await _unmount(t);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+    }
+
     testWidgets('空: ルートが無い日は空状態（お迎え・お送りとも）', (t) async {
       await seed(t, routeToday: false);
       await pump(t);

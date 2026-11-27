@@ -639,6 +639,19 @@ class _TransportScreenState extends State<TransportScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 詰めた表示（PC のブラウザ）でも、この画面のボタンは押せる範囲を 48 以上にする。
+    // 見た目の大きさは各ボタンの指定のまま、押せる範囲だけを 48 に広げる。
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        visualDensity: VisualDensity.standard,
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+      ),
+      child: _buildScaffold(),
+    );
+  }
+
+  Widget _buildScaffold() {
     return Scaffold(
       appBar: _buildAppBar(),
       body: Column(
@@ -741,35 +754,42 @@ class _TransportScreenState extends State<TransportScreen>
           ),
           PressableScale(
             child: GestureDetector(
+              key: const Key('transportPickDate'),
               onTap: _pickDate,
+              behavior: HitTestBehavior.opaque,
+              // 押せる範囲は高さ 48（見た目の丸い枠は変えない）
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.calendar_today,
-                        size: 16, color: AppColors.primary),
-                    const SizedBox(width: 8),
-                    // 日付の切替は StateSwitcher（0.7→1.0 / 250ms、消えない）
-                    StateSwitcher(
-                      stateKey: _dateKey,
-                      child: Text(
-                        '${_selectedDate.year}年${_selectedDate.month}月'
-                        '${_selectedDate.day}日（$wd）',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
+                constraints: const BoxConstraints(minHeight: 48),
+                alignment: Alignment.center,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today,
+                          size: 16, color: AppColors.primary),
+                      const SizedBox(width: 8),
+                      // 日付の切替は StateSwitcher（0.7→1.0 / 250ms、消えない）
+                      StateSwitcher(
+                        stateKey: _dateKey,
+                        child: Text(
+                          '${_selectedDate.year}年${_selectedDate.month}月'
+                          '${_selectedDate.day}日（$wd）',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -784,6 +804,8 @@ class _TransportScreenState extends State<TransportScreen>
             },
           ),
           TextButton(
+            key: const Key('transportToday'),
+            style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
             onPressed: () {
               setState(() => _selectedDate = DateTime.now());
               _loadAll();
@@ -1659,13 +1681,17 @@ class _TransportScreenState extends State<TransportScreen>
                   fontSize: 11, color: AppColors.onSurfaceVariant),
             ),
           const SizedBox(width: 4),
+          // 印の大きさはそのまま、押せる範囲を 48 にする
           IconButton(
+            key: ValueKey('${route.id}_stop_${index}_remove'),
             icon: const Icon(Icons.close, size: 18, color: AppColors.error),
             onPressed: () => _removeStop(route, index),
             tooltip: '除外',
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
           ),
+          // 並べ替えのつまみと押し間違えないように間を空ける
+          const SizedBox(width: 16),
           const Icon(Icons.drag_handle,
               size: 20, color: AppColors.onSurfaceVariant),
         ],
@@ -1720,24 +1746,30 @@ class _TransportScreenState extends State<TransportScreen>
     required Color color,
   }) {
     return InkWell(
+      key: Key('transportFooter_$label'),
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
+      // 押せる範囲は高さ 48（見た目の枠は変えない）
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 4),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12, color: color, fontWeight: FontWeight.w600)),
-          ],
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+        alignment: Alignment.center,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+            ],
+          ),
         ),
       ),
     );
