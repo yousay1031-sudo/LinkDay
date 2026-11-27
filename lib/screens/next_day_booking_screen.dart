@@ -8,6 +8,7 @@ import '../data/day_ticker.dart';
 import '../data/staff_session.dart';
 import '../models/customer.dart';
 import '../models/weekly_schedule.dart';
+import '../services/attendance_service.dart';
 import '../services/customer_service.dart';
 import '../services/day_confirmation_service.dart';
 import '../services/monthly_usage_service.dart';
@@ -76,6 +77,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
         TransportPlanService.instance,
         DayConfirmationService.instance,
         DayTicker.instance,
+        AttendanceService.instance,
       ];
 
   @override
@@ -128,6 +130,15 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
       }
       unawaited(TransportPlanService.instance.ensureDate(_key(d)));
       await DayConfirmationService.instance.ensure(d);
+      // 今日と過ぎた日は、出席の記録があれば出席の記録から数える（出席管理と揃える）
+      if (!d.isAfter(_today)) {
+        try {
+          await AttendanceService.instance.ensureDate(d);
+        } catch (e) {
+          // 読めないときは週間利用計画から出す（画面は止めない）
+          debugPrint('[NextDayBooking] attendance load failed: $e');
+        }
+      }
     } on WeekUnavailableException catch (e) {
       if (!mounted || _date != d) return;
       setState(() {
@@ -185,6 +196,30 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
       ButtonStyle(minimumSize: WidgetStateProperty.all(const Size(64, 48)));
 
   bool get _editable => _date != null && _date!.isAfter(_today);
+
+  /// 今日と過ぎた日で出席の記録があるか（あれば出席の記録から一覧と人数を作る）
+  bool _fromAttendance(DateTime d) => NextDayAttendanceView.applies(
+      d, _today, AttendanceService.instance.getRecordsByDate(d));
+
+  /// 一覧の行。明日以降は週間利用計画、今日と過ぎた日は出席の記録（あれば）
+  List<NextDayRow> _rows(DateTime d) {
+    final plan = _w.getAllEntriesForDate(d);
+    if (_fromAttendance(d)) {
+      return NextDayAttendanceView.rows(
+          AttendanceService.instance.getRecordsByDate(d), plan);
+    }
+    return [for (final e in plan) NextDayRow(e)];
+  }
+
+  /// 人数（利用する・お休み・定員・空き／超過）。一覧と同じ元から数える
+  NextDayCounts _counts(DateTime d) {
+    final cap = SettingsService.instance.getSettings().maxStudentsPerDay;
+    if (_fromAttendance(d)) {
+      return NextDayCounts.ofAttendance(
+          AttendanceService.instance.getRecordsByDate(d), cap);
+    }
+    return NextDayCounts.of(_w.getAllEntriesForDate(d), cap);
+  }
 
   void _snack(String m, {Color? color}) {
     if (!mounted) return;
@@ -468,8 +503,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
   /// 確認した（印を残すだけ。予定は固定しない。確認の後も直せて、直すと「確認後に変更あり」）
   Widget _confirmBar(DateTime d) {
     final conf = DayConfirmationService.instance.get(d);
-    final counts = NextDayCounts.of(_w.getAllEntriesForDate(d),
-        SettingsService.instance.getSettings().maxStudentsPerDay);
+    final counts = _counts(d);
     final changed = conf != null &&
         DayConfirmationService.changedAfter(conf, d, counts.using);
     final at = conf?.confirmedAt;
@@ -633,8 +667,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
   }
 
   Widget _countsBar(DateTime d) {
-    final c = NextDayCounts.of(_w.getAllEntriesForDate(d),
-        SettingsService.instance.getSettings().maxStudentsPerDay);
+    final c = _counts(d);
     Widget item(String label, String value, {Color? color, Key? key}) =>
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -691,7 +724,12 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
   }
 
   Widget _list(DateTime d) {
-    final entries = _w.getAllEntriesForDate(d);
+    final rows = _rows(d);
+    final entries = [for (final r in rows) r.entry];
+    final attendanceAbsent = {
+      for (final r in rows)
+        if (r.attendanceAbsent) r.entry.customerId
+    };
     if (entries.isEmpty) {
       return Center(
         child: Padding(
@@ -730,6 +768,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
             entry: e,
             customer: c,
             horizontal: cols == 1,
+            attendanceAbsent: attendanceAbsent.contains(e.customerId),
             editable: _editable && c != null,
             busy: _busy.contains('use_${e.customerId}'),
             routeParts: NextDayTransport.routeParts(e.customerId, routes),
@@ -748,6 +787,7 @@ class _EntryCard extends StatelessWidget {
     required this.entry,
     required this.customer,
     required this.horizontal,
+    required this.attendanceAbsent,
     required this.editable,
     required this.busy,
     required this.routeParts,
@@ -759,6 +799,9 @@ class _EntryCard extends StatelessWidget {
   final ScheduleEntry entry;
   final Customer? customer;
   final bool horizontal;
+
+  /// 出席管理で欠席（お休みと同じ扱いで出し、印を付ける）
+  final bool attendanceAbsent;
   final bool editable;
   final bool busy;
 
@@ -775,11 +818,13 @@ class _EntryCard extends StatelessWidget {
     final time = (e.plannedStartTime == null && e.plannedEndTime == null)
         ? '時間未定'
         : '${e.plannedStartTime ?? '--:--'}〜${e.plannedEndTime ?? '--:--'}';
-    final kind = switch (e.status) {
-      ScheduleStatus.planned => '通常',
-      ScheduleStatus.additional => '追加',
-      ScheduleStatus.cancelled => 'お休み',
-    };
+    final kind = attendanceAbsent
+        ? '出席管理で欠席'
+        : switch (e.status) {
+            ScheduleStatus.planned => '通常',
+            ScheduleStatus.additional => '追加',
+            ScheduleStatus.cancelled => 'お休み',
+          };
     final place = NextDayTransport.placeText(customer, e);
     final warnRoute = absent && routeParts.isNotEmpty;
     final fg = absent ? AppColors.onSurfaceVariant : AppColors.onSurface;
@@ -797,7 +842,12 @@ class _EntryCard extends StatelessWidget {
             key: Key('nextDayTimeText_${e.customerId}'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12.5, color: fg)),
+            style: attendanceAbsent
+                ? const TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w700)
+                : TextStyle(fontSize: 12.5, color: fg)),
         // 送迎の場所（長い住所は切れてよい）
         Text(
           warnRoute ? '送迎計画に入っています（送迎計画で外してください）' : place,
