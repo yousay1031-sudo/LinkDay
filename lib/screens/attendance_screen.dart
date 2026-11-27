@@ -985,71 +985,63 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       width: double.infinity,
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _summaryChip(
-              label: '予定',
-              count: summary.scheduledCount,
-              color: const Color(0xFF1565C0),
-              bg: const Color(0xFFE3F2FD),
-              icon: Icons.schedule,
-            ),
-            const SizedBox(width: 8),
-            _summaryChip(
-              label: '在室中',
-              count: summary.presentCount,
-              color: const Color(0xFF2E7D32),
-              bg: const Color(0xFFE8F5E9),
-              icon: Icons.login,
-              inRoomDot: summary.presentCount > 0,
-            ),
-            const SizedBox(width: 8),
-            _summaryChip(
-              label: '退室済',
-              count: summary.departedCount,
-              color: const Color(0xFF546E7A),
-              bg: const Color(0xFFECEFF1),
-              icon: Icons.logout,
-            ),
-            const SizedBox(width: 8),
-            _summaryChip(
-              label: '欠席',
-              count: summary.absentCount,
-              color: AppColors.error,
-              bg: const Color(0xFFFFEBEE),
-              icon: Icons.cancel_outlined,
-            ),
-            const SizedBox(width: 12),
-            Container(
-              height: 32,
-              width: 1,
-              color: AppColors.divider,
-            ),
-            const SizedBox(width: 12),
-            // 定員を超えているときは「空き枠 0」ではなく、超えている人数を強い色で出す
-            summary.overCapacity > 0
-                ? _summaryChip(
-                    key: const Key('attendanceOverCapacity'),
-                    label: '定員超過',
-                    count: summary.overCapacity,
-                    color: Colors.white,
-                    bg: AppColors.error,
-                    // 白い丸に赤い数字（丸と数字が同じ白にならないように）
-                    countColor: AppColors.error,
-                    icon: Icons.warning_amber_rounded,
-                  )
-                : _summaryChip(
-                    key: const Key('attendanceFreeSlots'),
-                    label: '空き枠',
-                    count: summary.availableSlots,
-                    color: AppColors.primary,
-                    bg: AppColors.primary.withValues(alpha: 0.1),
-                    icon: Icons.event_available,
-                  ),
-          ],
-        ),
+      // 狭い幅でも横に流さずに全部見えるように、入りきらないときは次の段へ折り返す
+      child: Wrap(
+        key: const Key('attendanceSummaryBar'),
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _summaryChip(
+            label: '予定',
+            count: summary.scheduledCount,
+            color: const Color(0xFF1565C0),
+            bg: const Color(0xFFE3F2FD),
+            icon: Icons.schedule,
+          ),
+          _summaryChip(
+            label: '在室中',
+            count: summary.presentCount,
+            color: const Color(0xFF2E7D32),
+            bg: const Color(0xFFE8F5E9),
+            icon: Icons.login,
+            inRoomDot: summary.presentCount > 0,
+          ),
+          _summaryChip(
+            label: '退室済',
+            count: summary.departedCount,
+            color: const Color(0xFF546E7A),
+            bg: const Color(0xFFECEFF1),
+            icon: Icons.logout,
+          ),
+          _summaryChip(
+            label: '欠席',
+            count: summary.absentCount,
+            color: AppColors.error,
+            bg: const Color(0xFFFFEBEE),
+            icon: Icons.cancel_outlined,
+          ),
+          // 定員を超えているときは「空き枠 0」ではなく、超えている人数を強い色で出す
+          summary.overCapacity > 0
+              ? _summaryChip(
+                  key: const Key('attendanceOverCapacity'),
+                  label: '定員超過',
+                  count: summary.overCapacity,
+                  color: Colors.white,
+                  bg: AppColors.error,
+                  // 白い丸に赤い数字（丸と数字が同じ白にならないように）
+                  countColor: AppColors.error,
+                  icon: Icons.warning_amber_rounded,
+                )
+              : _summaryChip(
+                  key: const Key('attendanceFreeSlots'),
+                  label: '空き枠',
+                  count: summary.availableSlots,
+                  color: AppColors.primary,
+                  bg: AppColors.primary.withValues(alpha: 0.1),
+                  icon: Icons.event_available,
+                ),
+        ],
       ),
     );
   }

@@ -107,6 +107,67 @@ void main() {
     await _ms(t, 3000);
   });
 
+  // 人数の帯: 横に流さず、狭い幅では折り返して「定員超過」「空き枠」まで見える
+  for (final (w, capacity, key) in const [
+    (1280.0, 1, 'attendanceOverCapacity'),
+    (530.0, 1, 'attendanceOverCapacity'),
+    (390.0, 1, 'attendanceOverCapacity'),
+    (390.0, 10, 'attendanceFreeSlots'),
+  ]) {
+    testWidgets('幅 ${w.toInt()}・定員 $capacity: 人数の帯が画面の中に全部見える',
+        (t) async {
+      await seed(t, capacity: capacity);
+      await t.binding.setSurfaceSize(Size(w, 900));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      await t.pumpWidget(MaterialApp(
+          theme: AppTheme.lightTheme
+              .copyWith(visualDensity: VisualDensity.compact),
+          home: const AttendanceScreen()));
+      await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await _ms(t, 1500);
+      expect(t.takeException(), isNull);
+      final bar = find.byKey(const Key('attendanceSummaryBar'));
+      expect(
+          find.ancestor(of: bar, matching: find.byType(SingleChildScrollView)),
+          findsNothing,
+          reason: '横に流す作りではない');
+      final chips = [
+        for (final l in const ['予定', '在室中', '退室済', '欠席'])
+          find.ancestor(
+              of: find.descendant(of: bar, matching: find.text(l)),
+              matching: find.byType(Container)).first,
+        find.byKey(Key(key)),
+      ];
+      final rects = [for (final c in chips) t.getRect(c)];
+      for (final r in rects) {
+        expect(r.left, greaterThanOrEqualTo(0));
+        expect(r.right, lessThanOrEqualTo(w), reason: '画面の右端で切れない');
+      }
+      // 段の数（同じ段の中では中心の高さがほぼ揃う）
+      final centers = rects.map((r) => r.center.dy).toList()..sort();
+      final rows = <double>[];
+      for (final c in centers) {
+        if (rows.isEmpty || c - rows.last > 10) rows.add(c);
+      }
+      if (w >= 1000) {
+        expect(rows.length, 1, reason: '広い幅では 1 段');
+      } else {
+        expect(rows.length, lessThanOrEqualTo(2), reason: '狭い幅では 2 段まで');
+      }
+      // 段どうしが重ならない
+      for (var i = 0; i < rects.length; i++) {
+        for (var j = i + 1; j < rects.length; j++) {
+          expect(rects[i].intersect(rects[j]).isEmpty ||
+              rects[i].intersect(rects[j]).width <= 0 ||
+              rects[i].intersect(rects[j]).height <= 0, isTrue);
+        }
+      }
+      await t.pumpWidget(const SizedBox.shrink());
+      await _ms(t, 3000);
+    });
+  }
+
   testWidgets('定員内なら従来どおり「空き枠」', (t) async {
     await seed(t, capacity: 10);
     await open(t);
