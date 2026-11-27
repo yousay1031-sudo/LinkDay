@@ -58,7 +58,7 @@ void main() {
   test('設定が未入力（設定の文書が無い）ときは既定の 10 名で数える', () async {
     expect((await _settingsDoc().get()).exists, isFalse);
     expect(summary().capacity, 10);
-    expect(summary().availableSlots, 10 - 2 - 1);
+    expect(summary().availableSlots, 10 - 2 - 1 - 1);
   });
 
   test('設定の項目だけ無いときも 10 名', () async {
@@ -73,7 +73,7 @@ void main() {
     await SettingsService.instance.updateOperatingHours('08:00', '17:00', 6);
     await _settle();
     expect(summary().capacity, 6);
-    expect(summary().availableSlots, 6 - 2 - 1);
+    expect(summary().availableSlots, 6 - 2 - 1 - 1);
   });
 
   test('別の端末で変えた値も反映される（変更通知で読み直す）', () async {
@@ -81,14 +81,14 @@ void main() {
     await _settle();
     await _settingsDoc().update({'maxStudentsPerDay': 20});
     await _settle();
-    expect(summary().availableSlots, 20 - 2 - 1);
+    expect(summary().availableSlots, 20 - 2 - 1 - 1);
   });
 
   test('定員より予定・在室が多いときは 0（負の数にしない）。定員が 0 以下でも例外にしない', () async {
     await SettingsService.instance.updateOperatingHours('08:00', '17:00', 2);
     await _settle();
     expect(summary().availableSlots, 0);
-    expect(summary().overCapacity, 2 + 1 - 2); // 超えている人数が分かる（ステップ4）
+    expect(summary().overCapacity, 2 + 1 + 1 - 2); // 超えている人数が分かる（退室済も数える）
     await _settingsDoc().update({'maxStudentsPerDay': -5});
     await _settle();
     expect(summary().availableSlots, 0);

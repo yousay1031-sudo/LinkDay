@@ -241,19 +241,26 @@ class AttendanceSummary {
     required this.capacity,
   });
 
-  /// 空き枠 = 定員 - (予定 + 在室中)。0 未満にはしない
-  /// （定員が 0 以下の値で保存されていても例外にせず 0 を返す）
+  /// その日に利用した（する）人数 = 予定 + 在室中 + 退室済。欠席は数えない。
+  /// 事業所の方針「その日に定員の人数が利用したら定員」に合わせ、退室した児童も
+  /// 数える（帰るたびに空き枠が増えたり、定員超過が減ったりしない）。
+  /// 翌日予約選択の「利用する」人数（お休み以外）と同じ数え方。
+  int get usedCount => scheduledCount + presentCount + departedCount;
+
+  /// 空き枠 = 定員 - その日に利用した人数。0 未満にはしない
+  /// （定員が 0 以下の値で保存されていても例外にせず 0 を返す）。
+  /// 欠席で空いた枠だけが空き枠として増える。
   int get availableSlots {
-    final left = capacity - scheduledCount - presentCount;
+    final left = capacity - usedCount;
     return left < 0 ? 0 : left;
   }
 
-  int get totalActive => scheduledCount + presentCount + departedCount;
+  int get totalActive => usedCount;
 
-  /// 定員を超えている人数（予定 + 在室中 が定員より多いとき。超えていなければ 0）。
+  /// 定員を超えている人数（その日に利用した人数が定員より多いとき。超えていなければ 0）。
   /// 空き枠の表示を「0」にせず、超えていることが分かるようにするため（ステップ4）
   int get overCapacity {
-    final over = scheduledCount + presentCount - capacity;
+    final over = usedCount - capacity;
     return over > 0 ? over : 0;
   }
 }
