@@ -929,7 +929,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final wd = weekdays[_selectedDate.weekday - 1];
     final dateStr = '${_selectedDate.month}/${_selectedDate.day}（$wd）';
 
-    return AppBar(
+    final appBar = AppBar(
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -975,6 +975,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               ),
         const SizedBox(width: 4),
       ],
+    );
+    // 詰めた表示（PC のブラウザ）でも、戻る・日付変更・LINE通知の履歴・PDF出力の
+    // 押せる範囲を 48 以上にする（画面の他のボタンには影響させない）
+    return PreferredSize(
+      preferredSize: appBar.preferredSize,
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          visualDensity: VisualDensity.standard,
+          materialTapTargetSize: MaterialTapTargetSize.padded,
+        ),
+        child: appBar,
+      ),
     );
   }
 

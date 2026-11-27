@@ -93,20 +93,62 @@ void main() {
     await t.binding.setSurfaceSize(size);
     addTearDown(() => t.binding.setSurfaceSize(null));
     await t.pumpWidget(MaterialApp(
-        theme: AppTheme.lightTheme
-            .copyWith(visualDensity: VisualDensity.compact),
+        theme:
+            AppTheme.lightTheme.copyWith(visualDensity: VisualDensity.compact),
         home: const AttendanceScreen()));
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 100)));
     await _ms(t, 1500);
   }
 
-  final card = find.byWidgetPredicate(
-      (w) => w.runtimeType.toString() == '_AttendanceCard');
+  final card = find
+      .byWidgetPredicate((w) => w.runtimeType.toString() == '_AttendanceCard');
+
+  // 上の帯の 戻る・日付変更・LINE通知の履歴・PDF出力（PC のブラウザ＝Windows・詰めた表示）
+  for (final size in const [Size(1280, 900), Size(820, 1180), Size(530, 900)]) {
+    testWidgets('幅 ${size.width.toInt()}: 上の帯のボタンは押せる範囲 48 以上', (t) async {
+      await seed(t);
+      await t.binding.setSurfaceSize(size);
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      final nav = GlobalKey<NavigatorState>();
+      await t.pumpWidget(MaterialApp(
+          navigatorKey: nav,
+          theme: AppTheme.lightTheme.copyWith(
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          home: const Scaffold(body: SizedBox.shrink())));
+      nav.currentState!.push(
+          MaterialPageRoute<void>(builder: (_) => const AttendanceScreen()));
+      await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await _ms(t, 1500);
+      final bar = find.byType(AppBar);
+      for (final tip in const ['戻る', '日付変更', 'LINE通知の履歴', 'PDF出力']) {
+        // 戻るは BackButton（テストでは英語の Back が付く）
+        final b = tip == '戻る'
+            ? find.descendant(of: bar, matching: find.byType(IconButton)).first
+            : find.descendant(
+                of: bar,
+                matching: find.ancestor(
+                    of: find.byTooltip(tip),
+                    matching: find.byType(IconButton)));
+        if (tip == '戻る') {
+          expect(find.descendant(of: bar, matching: find.byType(BackButton)),
+              findsOneWidget);
+        }
+        expect(b, findsOneWidget, reason: tip);
+        final r = t.getRect(b);
+        expect(r.height, greaterThanOrEqualTo(47.9), reason: '$tip $r');
+        expect(r.width, greaterThanOrEqualTo(47.9), reason: '$tip $r');
+      }
+      expect(t.takeException(), isNull);
+      await t.pumpWidget(const SizedBox.shrink());
+      await _ms(t, 3000);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+  }
 
   for (final size in const [Size(1280, 900), Size(820, 1180), Size(530, 900)]) {
-    testWidgets('幅 ${size.width.toInt()}: 4 つのボタンが高さ 48 以上でカードに収まる',
-        (t) async {
+    testWidgets('幅 ${size.width.toInt()}: 4 つのボタンが高さ 48 以上でカードに収まる', (t) async {
       await seed(t);
       await open(t, size);
       expect(t.takeException(), isNull, reason: 'はみ出しの警告が出ていない');
@@ -118,7 +160,8 @@ void main() {
         final r = t.getRect(b);
         expect(r.height, greaterThanOrEqualTo(47.9), reason: label);
         final c = t.getRect(find.ancestor(of: b, matching: card));
-        expect(r.bottom, lessThanOrEqualTo(c.bottom + 0.1), reason: '$label がカードに収まる');
+        expect(r.bottom, lessThanOrEqualTo(c.bottom + 0.1),
+            reason: '$label がカードに収まる');
         expect(r.top, greaterThanOrEqualTo(c.top - 0.1), reason: label);
       }
       // 入室・退室の時刻（押すと時刻を直せる）も高さ 48 以上
