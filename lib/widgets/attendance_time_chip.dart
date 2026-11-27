@@ -70,6 +70,9 @@ class AttendanceTimeChip extends StatelessWidget {
       onTap: canEdit ? () => _onTap(context) : null,
       borderRadius: BorderRadius.circular(8),
       child: Container(
+        // 押せる範囲を高さ 48 以上にする（入室・退室の時刻を直すときに押す）
+        constraints: const BoxConstraints(minHeight: 48),
+        alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: hasTime
