@@ -1622,6 +1622,21 @@ class _TransportScreenState extends State<TransportScreen>
     );
   }
 
+  /// 並べ替えの一覧（ReorderableListView）が既定のつまみを出す環境か。
+  /// Flutter は PC ではつまみ、スマートフォンでは行の長押しで並べ替える。
+  static bool _listShowsOwnDragHandle(TargetPlatform p) {
+    switch (p) {
+      case TargetPlatform.linux:
+      case TargetPlatform.windows:
+      case TargetPlatform.macOS:
+        return true;
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.fuchsia:
+        return false;
+    }
+  }
+
   Widget _buildStopTile(
       TransportStop stop, int index, TransportVehicleRoute route) {
     return ListTile(
@@ -1708,8 +1723,14 @@ class _TransportScreenState extends State<TransportScreen>
           ),
           // 並べ替えのつまみと押し間違えないように間を空ける
           const SizedBox(width: 16),
-          const Icon(Icons.drag_handle,
-              size: 20, color: AppColors.onSurfaceVariant),
+          // PC（Windows・Mac・Linux）では並べ替えの一覧が右端につまみを自分で
+          // 出すので、ここでは同じ幅を空けるだけにする（印が 2 つ重ならない）。
+          // スマートフォンは長押しで並べ替えるので、目印としてここに出す。
+          if (_listShowsOwnDragHandle(Theme.of(context).platform))
+            const SizedBox(width: 20)
+          else
+            const Icon(Icons.drag_handle,
+                size: 20, color: AppColors.onSurfaceVariant),
         ],
       ),
       dense: true,

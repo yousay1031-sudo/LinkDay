@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -698,6 +699,75 @@ void main() {
         await _unmount(t);
       });
     }
+
+    // 停留所の行の並べ替えのつまみは 1 行に 1 つ。並べ替えの動きは変えない
+    Future<void> openTwoStops(_T t) async {
+      await t.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      await t.runAsync(() async {
+        await FakeBackend.resetTransport();
+        await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
+          vehicleName: '車両A',
+          vehicleIndex: 0,
+          transportType: TransportType.pickup,
+          dateKey: keyOf(DateTime.now()),
+          stops: [
+            for (final n in ['一', '二'])
+              TransportStop(
+                  customerId: n, customerName: '送迎 $n', address: '帯広市テスト')
+          ],
+        ));
+      });
+      await pump(t);
+      await _ms(t, 900);
+    }
+
+    int handlesInRow(_T t, String name) {
+      final row = t.getRect(find.text(name));
+      return find
+          .byIcon(Icons.drag_handle)
+          .evaluate()
+          .map((e) => t.getRect(find.byElementPredicate((x) => x == e)))
+          .where((r) => (r.center.dy - row.center.dy).abs() < 24)
+          .length;
+    }
+
+    testWidgets('PC: つまみの印は 1 行に 1 つで、つまみを引くと並べ替えられる', (t) async {
+      await openTwoStops(t);
+      expect(handlesInRow(t, '送迎 一'), 1);
+      expect(handlesInRow(t, '送迎 二'), 1);
+      // 2 行目のつまみを 1 行目より上へ引く
+      final h = find.descendant(
+          of: find.byType(ReorderableDragStartListener),
+          matching: find.byIcon(Icons.drag_handle));
+      expect(h, findsNWidgets(2));
+      final g = await t.startGesture(t.getCenter(h.at(1)),
+          kind: PointerDeviceKind.mouse);
+      await t.pump(kLongPressTimeout ~/ 4);
+      for (var i = 0; i < 10; i++) {
+        await g.moveBy(const Offset(0, -12));
+        await t.pump(const Duration(milliseconds: 16));
+      }
+      await g.up();
+      await _ms(t, 600);
+      await _real(t);
+      await _ms(t, 300);
+      expect(t.getRect(find.text('送迎 二')).top,
+          lessThan(t.getRect(find.text('送迎 一')).top),
+          reason: '並べ替わった');
+      expect(t.takeException(), isNull);
+      await _unmount(t);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+    testWidgets('スマートフォン: 目印の印は 1 行に 1 つ（長押しで並べ替え）', (t) async {
+      await openTwoStops(t);
+      expect(handlesInRow(t, '送迎 一'), 1);
+      expect(handlesInRow(t, '送迎 二'), 1);
+      expect(
+          find.byType(ReorderableDelayedDragStartListener), findsNWidgets(2));
+      expect(t.takeException(), isNull);
+      await _unmount(t);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
     testWidgets('空: ルートが無い日は空状態（お迎え・お送りとも）', (t) async {
       await seed(t, routeToday: false);
