@@ -1012,34 +1012,50 @@ class _TransportScreenState extends State<TransportScreen>
               ],
             ),
           ),
-          const Spacer(),
-          // このタブのみ自動グループ分け
-          AppOutlinedButton.icon(
-            onPressed: _isLoading ? null : () => _autoGroup(type),
-            icon: const Icon(Icons.auto_awesome, size: 16),
-            label: const Text('自動グループ分け'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              side: const BorderSide(color: AppColors.primary),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              textStyle: const TextStyle(fontSize: 12),
+          const SizedBox(width: 8),
+          // テーマの最小サイズは「横幅いっぱい」（Size.fromHeight）なので、
+          // 幅の決まらない並びの中では描けない。最小サイズを 48×48 に指定し、
+          // 狭い幅では右寄せのまま次の段へ折り返す
+          Expanded(
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                // このタブのみ自動グループ分け
+                AppOutlinedButton.icon(
+                  key: Key('transportAutoGroup_${type.name}'),
+                  onPressed: _isLoading ? null : () => _autoGroup(type),
+                  icon: const Icon(Icons.auto_awesome, size: 16),
+                  label: const Text('自動グループ分け'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    minimumSize: const Size(48, 48),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                if (routes.isNotEmpty)
+                  AppOutlinedButton.icon(
+                    key: Key('transportOptimizeAll_${type.name}'),
+                    onPressed:
+                        _isLoading ? null : () => _optimizeAllRoutes(routes),
+                    icon: const Icon(Icons.route, size: 16),
+                    label: const Text('全最適化'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.secondary,
+                      side: const BorderSide(color: AppColors.secondary),
+                      minimumSize: const Size(48, 48),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (routes.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            AppOutlinedButton.icon(
-              onPressed: _isLoading ? null : () => _optimizeAllRoutes(routes),
-              icon: const Icon(Icons.route, size: 16),
-              label: const Text('全最適化'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.secondary,
-                side: const BorderSide(color: AppColors.secondary),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                textStyle: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ],
         ],
       ),
     );

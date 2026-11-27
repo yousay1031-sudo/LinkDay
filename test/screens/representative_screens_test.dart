@@ -19,6 +19,7 @@ import 'package:linkday_app/services/settings_service.dart';
 import 'package:linkday_app/services/slot_service.dart';
 import 'package:linkday_app/services/transport_plan_service.dart';
 import 'package:linkday_app/theme/app_motion.dart';
+import 'package:linkday_app/theme/app_theme.dart';
 import 'package:linkday_app/widgets/skeletons/screen_skeletons.dart';
 
 import 'package:linkday_app/services/weekly_schedule_service.dart';
@@ -647,6 +648,55 @@ void main() {
         expect(t.takeException(), isNull);
         await _unmount(t);
       }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+    }
+
+    // アプリのテーマ（ボタンの最小サイズが横幅いっぱい）でも、タブの
+    // 「自動グループ分け」「全最適化」が描かれ、押せて、48 以上で、はみ出さない
+    for (final size in const [
+      Size(1280, 900),
+      Size(820, 1180),
+      Size(530, 900)
+    ]) {
+      testWidgets('幅 ${size.width.toInt()}: タブの「自動グループ分け」「全最適化」が見えて押せる',
+          (t) async {
+        await t.binding.setSurfaceSize(size);
+        addTearDown(() => t.binding.setSurfaceSize(null));
+        await t.runAsync(() async {
+          await FakeBackend.resetTransport();
+          await TransportPlanService.instance.saveRoute(TransportVehicleRoute(
+            vehicleName: '車両A',
+            vehicleIndex: 0,
+            transportType: TransportType.pickup,
+            dateKey: keyOf(DateTime.now()),
+            stops: [
+              TransportStop(
+                  customerId: 'x', customerName: '送迎 一', address: '帯広市テスト')
+            ],
+          ));
+        });
+        await t.pumpWidget(MaterialApp(
+            theme: AppTheme.lightTheme
+                .copyWith(visualDensity: VisualDensity.compact),
+            home: TransportScreen(scheduledCustomersLoader: loader)));
+        await _ms(t, 900);
+        expect(t.takeException(), isNull, reason: '描けないボタンがない');
+        final badge = t.getRect(find.text('利用予定 1 名'));
+        for (final label in const ['自動グループ分け', '全最適化']) {
+          final b = find.ancestor(
+              of: find.text(label),
+              matching: find.byWidgetPredicate((w) => w is OutlinedButton));
+          expect(b, findsOneWidget, reason: label);
+          expect(b.hitTestable(), findsOneWidget, reason: '$label が押せる');
+          final r = t.getRect(b);
+          expect(r.height, greaterThanOrEqualTo(47.9), reason: '$label $r');
+          expect(r.width, greaterThanOrEqualTo(47.9), reason: '$label $r');
+          expect(r.right, lessThanOrEqualTo(size.width), reason: '$label はみ出し');
+          expect(r.left, greaterThan(badge.right), reason: '$label は利用予定の右');
+          expect(t.widget<OutlinedButton>(b).onPressed, isNotNull,
+              reason: '$label は押せる状態');
+        }
+        await _unmount(t);
+      });
     }
 
     testWidgets('空: ルートが無い日は空状態（お迎え・お送りとも）', (t) async {
