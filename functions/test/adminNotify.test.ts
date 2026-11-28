@@ -174,8 +174,9 @@ describe('handleSlotPostback × 管理者通知', () => {
     expect(r.outcome).toBe('claimed');
     const pushes = adminPushes(line);
     expect(pushes).toHaveLength(1);
+    // 事業所が書かれていない枠（この変更より前の形）: 予定には入らない旨の一文が付く
     expect(pushes[0].text).toMatch(
-      /^【確定】10\/5（月）佐藤花子さんが空き枠に応募しました（\d{1,2}:\d{2}）$/
+      /^【確定】10\/5（月）佐藤花子さんが空き枠に応募しました（\d{1,2}:\d{2}）\n予定には自動で入っていません。週間利用計画に追加してください。$/
     );
     // 管理者以外に管理者向け文面が漏れない
     expect(

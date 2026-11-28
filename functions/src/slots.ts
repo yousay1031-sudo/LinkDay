@@ -27,6 +27,11 @@ import {
   WEBHOOK_PROCESSED_TTL_HOURS,
 } from './config';
 import {maskUserId} from './line/client';
+import {
+  readClaimPlan,
+  readReleasePlan,
+  type ScheduleOutcome,
+} from './slotSchedule';
 
 /** 枠の状態 */
 export type SlotStatus = 'open' | 'filled' | 'released' | 'expired';
@@ -60,6 +65,11 @@ export interface SlotDoc {
   dateKey: string;
   /** 通知に同梱する確認コード（本人性の簡易裏付け） */
   linkCode: string;
+  /**
+   * 予定に入れる事業所（通知を送った職員の所属から Functions が決める）。
+   * この項目より前に作った枠には無い（その枠は予定に入れない）。
+   */
+  facilityId?: string;
 }
 
 /** claim / release の結果 */
@@ -72,7 +82,8 @@ export type ClaimOutcome =
   | 'slot_not_found' // 枠が無い
   | 'released' // キャンセル成立
   | 'release_denied' // 自分の確定ではないのでキャンセル不可
-  | 'invalid_code'; // 確認コード不一致
+  | 'invalid_code' // 確認コード不一致
+  | 'not_enrolled'; // 枠の事業所に在籍していない（確定しない）
 
 export interface ClaimResult {
   outcome: ClaimOutcome;
@@ -86,6 +97,8 @@ export interface ClaimResult {
    * transaction に渡した `now` と同一の値（再実行されても最終試行の値）。
    */
   at?: Date;
+  /** 予定（週間利用計画・出席）への反映の結果（確定・取り消しが成立したときだけ） */
+  schedule?: ScheduleOutcome;
 }
 
 /**
@@ -187,6 +200,20 @@ function toDate(v: unknown): Date | null {
   return null;
 }
 
+/** 枠に書かれた事業所（無い・空なら null） */
+function facilityOf(data: Record<string, unknown>): string | null {
+  return typeof data.facilityId === 'string' && data.facilityId.length > 0
+    ? data.facilityId
+    : null;
+}
+
+/** 枠の日付（dateKey。無ければ枠 ID の先頭） */
+function dateKeyOf(data: Record<string, unknown>, slotId: string): string {
+  return typeof data.dateKey === 'string' && data.dateKey.length > 0
+    ? data.dateKey
+    : slotId.split('_')[0] ?? '';
+}
+
 function readNotifiedList(v: unknown): NotifiedEntry[] {
   if (!Array.isArray(v)) return [];
   const out: NotifiedEntry[] = [];
@@ -225,6 +252,8 @@ export async function createSlotIfAbsent(
     now?: Date;
     /** 受付期限（時間）。未指定は既定値。範囲外は 1〜24 に丸める */
     ttlHours?: number;
+    /** 予定に入れる事業所（送った職員の所属から決めた値） */
+    facilityId?: string;
   }
 ): Promise<boolean> {
   const now = params.now ?? new Date();
@@ -247,6 +276,9 @@ export async function createSlotIfAbsent(
     dateKey: params.dateKey,
     linkCode: params.linkCode,
   };
+  if (typeof params.facilityId === 'string' && params.facilityId.length > 0) {
+    doc.facilityId = params.facilityId;
+  }
   try {
     await ref.create(doc);
     return true;
@@ -380,6 +412,25 @@ export async function claimSlot(
       logger.info('[slots] claiming a released slot', {slotId: params.slotId});
     }
 
+    // ── 予定への反映の読み取り（書き込みより前に済ませる）。
+    //    事業所が書かれた枠だけ。その事業所に在籍していなければ確定しない
+    //    （先着・期限切れ・取り消しの判定はここより前で、変えていない）
+    const plan = await readClaimPlan(db, tx, {
+      facilityId: facilityOf(data),
+      slotId: params.slotId,
+      dateKey: dateKeyOf(data, params.slotId),
+      customerId: params.customerId,
+      now,
+    });
+    if (plan.outcome === 'not_enrolled') {
+      return {
+        outcome: 'not_enrolled',
+        slotId: params.slotId,
+        claimedCustomerId: null,
+        losers: [],
+      };
+    }
+
     // ── ここまで来たら確定できる
     const claimedBy: ClaimedBy = {
       customerId: params.customerId,
@@ -387,6 +438,8 @@ export async function claimSlot(
       claimedAt: now,
     };
     tx.update(ref, {status: 'filled', claimedBy});
+    // 同じ transaction で予定に入れる（確定だけして予定に入らない状態を作らない）
+    plan.apply(tx);
 
     const losers = notified.filter((n) => n.customerId !== params.customerId);
 
@@ -396,6 +449,7 @@ export async function claimSlot(
       claimedCustomerId: params.customerId,
       losers,
       at: now,
+      schedule: plan.outcome,
     };
   });
 }
@@ -446,12 +500,22 @@ export async function releaseSlot(
       };
     }
 
+    // 予定からも外す（読み取りを先に。入室の記録があれば外さない）
+    const plan = await readReleasePlan(db, tx, {
+      facilityId: facilityOf(data),
+      slotId: params.slotId,
+      dateKey: dateKeyOf(data, params.slotId),
+      customerId: params.customerId,
+      now,
+    });
+
     tx.update(ref, {
       status: 'released',
       claimedBy: null,
       releasedAt: now,
       releasedBy: params.customerId,
     });
+    plan.apply(tx);
 
     return {
       outcome: 'released',
@@ -459,6 +523,7 @@ export async function releaseSlot(
       claimedCustomerId: params.customerId,
       losers: [],
       at: now,
+      schedule: plan.outcome,
     };
   });
 }

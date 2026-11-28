@@ -25,6 +25,7 @@ import {
   buildClaimedFlexMessage,
   formatDateJa,
   parsePostbackData,
+  scheduleNoteFor,
 } from './slotMessage';
 import {
   claimSlot,
@@ -228,6 +229,9 @@ export async function handleSlotPostback(
       await reply(replyText);
       break;
     case 'not_notified':
+    // 枠の事業所に在籍していない児童も、案内を送っていない家庭と同じ扱い
+    // （確定せず、同じ文面で返す）
+    case 'not_enrolled':
       replyText = MSG_CLAIM_NOT_NOTIFIED;
       await reply(replyText);
       break;
@@ -322,10 +326,13 @@ export async function notifyAdmin(
   try {
     const name = await lookupChildName(db, dateKey, customerId);
     const at = result.at ?? new Date();
-    const text =
+    const base =
       kind === 'claimed'
         ? buildAdminClaimedText(dateKey, name, at)
         : buildAdminReleasedText(dateKey, name, at);
+    const note = scheduleNoteFor(kind, result.schedule);
+    const text = note === null ? base : `${base}
+${note}`;
     const r = await lineApi().pushText(accessToken, adminUserId, text);
     logger.info('[slotPostback] admin notified', {
       slotId: result.slotId,

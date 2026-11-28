@@ -6,7 +6,41 @@
  *  - doc().set() / set(merge) / get() / delete()
  * の挙動を再現する。
  */
+import {FieldValue} from 'firebase-admin/firestore';
 import type {Firestore} from 'firebase-admin/firestore';
+
+/** 'a/b/c/d' → ['a/b/c', 'd']（事業所の下の文書も扱う） */
+function splitPath(path: string): [string, string] {
+  const i = path.lastIndexOf('/');
+  return [path.slice(0, i), path.slice(i + 1)];
+}
+
+const isDelete = (v: unknown): boolean =>
+  v instanceof FieldValue && v.isEqual(FieldValue.delete());
+
+/**
+ * 更新の内容を反映する（'a.b' の形の項目名は入れ子に入れる。FieldValue.delete() は消す）。
+ * serverTimestamp() などの他の FieldValue はそのまま置く（検証では中身を見ない）。
+ */
+function applyUpdate(
+  base: Record<string, unknown>,
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {...base};
+  for (const [k, v] of Object.entries(data)) {
+    const parts = k.split('.');
+    let o = out;
+    for (const p of parts.slice(0, -1)) {
+      const next = o[p];
+      o[p] = next !== null && typeof next === 'object' ? {...(next as object)} : {};
+      o = o[p] as Record<string, unknown>;
+    }
+    const last = parts[parts.length - 1];
+    if (isDelete(v)) delete o[last];
+    else o[last] = v;
+  }
+  return out;
+}
 
 export class FakeFirestore {
   /** collection → (docId → data) */
@@ -80,6 +114,7 @@ export class FakeFirestore {
         data: () => Record<string, unknown> | undefined;
       }>;
       update: (ref: {path: string}, data: Record<string, unknown>) => void;
+      delete: (ref: {path: string}) => void;
       set: (
         ref: {path: string},
         data: Record<string, unknown>,
@@ -90,7 +125,12 @@ export class FakeFirestore {
     let readCount = 0;
     const tx = {
       get: async (ref: {path: string}) => {
-        const [colName, id] = ref.path.split('/');
+        // 検索（where().get()）も transaction の中で読めるようにする
+        if (!('path' in ref)) {
+          readCount++;
+          return (ref as unknown as {get: () => Promise<never>}).get();
+        }
+        const [colName, id] = splitPath(ref.path);
         const col = this.store.get(colName);
         const d = col?.get(id);
         readCount++;
@@ -107,17 +147,21 @@ export class FakeFirestore {
         };
       },
       update: (ref: {path: string}, data: Record<string, unknown>) => {
-        const [colName, id] = ref.path.split('/');
+        const [colName, id] = splitPath(ref.path);
         if (!this.store.has(colName)) this.store.set(colName, new Map());
         const col = this.store.get(colName)!;
-        col.set(id, {...(col.get(id) ?? {}), ...data});
+        col.set(id, applyUpdate(col.get(id) ?? {}, data));
+      },
+      delete: (ref: {path: string}) => {
+        const [colName, id] = splitPath(ref.path);
+        this.store.get(colName)?.delete(id);
       },
       set: (
         ref: {path: string},
         data: Record<string, unknown>,
         options?: {merge?: boolean}
       ) => {
-        const [colName, id] = ref.path.split('/');
+        const [colName, id] = splitPath(ref.path);
         if (!this.store.has(colName)) this.store.set(colName, new Map());
         const col = this.store.get(colName)!;
         if (options?.merge && col.has(id)) {

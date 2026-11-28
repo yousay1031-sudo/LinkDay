@@ -153,6 +153,39 @@ export function buildAdminClaimedText(
   );
 }
 
+/**
+ * 管理者通知に足す、予定への反映の一文（確定・取り消しのとき）。
+ * 反映しなかった・できなかったときに職員が手で直せるように書く。
+ */
+export function scheduleNoteFor(
+  kind: 'claimed' | 'released',
+  schedule: string | undefined
+): string | null {
+  if (kind === 'claimed') {
+    switch (schedule) {
+      case 'added':
+      case 'restored_from_cancelled':
+        return '週間利用計画に「追加」として入れました。';
+      case 'already_in_plan':
+        return 'すでにその日の予定に入っていたため、予定は変えていません。';
+      case 'no_facility':
+        return '予定には自動で入っていません。週間利用計画に追加してください。';
+      default:
+        return null;
+    }
+  }
+  switch (schedule) {
+    case 'removed':
+      return '予定から外しました。';
+    case 'kept_checked_in':
+      return '入室の記録があるため、予定からは外していません。出席管理で確かめてください。';
+    case 'no_facility':
+      return '予定は自動では変わりません。週間利用計画を確かめてください。';
+    default:
+      return null;
+  }
+}
+
 /** 管理者へ送る「キャンセル」通知文 */
 export function buildAdminReleasedText(
   dateKey: string,

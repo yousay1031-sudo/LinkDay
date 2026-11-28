@@ -237,7 +237,13 @@ export async function runSendVacancyNotice(
   input: SendVacancyNoticeInput,
   accessToken: string,
   /** Day 13: lineUserId のハッシュ用ソルト。未指定なら枠を作らずテキスト送信 */
-  channelSecret?: string
+  channelSecret?: string,
+  /**
+   * 送った職員の所属から決めた事業所（呼び出し側が memberships から引いた値）。
+   * アプリから渡された値は使わない。空き枠と通知の記録に facilityId として書き、
+   * 応募が確定したときに、この事業所の予定にだけ入れる。
+   */
+  facilityId?: string
 ): Promise<SendVacancyNoticeOutput> {
   const api = lineApi();
   const results: SendResultItem[] = [];
@@ -284,6 +290,7 @@ export async function runSendVacancyNotice(
       createdBy: 'vacancy_notice',
       now,
       ttlHours,
+      facilityId,
     });
 
     if (!created) {
@@ -351,6 +358,7 @@ export async function runSendVacancyNotice(
         status: 'pending',
         sentBy: uid,
         sentAt: new Date(),
+        ...(facilityId ? {facilityId} : {}),
       });
     } catch (e) {
       // ALREADY_EXISTS → 既に送信済み（または送信中）
@@ -465,7 +473,8 @@ export async function handleSendVacancyNotice(
   // ── 有効な所属が必要（ステップ2で追加）。Google ログインでは誰でもアカウントを
   //    作れるため、「ログインしている」だけでは送信を起動させない。
   //    入力の検査（保存先に触れない）の後・送信の前に確かめる。
-  if (!(await getValidMembership(db, req.auth.uid))) {
+  const membership = await getValidMembership(db, req.auth.uid);
+  if (!membership) {
     logger.warn('[sendVacancyNotice] request without valid membership rejected', {
       uid: req.auth.uid,
     });
@@ -479,6 +488,8 @@ export async function handleSendVacancyNotice(
     req.auth.uid,
     input,
     accessToken,
-    channelSecret
+    channelSecret,
+    // 事業所は所属から決める（入力の値は信用しない）
+    membership.facilityId
   );
 }
