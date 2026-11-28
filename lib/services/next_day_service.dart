@@ -113,6 +113,44 @@ class NextDayAttendanceView {
 class NextDayTransport {
   NextDayTransport._();
 
+  /// LINE の空き枠の応募で予定に入った印（週間利用計画・翌日予約選択・出席管理で同じ文言）
+  static const String lineClaimLabel = 'LINEの応募で追加';
+
+  /// 送迎ルートに入っていない知らせ（出席管理と翌日予約選択で同じ文言）
+  static const String notInRouteLabel = '送迎計画に入っていません';
+
+  /// LINE の応募で入った児童が、送迎を使うのに、その日のすでにある送迎ルートに入っていない。
+  /// ルートには自動で入れない（職員が送迎計画で入れる）。
+  static bool missingFromRoutes(ScheduleEntry e, Customer? c,
+          {required bool routesExist, required bool inRoute}) =>
+      e.isLineClaimActive &&
+      (c?.transportLocations.isNotEmpty ?? false) &&
+      routesExist &&
+      !inRoute;
+
+  /// 出席管理のカードに出す一文（LINE の応募の印と送迎の知らせ。印が無ければ null）。
+  /// warn は赤字で出すもの（取り消されたが入室済み・送迎計画に入っていない）。
+  static ({String text, bool warn})? lineNote(ScheduleEntry? e, Customer? c,
+      {required bool routesExist, required bool inRoute}) {
+    final m = e?.lineClaim;
+    if (e == null || m == null) return null;
+    if (m.releasedButKept) {
+      return (text: 'LINEで取り消し（入室済みのため予定に残しています）', warn: true);
+    }
+    if (!e.isLineClaimActive) return null;
+    final at = m.claimedAt;
+    final when = at == null
+        ? ''
+        : '（${at.month}/${at.day} ${at.hour.toString().padLeft(2, '0')}:'
+            '${at.minute.toString().padLeft(2, '0')} 確定）';
+    final noRoute =
+        missingFromRoutes(e, c, routesExist: routesExist, inRoute: inRoute);
+    return (
+      text: '$lineClaimLabel$when${noRoute ? '・$notInRouteLabel' : ''}',
+      warn: noRoute,
+    );
+  }
+
   /// 「送迎なし」／「送迎：場所」。場所は予定の送迎場所の番号の場所（無ければ 1 つ目）
   static String placeText(Customer? c, ScheduleEntry e) {
     final locs = c?.transportLocations ?? const <String>[];

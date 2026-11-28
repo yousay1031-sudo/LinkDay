@@ -180,7 +180,8 @@ class WeeklyScheduleService extends ChangeNotifier {
         ..plannedStartTime = e.plannedStartTime
         ..plannedEndTime = e.plannedEndTime
         ..transportLocationIndex = e.transportLocationIndex
-        ..note = e.note;
+        ..note = e.note
+        ..lineClaim = e.lineClaim;
     } else {
       slot.entries.add(e);
       slot.entries.sort((a, b) => a.customerName.compareTo(b.customerName));
@@ -294,7 +295,7 @@ class WeeklyScheduleService extends ChangeNotifier {
       // 送った内容を基準にする（折り返しの通知では画面を作り直さない）
       st.markerBase = _markerFields(_markerData(fresh));
       for (final e in _docsOf(fresh).entries) {
-        st.entriesBase[e.key] = e.value;
+        st.entriesBase[e.key] = _keepReadOnly(e.value, null);
       }
       _weeks[weekKey] = _weeks[weekKey] ?? fresh;
       notifyListeners();
@@ -700,7 +701,7 @@ class WeeklyScheduleService extends ChangeNotifier {
         if (ch.isEmpty) continue;
         ops.add((b) => b.update(ref, {...ch, ...s.toFields()}));
       }
-      st.entriesBase[e.key] = e.value;
+      st.entriesBase[e.key] = _keepReadOnly(e.value, base);
       touched.add(e.key);
     }
     // 消されたマス
@@ -783,6 +784,12 @@ class WeeklyScheduleService extends ChangeNotifier {
             },
       };
 
+  /// 書いた内容を基準にするとき、アプリが書かない項目（LINE の応募の印）は前の基準の
+  /// 値を残す（自分の書き込みの折り返しを「変わった」と見ないように）
+  static Map<String, dynamic> _keepReadOnly(
+          Map<String, dynamic> written, Map<String, dynamic>? base) =>
+      {...written, 'lineClaim': base?['lineClaim']};
+
   static Map<String, dynamic> _entryFields(Map<String, dynamic> d) => {
         'date': readString(d['date']),
         'weekKey': readString(d['weekKey']),
@@ -795,6 +802,8 @@ class WeeklyScheduleService extends ChangeNotifier {
             ? (d['transportLocationIndex'] as num).toInt()
             : null,
         'note': readString(d['note']),
+        // LINE の応募の印（読むだけ。_docsOf には入れないので、アプリからは書かない）
+        'lineClaim': LineClaimMark.read(d['lineClaim'])?.toFields(),
       };
 
   static ScheduleEntry _entryFromFields(Map<String, dynamic> f) => ScheduleEntry(
@@ -808,6 +817,7 @@ class WeeklyScheduleService extends ChangeNotifier {
         plannedEndTime: f['plannedEndTime'] as String?,
         transportLocationIndex: f['transportLocationIndex'] as int?,
         note: f['note'] as String?,
+        lineClaim: LineClaimMark.read(f['lineClaim']),
       );
 
   static Map<String, dynamic> _markerData(WeeklySchedule w) => {

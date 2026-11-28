@@ -12,6 +12,58 @@ enum ScheduleStatus {
   cancelled,
 }
 
+// ── LineClaimMark ───────────────────────────────────────────
+/// LINE の空き枠の応募で予定に入った印（Functions が書く。アプリは書き換えない）。
+///
+/// 保存先の項目 `lineClaim` = { slotId, customerId, claimedAt, via: 'line',
+/// prev, prevAttendance, releasedAt?, keptReason? }。ここでは表示に使うものだけ読む。
+class LineClaimMark {
+  /// 空き枠の記録の名前（日付_欠席した児童の ID）
+  final String slotId;
+
+  /// 確定した時刻（保護者が LINE で応募して確定した時刻）
+  final DateTime? claimedAt;
+
+  /// 保護者が取り消した時刻（入室済みで予定に残したときだけ入る）
+  final DateTime? releasedAt;
+
+  const LineClaimMark({required this.slotId, this.claimedAt, this.releasedAt});
+
+  /// 取り消されたが、入室の記録があるため予定に残している
+  bool get releasedButKept => releasedAt != null;
+
+  static DateTime? _time(Object? v) {
+    if (v is DateTime) return v;
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    try {
+      // Firestore の Timestamp（この層では cloud_firestore を読み込まない）
+      final d = (v as dynamic)?.toDate();
+      return d is DateTime ? d : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 保存先の値（Map）から読む。形が違えば null
+  static LineClaimMark? read(Object? v) {
+    if (v is! Map) return null;
+    final id = v['slotId'];
+    if (id is! String || id.isEmpty) return null;
+    return LineClaimMark(
+      slotId: id,
+      claimedAt: _time(v['claimedAt']),
+      releasedAt: _time(v['releasedAt']),
+    );
+  }
+
+  /// 差分の比較用（届いた内容が変わったかを見る）
+  Map<String, Object?> toFields() => {
+        'slotId': slotId,
+        'claimedAt': claimedAt?.millisecondsSinceEpoch,
+        'releasedAt': releasedAt?.millisecondsSinceEpoch,
+      };
+}
+
 // ── ScheduleEntry ────────────────────────────────────────────
 /// 1利用者の1日分のエントリ
 class ScheduleEntry {
@@ -29,6 +81,9 @@ class ScheduleEntry {
 
   String? note;
 
+  /// LINE の空き枠の応募で入った印（無ければ null。表示だけに使い、アプリからは書かない）
+  LineClaimMark? lineClaim;
+
   ScheduleEntry({
     required this.customerId,
     required this.customerName,
@@ -37,7 +92,14 @@ class ScheduleEntry {
     this.plannedEndTime,
     this.transportLocationIndex,
     this.note,
+    this.lineClaim,
   });
+
+  /// LINE の応募で入り、いまも利用する予定（取り消されていない・お休みでない）
+  bool get isLineClaimActive =>
+      lineClaim != null &&
+      !lineClaim!.releasedButKept &&
+      status != ScheduleStatus.cancelled;
 
   /// ステータスのラベル
   String get statusLabel {
@@ -71,6 +133,7 @@ class ScheduleEntry {
           ? null
           : (transportLocationIndex ?? this.transportLocationIndex),
       note: clearNote ? null : (note ?? this.note),
+      lineClaim: lineClaim,
     );
   }
 }

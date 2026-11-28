@@ -13,6 +13,9 @@ import '../services/settings_service.dart';
 import '../services/monthly_usage_service.dart';
 import '../services/slot_service.dart';
 import '../services/customer_service.dart';
+import '../services/next_day_service.dart';
+import '../services/transport_plan_service.dart';
+import '../services/weekly_schedule_service.dart';
 import '../services/vacancy_notification_service.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
@@ -93,6 +96,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     AttendanceService.instance.addListener(_onRecordsChanged);
     // 設定の「1日の最大利用者数」が変わったら空き枠の表示を直す
     SettingsService.instance.addListener(_onSettingsChanged);
+    // LINE の応募の印（週間利用計画）・送迎ルートが変わったら表示を直す
+    WeeklyScheduleService.instance.addListener(_onSettingsChanged);
+    TransportPlanService.instance.addListener(_onSettingsChanged);
   }
 
   void _onSettingsChanged() {
@@ -109,6 +115,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   void dispose() {
     AttendanceService.instance.removeListener(_onRecordsChanged);
     SettingsService.instance.removeListener(_onSettingsChanged);
+    WeeklyScheduleService.instance.removeListener(_onSettingsChanged);
+    TransportPlanService.instance.removeListener(_onSettingsChanged);
     _loadSeq.invalidate();
     _slotSub?.cancel();
     _slotTick?.cancel();
@@ -183,6 +191,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   ///   保存処理そのものは中断されない
   Future<void> _loadForSelectedDate(int token, DateTime date) async {
     try {
+      // 送迎ルート（LINE の応募で入った児童が入っているかの知らせに使う。待たない）
+      unawaited(TransportPlanService.instance
+          .ensureDate(AttendanceRecord.makeDateKey(date))
+          .catchError((Object e) {
+        debugPrint('[AttendanceScreen] transport load failed: $e');
+      }));
       await _ensureScheduled(date);
       await widget.afterEnsureHook?.call(date);
       // 検証構成限定: 読込の遅延・失敗を再現する（通常ビルドでは消える）
@@ -1113,10 +1127,34 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
+  /// LINE の応募の印と送迎の知らせ（児童 ID → 一文）。週間利用計画の印から作る
+  Map<String, ({String text, bool warn})> _lineNotes() {
+    final key = AttendanceRecord.makeDateKey(_selectedDate);
+    final routes = TransportPlanService.instance.getRoutesByDate(key);
+    final out = <String, ({String text, bool warn})>{};
+    for (final e
+        in WeeklyScheduleService.instance.getAllEntriesForDate(_selectedDate)) {
+      if (e.lineClaim == null) continue;
+      final n = NextDayTransport.lineNote(
+        e,
+        CustomerService.instance.getCustomerById(e.customerId),
+        routesExist: routes.isNotEmpty,
+        inRoute:
+            NextDayTransport.routeParts(e.customerId, routes).isNotEmpty,
+      );
+      if (n != null) out[e.customerId] = n;
+    }
+    return out;
+  }
+
   Widget _buildBody() {
     if (_records.isEmpty) {
       return _buildEmptyState();
     }
+    final notes = _lineNotes();
+    // 一文を出す児童がいる日は、カードを 1 行ぶん高くする（ボタンをはみ出させない）
+    final extent = _cardExtent +
+        (_records.any((r) => notes.containsKey(r.customerId)) ? 18 : 0);
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = _columnCount(constraints.maxWidth);
@@ -1127,7 +1165,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             crossAxisCount: columns,
             crossAxisSpacing: _gridSpacing,
             mainAxisSpacing: _gridSpacing,
-            mainAxisExtent: _cardExtent,
+            mainAxisExtent: extent,
           ),
           itemCount: _records.length,
           itemBuilder: (ctx, i) => StaggeredItem(
@@ -1137,6 +1175,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               record: _records[i],
               busy: _busyIds.contains(_records[i].customerId),
               slotView: _slotViewFor(_records[i]),
+              lineNote: notes[_records[i].customerId],
               onMarkPresent: () => _markPresent(_records[i]),
               onMarkDeparted: () => _markDeparted(_records[i]),
               onMarkAbsent: () => _showAbsenceDialog(_records[i]),
@@ -1205,6 +1244,9 @@ class _AttendanceCard extends StatelessWidget {
 
   /// Day 14: 欠席カードに出す LINE 応募の状態（枠が無ければ null）
   final SlotRowView? slotView;
+
+  /// LINE の応募で予定に入った印と送迎の知らせ（無ければ null）
+  final ({String text, bool warn})? lineNote;
   final VoidCallback onMarkPresent;
   final VoidCallback onMarkDeparted;
   final VoidCallback onMarkAbsent;
@@ -1219,6 +1261,7 @@ class _AttendanceCard extends StatelessWidget {
     required this.record,
     this.busy = false,
     this.slotView,
+    this.lineNote,
     required this.onMarkPresent,
     required this.onMarkDeparted,
     required this.onMarkAbsent,
@@ -1365,6 +1408,22 @@ class _AttendanceCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ],
+
+            // ── LINE の応募で予定に入った印（だれがいつ確定したか）と送迎の知らせ
+            if (lineNote != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                lineNote!.text,
+                key: Key('attendanceLineNote_${record.customerId}'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: lineNote!.warn ? AppColors.error : AppColors.secondaryDark,
                 ),
               ),
             ],

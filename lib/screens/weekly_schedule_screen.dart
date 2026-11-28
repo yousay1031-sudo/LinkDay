@@ -5,6 +5,7 @@ import '../verify/verify_config.dart';
 import '../verify/verify_faults.dart';
 import '../models/weekly_schedule.dart';
 import '../services/customer_service.dart';
+import '../services/next_day_service.dart';
 import '../services/weekly_schedule_pdf_service.dart';
 import '../data/staff_session.dart';
 import '../services/weekly_schedule_service.dart';
@@ -1077,7 +1078,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen>
                     Row(
                       children: [
                         if (entry != null) ...[
-                          _StatusBadge(status: entry.status),
+                          _StatusBadge(entry: entry),
                           const SizedBox(width: 6),
                         ],
                         if (entry?.plannedStartTime != null) ...[
@@ -1253,7 +1254,7 @@ class _EntryCellContent extends StatelessWidget {
     final color = _ScheduleColors.foreground(entry.status);
     final isCancelled = entry.status == ScheduleStatus.cancelled;
 
-    return Padding(
+    final cell = Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1274,9 +1275,23 @@ class _EntryCellContent extends StatelessWidget {
                 color: color.withValues(alpha: 0.8),
               ),
             ),
+          if (entry.lineClaim != null)
+            Text(
+              'LINE',
+              key: Key('weeklyLineMark_${entry.customerId}'),
+              style: TextStyle(
+                fontSize: compact ? 7 : 9,
+                fontWeight: FontWeight.w700,
+                color: entry.isLineClaimActive ? color : AppColors.error,
+              ),
+            ),
         ],
       ),
     );
+    final note = NextDayTransport.lineNote(entry, null,
+        routesExist: false, inRoute: true);
+    if (note == null) return cell;
+    return Tooltip(message: note.text, child: cell);
   }
 }
 
@@ -1284,11 +1299,20 @@ class _EntryCellContent extends StatelessWidget {
 // ステータスバッジ（モバイルカード用）
 // ════════════════════════════════════════════════════════════════
 class _StatusBadge extends StatelessWidget {
-  final ScheduleStatus status;
-  const _StatusBadge({required this.status});
+  final ScheduleEntry entry;
+  const _StatusBadge({required this.entry});
+
+  ScheduleStatus get status => entry.status;
 
   @override
   Widget build(BuildContext context) {
+    final m = entry.lineClaim;
+    // LINE の応募で入った予定（出席管理・翌日予約選択と同じ文言）
+    final lineLabel = m != null && m.releasedButKept
+        ? 'LINEで取り消し（入室済み）'
+        : entry.isLineClaimActive
+            ? NextDayTransport.lineClaimLabel
+            : null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
@@ -1296,7 +1320,8 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        _statusLabel(status),
+        lineLabel ?? _statusLabel(status),
+        key: Key('weeklyStatusBadge_${entry.customerId}'),
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w600,
@@ -1362,10 +1387,28 @@ class _EntryActionSheet extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _StatusBadge(status: entry.status),
+                _StatusBadge(entry: entry),
               ],
             ),
           ),
+          if (NextDayTransport.lineNote(entry, null,
+                  routesExist: false, inRoute: true)
+              case final n?)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  n.text,
+                  key: const Key('weeklyLineNote'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: n.warn ? AppColors.error : AppColors.secondaryDark,
+                  ),
+                ),
+              ),
+            ),
           const Divider(),
           // ステータス変更
           if (entry.status != ScheduleStatus.planned)

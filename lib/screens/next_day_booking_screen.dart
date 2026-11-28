@@ -772,6 +772,7 @@ class _NextDayBookingScreenState extends State<NextDayBookingScreen> {
             editable: _editable && c != null,
             busy: _busy.contains('use_${e.customerId}'),
             routeParts: NextDayTransport.routeParts(e.customerId, routes),
+            routesExist: routes.isNotEmpty,
             onUse: c == null ? null : () => _setUse(c, true),
             onAbsent: c == null ? null : () => _setUse(c, false),
             onTime: () => _editTime(c, e),
@@ -791,6 +792,7 @@ class _EntryCard extends StatelessWidget {
     required this.editable,
     required this.busy,
     required this.routeParts,
+    required this.routesExist,
     required this.onUse,
     required this.onAbsent,
     required this.onTime,
@@ -807,6 +809,9 @@ class _EntryCard extends StatelessWidget {
 
   /// 送迎ルートでの行きと帰りの車（ルートに無ければ空）
   final List<String> routeParts;
+
+  /// その日の送迎ルートがすでにある（LINE の応募で入った児童が入っていなければ知らせる）
+  final bool routesExist;
   final VoidCallback? onUse;
   final VoidCallback? onAbsent;
   final VoidCallback onTime;
@@ -818,15 +823,24 @@ class _EntryCard extends StatelessWidget {
     final time = (e.plannedStartTime == null && e.plannedEndTime == null)
         ? '時間未定'
         : '${e.plannedStartTime ?? '--:--'}〜${e.plannedEndTime ?? '--:--'}';
+    final line = e.lineClaim;
     final kind = attendanceAbsent
         ? '出席管理で欠席'
-        : switch (e.status) {
+        : line != null && line.releasedButKept
+            ? 'LINEで取り消し（入室済み）'
+            : e.isLineClaimActive
+                ? NextDayTransport.lineClaimLabel
+                : switch (e.status) {
             ScheduleStatus.planned => '通常',
             ScheduleStatus.additional => '追加',
             ScheduleStatus.cancelled => 'お休み',
           };
     final place = NextDayTransport.placeText(customer, e);
     final warnRoute = absent && routeParts.isNotEmpty;
+    // LINE の応募で入った児童: 送迎を使うのに、すでにある送迎ルートに入っていない
+    final noRoute = !warnRoute &&
+        NextDayTransport.missingFromRoutes(
+            e, customer, routesExist: routesExist, inRoute: routeParts.isNotEmpty);
     final fg = absent ? AppColors.onSurfaceVariant : AppColors.onSurface;
 
     final info = Column(
@@ -850,13 +864,20 @@ class _EntryCard extends StatelessWidget {
                 : TextStyle(fontSize: 12.5, color: fg)),
         // 送迎の場所（長い住所は切れてよい）
         Text(
-          warnRoute ? '送迎計画に入っています（送迎計画で外してください）' : place,
+          warnRoute
+              ? '送迎計画に入っています（送迎計画で外してください）'
+              : noRoute
+                  ? NextDayTransport.notInRouteLabel
+                  : place,
           key: Key('nextDayTransport_${e.customerId}'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
               fontSize: 12,
-              color: warnRoute ? AppColors.error : AppColors.onSurfaceVariant),
+              fontWeight: noRoute ? FontWeight.w700 : null,
+              color: warnRoute || noRoute
+                  ? AppColors.error
+                  : AppColors.onSurfaceVariant),
         ),
         // 行きと帰りの車は別の行に。入りきらなければ帰りを次の行へ送り、切らない
         if (routeParts.isNotEmpty)
