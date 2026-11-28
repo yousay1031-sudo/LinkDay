@@ -26,6 +26,10 @@ if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(HOST)) {
 process.env.FIRESTORE_EMULATOR_HOST = HOST;
 process.env.GCLOUD_PROJECT = PROJECT;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+// Google のサーバー上で動いているかの問い合わせ（メタデータサーバー）をしない。
+// しないと firebase-admin が 169.254.169.254 / metadata.google.internal へ接続しようとする
+// （block_external.cjs で止まるが、そもそも試みないようにする）
+process.env.METADATA_SERVER_DETECTION = 'none';
 
 const req = require('node:module').createRequire(path.join(ROOT, 'functions', 'package.json'));
 const lib = (m) => require(path.join(ROOT, 'functions', 'lib', m));
@@ -216,10 +220,18 @@ async function runApp() {
   if (!absent) throw new Error('今日の欠席の児童がいません');
   const inToday = new Set(att.docs.map((d) => d.data().customerId));
   const customers = await fcol(fid, 'customers').where('isActive', '==', true).get();
-  const pick = customers.docs.find((d) => !inToday.has(d.id));
+  // 送迎を使う児童を優先（「送迎計画に入っていません」も画面で確かめるため）
+  const free = customers.docs.filter((d) => !inToday.has(d.id));
+  const pick =
+    free.find((d) => Array.isArray(d.data().transportLocations) && d.data().transportLocations.length > 0) ??
+    free[0];
   if (!pick) throw new Error('今日の予定に入っていない児童がいません');
   const cid = pick.id;
   await db.collection('line_linkage').doc(cid).set({customerId: cid, lineUserId: uidOf(cid)});
+  // ダミーデータに同じ名前の枠・通知の記録があれば消してから送る（検証データだけ）
+  const sid0 = makeSlotId(today, absent.data().customerId);
+  await db.collection('slots').doc(sid0).delete();
+  await db.collection('notification_logs').doc(`${today}_${cid}`).delete();
   const before = await counts(fid, today);
   await handleSendVacancyNotice(callable({
     date: today, message: '検証用の空き枠のお知らせ',
@@ -234,8 +246,25 @@ async function runApp() {
   console.log(JSON.stringify({slotId, customerId: cid, name: pick.data().name, before, after}));
 }
 
+/** --app で確定した応募を、保護者が取り消したのと同じ処理で取り消す（画面で確かめる用） */
+async function runAppRelease() {
+  const today = todayKeyJst(new Date());
+  const filled = await db.collection('slots').where('dateKey', '==', today).get();
+  const s = filled.docs.find((d) => d.data().status === 'filled' && d.data().facilityId);
+  if (!s) throw new Error('今日の確定済みの枠がありません（--app を先に）');
+  const fid = s.data().facilityId;
+  const cid = s.data().claimedBy.customerId;
+  const before = await counts(fid, today);
+  const r = await handleSlotPostback(db, 'verify-token', ev('release', cid, s.id, s.data().linkCode), SECRET);
+  const after = await counts(fid, today);
+  check('検証データ: 取り消して予定から外れた', r.outcome === 'released', `${JSON.stringify(before)} → ${JSON.stringify(after)}`);
+}
+
 (async () => {
-  if (process.argv.includes('--app')) {
+  if (process.argv.includes('--app-release')) {
+    if (PROJECT !== 'demo-linkday') throw new Error('--app-release は LINKDAY_LINE_PROJECT=demo-linkday のときだけ');
+    await runAppRelease();
+  } else if (process.argv.includes('--app')) {
     if (PROJECT !== 'demo-linkday') throw new Error('--app は LINKDAY_LINE_PROJECT=demo-linkday のときだけ');
     await runApp();
   } else {
