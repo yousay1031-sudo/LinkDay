@@ -980,3 +980,62 @@ describe('翌日予約選択の確認の記録（ステップ4）', () => {
     }
   });
 });
+
+// ════════════════════════════════════════════════════════════════
+// LINE の空き枠の応募で予定に入れる（ルールは変えていない。Functions の Admin SDK が書く）
+// ════════════════════════════════════════════════════════════════
+
+describe('LINE の空き枠の応募で予定に入れる', () => {
+  const DAY = '2026-12-01';
+  const lineEntry = {
+    date: DAY,
+    weekKey: '2026-W49',
+    customerId: 'a1',
+    customerName: '架空 a1',
+    status: 'additional',
+    plannedStartTime: '14:00',
+    plannedEndTime: '17:00',
+    transportLocationIndex: null,
+    note: null,
+    lineClaim: { slotId: `${DAY}_c1`, customerId: 'a1', via: 'line', prev: null },
+    updatedByStaffId: null,
+    updatedByStaffName: 'LINEの応募',
+  };
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, `facilities/${FAC}/scheduleEntries/${DAY}_a1`), lineEntry);
+      await setDoc(doc(db, `slots/${DAY}_c1`), {
+        status: 'filled', facilityId: FAC, dateKey: DAY, claimedBy: { customerId: 'a1' },
+      });
+    });
+  });
+
+  test('空き枠の事業所の項目（facilityId）も、アプリからは書けない・作れない（読みは可）', async () => {
+    const db = memberA();
+    await assertSucceeds(getDoc(doc(db, `slots/${DAY}_c1`)));
+    await assertFails(updateDoc(doc(db, `slots/${DAY}_c1`), { facilityId: OTHER }));
+    await assertFails(setDoc(doc(db, `slots/${DAY}_c2`), { status: 'open', facilityId: FAC }));
+    await assertFails(
+      setDoc(doc(db, `notification_logs/${DAY}_a1`), { status: 'sent', facilityId: FAC }),
+    );
+  });
+
+  test('応募で入った予定は、職員が担当者の記録を付けて時間・お休みを直せる（印は残る）', async () => {
+    const db = memberA();
+    const ref = doc(db, `facilities/${FAC}/scheduleEntries/${DAY}_a1`);
+    await assertSucceeds(updateDoc(ref, audited({ plannedStartTime: '15:00' })));
+    await assertSucceeds(updateDoc(ref, audited({ status: 'cancelled' })));
+    const snap = await getDoc(ref);
+    if (snap.data().lineClaim?.slotId !== `${DAY}_c1`) throw new Error('印が消えた');
+    // 担当者の記録が無い書き込みは今までどおり拒否
+    await assertFails(updateDoc(ref, { plannedStartTime: '16:00' }));
+  });
+
+  test('ほかの事業所のアカウントは、応募で入った予定を読めない・書けない', async () => {
+    const db = memberB();
+    const ref = doc(db, `facilities/${FAC}/scheduleEntries/${DAY}_a1`);
+    await assertFails(getDoc(ref));
+    await assertFails(updateDoc(ref, audited({ status: 'cancelled' })));
+  });
+});
